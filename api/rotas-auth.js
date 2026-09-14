@@ -431,20 +431,6 @@ module.exports = function (app, pool) {
           });
         }
 
-        const senhaRepetida = await bcrypt.compare(
-          novaSenha,
-          usuario.senha_hash
-        );
-
-        if (senhaRepetida) {
-          await connection.rollback();
-
-          return res.status(400).json({
-            ok: false,
-            error: 'A nova senha deve ser diferente da senha atual'
-          });
-        }
-
         const novaSenhaHash = await bcrypt.hash(novaSenha, 12);
 
         await connection.query(

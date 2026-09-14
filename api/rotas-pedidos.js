@@ -22,6 +22,7 @@ module.exports = function (app, pool) {
       const {
         cliente_id,
         servico_id,
+        placa,
         chassi,
         marca,
         modelo,
@@ -65,6 +66,15 @@ module.exports = function (app, pool) {
       // --------------------------------------------------------
       // 2. Validar dados exigidos pelo serviço
       // --------------------------------------------------------
+
+      if (servico.exige_placa && !placa) {
+        await connection.rollback();
+
+        return res.status(400).json({
+          ok: false,
+          error: 'Placa obrigatoria para consultar este servico'
+        });
+      }
 
       if (servico.exige_chassi && !chassi) {
         await connection.rollback();
