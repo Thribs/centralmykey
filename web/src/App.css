@@ -4113,6 +4113,14 @@ border:1px solid #dbe0eb;border-radius:8px;background:white;cursor:pointer}
 
 .payment-modal {
   width: min(560px, calc(100vw - 30px));
+  display: flex;
+  max-height: calc(100vh - 30px);
+  flex-direction: column;
+}
+
+.payment-modal .vault-modal-body {
+  overflow-y: auto;
+  padding: 20px;
 }
 
 .payment-summary {
@@ -4144,7 +4152,36 @@ border:1px solid #dbe0eb;border-radius:8px;background:white;cursor:pointer}
 }
 
 .payment-modal textarea {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 96px;
+  border: 1px solid #d8deeb;
+  border-radius: 9px;
+  padding: 10px;
+  color: #303852;
+  font: inherit;
   resize: vertical;
+}
+
+.payment-modal footer {
+  margin-top: 0;
+  padding: 16px 20px 20px;
+  border-top: 1px solid #e5e8f1;
+}
+
+@media (max-width: 560px) {
+  .payment-modal .vault-modal-body {
+    padding: 16px;
+  }
+
+  .payment-modal footer {
+    flex-direction: column-reverse;
+    padding: 14px 16px 16px;
+  }
+
+  .payment-modal footer button {
+    width: 100%;
+  }
 }
 
 @media (max-width: 640px) {
@@ -4158,4 +4195,3 @@ border:1px solid #dbe0eb;border-radius:8px;background:white;cursor:pointer}
     margin-left: 0;
   }
 }
-

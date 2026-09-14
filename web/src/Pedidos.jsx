@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import {
   CarFront,
   CircleDollarSign,
@@ -31,6 +31,33 @@ const STATUS = {
   CANCELADO: 'Cancelado',
   ERRO: 'Erro'
 };
+
+function camposResultado(valor) {
+  if (valor == null || valor === '') return [];
+  if (typeof valor !== 'object') return [['Resultado', String(valor)]];
+
+  const rotulos = {
+    codigo_alarme: 'Alarme',
+    origem_atendimento: 'Origem do atendimento',
+    confiabilidade: 'Confiabilidade',
+    final8: 'Final do chassi'
+  };
+  const ocultos = new Set([
+    'origem_historica_id',
+    'fornecedor_historico_id'
+  ]);
+
+  return Object.entries(valor)
+    .filter(([chave, conteudo]) =>
+      !ocultos.has(chave) && conteudo != null && conteudo !== ''
+    )
+    .map(([chave, conteudo]) => [
+      rotulos[chave] || chave.replaceAll('_', ' '),
+      typeof conteudo === 'object'
+        ? JSON.stringify(conteudo)
+        : String(conteudo)
+    ]);
+}
 
 function dataHora(valor) {
   if (!valor) return 'Sem registro';
@@ -165,8 +192,13 @@ function DetalhePedido({ dados, aoFechar, aoConfirmar }) {
                       {resultado.pin && (
                         <><dt>PIN</dt><dd>{resultado.pin}</dd></>
                       )}
-                      {resultado.resultado && (
-                        <><dt>Resultado</dt><dd>{resultado.resultado}</dd></>
+                      {camposResultado(resultado.resultado).map(
+                        ([rotulo, valor]) => (
+                          <Fragment key={rotulo}>
+                            <dt>{rotulo}</dt>
+                            <dd>{valor}</dd>
+                          </Fragment>
+                        )
                       )}
                     </dl>
                   </article>
