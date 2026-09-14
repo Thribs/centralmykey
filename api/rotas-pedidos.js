@@ -1,3 +1,8 @@
+const {
+  buscarSenhaNoBanco,
+  normalizarChassi
+} = require('./consulta-banco-senhas');
+
 module.exports = function (app, pool) {
   const autenticarToken = app.locals.autenticarToken;
   const exigirPermissao = app.locals.exigirPermissao;
@@ -17,7 +22,6 @@ module.exports = function (app, pool) {
       const {
         cliente_id,
         servico_id,
-        placa,
         chassi,
         marca,
         modelo,
@@ -61,15 +65,6 @@ module.exports = function (app, pool) {
       // --------------------------------------------------------
       // 2. Validar dados exigidos pelo serviço
       // --------------------------------------------------------
-
-      if (servico.exige_placa && !placa) {
-        await connection.rollback();
-
-        return res.status(400).json({
-          ok: false,
-          error: 'Placa obrigatória para este serviço'
-        });
-      }
 
       if (servico.exige_chassi && !chassi) {
         await connection.rollback();
@@ -164,8 +159,8 @@ if (cliente.tipo_cobranca === 'ANTECIPADO') {
       protocoloPagamento,
       cliente_id,
       servico_id,
-      placa || null,
-      chassi ? String(chassi).trim().toUpperCase() : null,
+      null,
+      normalizarChassi(chassi),
       marca || servico.marca || null,
       modelo || null,
       ano || null,
@@ -224,43 +219,14 @@ let origemNome = null;
 // 3.1 Buscar primeiro na BASE PRÓPRIA pelo chassi
 // --------------------------------------------------------
 
-let bancoProprio = [];
-
-if (chassi) {
-
-  const chassiNormalizado = String(chassi)
-    .trim()
-    .toUpperCase();
-
-  [bancoProprio] = await connection.query(
-    `SELECT
-        bs.id,
-        bs.origem_id,
-        bs.codigo_mecanico,
-        bs.codigo_imobilizador,
-        bs.codigo_radio,
-        bs.pin,
-        bs.confiabilidade
-     FROM banco_senhas bs
-     INNER JOIN origens_senha os
-       ON os.id = bs.origem_id
-     WHERE UPPER(bs.chassi) = ?
-       AND bs.ativo = 1
-       AND os.codigo = 'BASE_PROPRIA'
-       AND os.ativo = 1
-     ORDER BY
-       CASE bs.confiabilidade
-         WHEN 'CONFIRMADA' THEN 1
-         WHEN 'ALTA' THEN 2
-         WHEN 'MEDIA' THEN 3
-         WHEN 'BAIXA' THEN 4
-         ELSE 5
-       END,
-       bs.id DESC
-     LIMIT 1`,
-    [chassiNormalizado]
-  );
-}
+const consultaBanco = await buscarSenhaNoBanco(connection, {
+  chassi,
+  codigoServico: servico.codigo
+});
+const bancoProprio = consultaBanco.status === 'ENCONTRADO'
+  ? [consultaBanco.senha]
+  : [];
+const conflitoBanco = consultaBanco.status === 'CONFLITO';
 
 // --------------------------------------------------------
 // 3.2 Se encontrou no banco próprio, custo é zero
@@ -269,11 +235,18 @@ if (chassi) {
 if (bancoProprio.length) {
 
   bancoSenhaId = bancoProprio[0].id;
-  origemId = bancoProprio[0].origem_id;
-  origemNome = 'BASE_PROPRIA';
+  const [origensBanco] = await connection.query(
+    `SELECT id FROM origens_senha
+     WHERE codigo = 'BASE_PROPRIA' AND ativo = 1 LIMIT 1`
+  );
+  if (!origensBanco.length) {
+    throw new Error('Origem BASE_PROPRIA nao configurada');
+  }
+  origemId = origensBanco[0].id;
+  origemNome = 'BANCO_DADOS';
   custo = 0;
 
-} else {
+} else if (!conflitoBanco) {
 
   // ------------------------------------------------------
   // 3.3 Não encontrou na base própria:
@@ -352,14 +325,16 @@ if (bancoProprio.length) {
           protocolo,
           cliente_id,
           servico_id,
-          placa || null,
-          chassi
-            ? String(chassi).trim().toUpperCase()
-            : null,
+          null,
+          normalizarChassi(chassi),
           marca || servico.marca || null,
           modelo || null,
           ano || null,
-          'ABERTO',
+          conflitoBanco
+            ? 'AGUARDANDO_DADOS'
+            : fornecedorId
+              ? 'EM_CONSULTA'
+              : 'ABERTO',
           Number(servico.preco_base || 0),
           custo,
           fornecedorId,
@@ -485,19 +460,32 @@ if (bancoProprio.length) {
         [
           resultado.insertId,
           senhaEncontrada.id,
-          senhaEncontrada.origem_id,
+          origemId,
           null,
           senhaEncontrada.codigo_mecanico,
           senhaEncontrada.codigo_imobilizador,
           senhaEncontrada.codigo_radio,
           senhaEncontrada.pin,
           JSON.stringify({
-            origem: 'BASE_PROPRIA',
+            origem_atendimento: 'BANCO_DADOS',
+            origem_historica_id: senhaEncontrada.origem_id,
+            fornecedor_historico_id: senhaEncontrada.fornecedor_id,
+            codigo_alarme: senhaEncontrada.codigo_alarme,
             confiabilidade: senhaEncontrada.confiabilidade
           }),
           0,
           'ENCONTRADO'
         ]
+      );
+    }
+    if (conflitoBanco) {
+      await connection.query(
+        `INSERT INTO pedido_historico
+         (pedido_id, usuario_id, tipo, descricao, dados)
+         VALUES (?, ?, 'CONFLITO_BASE_DADOS', ?, ?)`,
+        [resultado.insertId, req.usuario.id,
+          'Senhas divergentes para o mesmo produto e final de chassi',
+          JSON.stringify(consultaBanco)]
       );
     }
       await connection.commit();
@@ -513,7 +501,13 @@ if (bancoProprio.length) {
           fornecedor: fornecedorNome,
           custo,
           valor_venda: Number(servico.preco_base || 0),
-          status: bancoProprio.length ? 'CONCLUIDO' : 'ABERTO',
+          status: bancoProprio.length
+            ? 'CONCLUIDO'
+            : conflitoBanco
+              ? 'AGUARDANDO_DADOS'
+              : fornecedorId
+                ? 'EM_CONSULTA'
+                : 'ABERTO',
             resultado_automatico: bancoProprio.length
               ? {
                   encontrado: true,
@@ -570,6 +564,7 @@ if (bancoProprio.length) {
       codigo_mecanico,
       codigo_imobilizador,
       codigo_radio,
+      codigo_alarme,
       pin,
       resultado,
       usuario_id
@@ -579,8 +574,8 @@ if (bancoProprio.length) {
       !codigo_mecanico &&
       !codigo_imobilizador &&
       !codigo_radio &&
-      !pin &&
-      resultado == null
+      !codigo_alarme &&
+      !pin
     ) {
       return res.status(400).json({
         ok: false,
@@ -661,7 +656,10 @@ if (bancoProprio.length) {
           codigo_imobilizador || null,
           codigo_radio || null,
           pin || null,
-          JSON.stringify(resultado ?? {}),
+          JSON.stringify({
+            ...(resultado && typeof resultado === 'object' ? resultado : {}),
+            codigo_alarme: codigo_alarme || null
+          }),
           Number(pedido.custo || 0),
           'ENCONTRADO'
         ]
@@ -715,6 +713,7 @@ if (bancoProprio.length) {
           codigo_mecanico: codigo_mecanico || null,
           codigo_imobilizador: codigo_imobilizador || null,
           codigo_radio: codigo_radio || null,
+          codigo_alarme: codigo_alarme || null,
           pin: pin || null
         }
       });
@@ -758,7 +757,6 @@ if (bancoProprio.length) {
         `SELECT
            p.id,
            p.protocolo,
-           p.placa,
            p.chassi,
            p.marca,
            p.modelo,
@@ -806,6 +804,10 @@ if (bancoProprio.length) {
       }
 
       const resultadoEncontrado = resultados[0];
+      const dadosResultado = resultadoEncontrado.resultado &&
+        typeof resultadoEncontrado.resultado === 'object'
+        ? resultadoEncontrado.resultado
+        : {};
 
       await connection.query(
         `UPDATE pedido_resultados
@@ -818,23 +820,24 @@ if (bancoProprio.length) {
       let acaoBase = 'NAO_ADICIONADO_SEM_CHASSI';
 
       if (pedido.chassi) {
-        const chassiNormalizado = String(pedido.chassi)
-          .trim()
-          .toUpperCase();
+        const chassiNormalizado = normalizarChassi(pedido.chassi);
+        const consultaExistente = await buscarSenhaNoBanco(connection, {
+          chassi: chassiNormalizado,
+          codigoServico: pedido.tipo
+        });
 
-        const [existentes] = await connection.query(
-          `SELECT bs.id
-           FROM banco_senhas bs
-           INNER JOIN origens_senha os
-             ON os.id = bs.origem_id
-           WHERE UPPER(bs.chassi) = ?
-             AND bs.ativo = 1
-             AND os.codigo = 'BASE_PROPRIA'
-           ORDER BY bs.id DESC
-           LIMIT 1
-           FOR UPDATE`,
-          [chassiNormalizado]
-        );
+        if (consultaExistente.status === 'CONFLITO') {
+          await connection.rollback();
+          return res.status(409).json({
+            ok: false,
+            error: 'Existem senhas divergentes para este produto e chassi',
+            conflito: consultaExistente
+          });
+        }
+
+        const existentes = consultaExistente.status === 'ENCONTRADO'
+          ? [consultaExistente.senha]
+          : [];
 
         if (existentes.length) {
           bancoSenhaId = existentes[0].id;
@@ -847,10 +850,10 @@ if (bancoProprio.length) {
                  modelo = COALESCE(?, modelo),
                  ano_inicio = COALESCE(?, ano_inicio),
                  ano_fim = COALESCE(?, ano_fim),
-                 placa = COALESCE(?, placa),
                  codigo_mecanico = COALESCE(?, codigo_mecanico),
                  codigo_imobilizador = COALESCE(?, codigo_imobilizador),
                  codigo_radio = COALESCE(?, codigo_radio),
+                 codigo_alarme = COALESCE(?, codigo_alarme),
                  pin = COALESCE(?, pin),
                  fornecedor_id = COALESCE(?, fornecedor_id),
                  confiabilidade = 'CONFIRMADA',
@@ -863,10 +866,10 @@ if (bancoProprio.length) {
               pedido.modelo,
               pedido.ano,
               pedido.ano,
-              pedido.placa,
               resultadoEncontrado.codigo_mecanico,
               resultadoEncontrado.codigo_imobilizador,
               resultadoEncontrado.codigo_radio,
+              dadosResultado.codigo_alarme || null,
               resultadoEncontrado.pin,
               pedido.fornecedor_id,
               bancoSenhaId
@@ -883,11 +886,11 @@ if (bancoProprio.length) {
               modelo,
               ano_inicio,
               ano_fim,
-              placa,
               chassi,
               codigo_mecanico,
               codigo_imobilizador,
               codigo_radio,
+              codigo_alarme,
               pin,
               dados_extras,
               origem_id,
@@ -903,18 +906,18 @@ if (bancoProprio.length) {
               pedido.modelo || null,
               pedido.ano || null,
               pedido.ano || null,
-              pedido.placa || null,
               chassiNormalizado,
               resultadoEncontrado.codigo_mecanico,
               resultadoEncontrado.codigo_imobilizador,
               resultadoEncontrado.codigo_radio,
+              dadosResultado.codigo_alarme || null,
               resultadoEncontrado.pin,
               JSON.stringify({
                 pedido_id: pedido.id,
                 resultado_id: resultadoEncontrado.id,
                 origem_original: 'FORNECEDOR'
               }),
-              1,
+              resultadoEncontrado.origem_id || 2,
               pedido.fornecedor_id,
               'CONFIRMADA',
               1,

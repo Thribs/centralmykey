@@ -115,7 +115,6 @@ function DetalhePedido({ dados, aoFechar, aoConfirmar }) {
               <div><span>Marca</span><strong>{pedido.marca || '—'}</strong></div>
               <div><span>Modelo</span><strong>{pedido.modelo || '—'}</strong></div>
               <div><span>Ano</span><strong>{pedido.ano || '—'}</strong></div>
-              <div><span>Placa</span><strong>{pedido.placa || '—'}</strong></div>
               <div className="wide"><span>Chassi</span><strong>{pedido.chassi || '—'}</strong></div>
             </div>
           </section>
@@ -319,7 +318,7 @@ export default function Pedidos() {
               type="search"
               value={busca}
               onChange={evento => setBusca(evento.target.value)}
-              placeholder="Protocolo, cliente, placa, chassi ou serviço"
+              placeholder="Protocolo, cliente, chassi ou serviço"
             />
           </label>
 
@@ -367,7 +366,7 @@ export default function Pedidos() {
                     <td>{pedido.cliente}</td>
                     <td>
                       <strong>{[pedido.marca, pedido.modelo].filter(Boolean).join(' ') || 'Não informado'}</strong>
-                      <small>{pedido.placa || pedido.chassi || 'Sem identificação'}</small>
+                      <small>{pedido.chassi || 'Sem identificação'}</small>
                     </td>
                     <td>{pedido.servico}</td>
                     <td>

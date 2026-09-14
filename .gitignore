@@ -56,3 +56,6 @@ Thumbs.db
 *.zip
 *.tar
 *.tar.gz
+
+# Migrações versionadas
+!api/migrations/*.sql

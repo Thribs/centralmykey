@@ -9,7 +9,6 @@ import {
 const INICIAL = {
   cliente_id: '',
   servico_id: '',
-  placa: '',
   chassi: '',
   marca: '',
   modelo: '',
@@ -126,16 +125,6 @@ export default function NovoPedido({
                   value={formulario.chassi}
                   onChange={alterar}
                   maxLength="30"
-                />
-              </label>
-
-              <label>
-                Placa
-                <input
-                  name="placa"
-                  value={formulario.placa}
-                  onChange={alterar}
-                  maxLength="10"
                 />
               </label>
 

@@ -28,7 +28,6 @@ const FORMULARIO_INICIAL = {
   modelo: '',
   ano_inicio: '',
   ano_fim: '',
-  placa: '',
   chassi: '',
   codigo_mecanico: '',
   codigo_mecanico_alterado: '',
@@ -544,7 +543,7 @@ export default function BancoSenhas({ usuario, permissoes = [] }) {
               onChange={evento => setBusca(evento.target.value)}
               placeholder={
                   acessoCompleto
-                    ? 'Chassi, placa, mecânico, rádio, imobilizador ou alarme'
+                    ? 'Chassi, mecânico, rádio, imobilizador ou alarme'
                     : 'Últimos 8 a 17 caracteres do chassi'
                 }
                 minLength={acessoCompleto ? undefined : 8}
