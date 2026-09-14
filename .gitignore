@@ -1,0 +1,58 @@
+# Credenciais
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Dependências e builds
+node_modules/
+dist/
+build/
+coverage/
+
+# Logs e processos
+*.log
+logs/
+.pm2/
+*.pid
+
+# Backups e bancos
+*.bak
+*.bak-*
+*.backup
+*.sql
+*.sqlite
+*.sqlite3
+backups/
+
+# Arquivos enviados e comprovantes
+uploads/
+comprovantes/
+storage/
+
+# Sistema e editores
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.tmp
+
+# Cópias e pacotes legados
+*.backup
+*.backup-*
+*.save
+*.zip
+*.tar
+*.tar.gz
+
+# Cópias e pacotes legados
+*.backup
+*.backup-*
+*.save
+*.zip
+*.tar
+*.tar.gz
