@@ -515,6 +515,18 @@ function TelaCadastro({ tipo }) {
   }
 
   async function alternar(registro) {
+    const acao = registro.ativo ? 'bloquear' : 'reativar';
+    const entidade = cliente ? 'o cliente' : 'o fornecedor';
+    const complemento = registro.ativo
+      ? ' O cadastro será preservado e poderá ser reativado depois.'
+      : '';
+
+    const confirmado = window.confirm(
+      `Confirma ${acao} ${entidade} "${registro.nome}"?${complemento}`
+    );
+
+    if (!confirmado) return;
+
     setErro('');
 
     try {
@@ -675,10 +687,20 @@ function TelaCadastro({ tipo }) {
                   </td>
                   <td>
                     <div className="registry-row-actions">
-                      <button type="button" onClick={() => setModal(registro)}>
+                      <button
+                        type="button"
+                        title="Editar"
+                        aria-label={`Editar ${registro.nome}`}
+                        onClick={() => setModal(registro)}
+                      >
                         <Pencil size={16} />
                       </button>
-                      <button type="button" onClick={() => alternar(registro)}>
+                      <button
+                        type="button"
+                        title={registro.ativo ? 'Bloquear' : 'Reativar'}
+                        aria-label={`${registro.ativo ? 'Bloquear' : 'Reativar'} ${registro.nome}`}
+                        onClick={() => alternar(registro)}
+                      >
                         {registro.ativo
                           ? <Ban size={16} />
                           : <CheckCircle2 size={16} />}
