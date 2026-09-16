@@ -85,21 +85,21 @@ function mapearSenhaApi(item, contexto) {
   return {
     api_senha_id: valor(item, ['id', 'id_senha']),
     montadora_id: Number(
-      valor(item, ['id_montadora', 'montadora_id']) || contexto.montadoraId
+      valor(item, ['id_montadora', 'montadora_id', 'montadoraId']) || contexto.montadoraId
     ),
     tipo: contexto.codigoServico,
     marca: contexto.marca || null,
     modelo: limparCodigo(valor(item, ['modelo'])) || contexto.modelo || null,
     chassi,
-    codigo_mecanico: limparCodigo(valor(item, ['cod_mecanico', 'codigo_mecanico'])),
-    codigo_radio: limparCodigo(valor(item, ['cod_radio', 'codigo_radio'])),
+    codigo_mecanico: limparCodigo(valor(item, ['cod_mecanico', 'codigo_mecanico', 'codMecanico'])),
+    codigo_radio: limparCodigo(valor(item, ['cod_radio', 'codigo_radio', 'codRadio'])),
     codigo_imobilizador: limparCodigo(
-      valor(item, ['cod_immo', 'codigo_imobilizador', 'codigo_immo'])
+      valor(item, ['cod_immo', 'codigo_imobilizador', 'codigo_immo', 'codImmo'])
     ),
-    codigo_alarme: limparCodigo(valor(item, ['cod_alarme', 'codigo_alarme'])),
+    codigo_alarme: limparCodigo(valor(item, ['cod_alarme', 'codigo_alarme', 'codAlarme'])),
     pin: limparCodigo(valor(item, ['pin', 'cod_pin'])),
     dados_api: item,
-    atualizado_api_em: valor(item, ['updated_at', 'atualizado_em'])
+    atualizado_api_em: valor(item, ['updated_at', 'atualizado_em', 'updatedAt'])
   };
 }
 

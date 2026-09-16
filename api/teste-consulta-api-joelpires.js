@@ -31,11 +31,11 @@ async function executar() {
         status: 200,
         text: async () => JSON.stringify([{
           id: 101,
-          id_montadora: 1,
+          montadoraId: 1,
           chassis: '9BGJP7520MB197925',
-          cod_mecanico: 'Z5917',
-          cod_immo: '8077',
-          cod_alarme: '3400'
+          codMecanico: 'Z5917',
+          codImmo: '8077',
+          codAlarme: '3400'
         }])
       };
     }

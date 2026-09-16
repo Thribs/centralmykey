@@ -28,6 +28,23 @@ const {
     }
 
     const senha = resultado.senha;
+    const camposCodigo = [
+      'codigo_mecanico',
+      'codigo_radio',
+      'codigo_imobilizador',
+      'codigo_alarme',
+      'pin'
+    ];
+    const codigosPresentes = camposCodigo.filter(
+      campo => Boolean(senha[campo])
+    );
+
+    if (!codigosPresentes.length) {
+      throw new Error(
+        'API retornou registro sem nenhum código utilizável'
+      );
+    }
+
     console.log({
       resultado: 'APROVADO',
       status: resultado.status,
@@ -35,13 +52,7 @@ const {
       contingencia: Boolean(resultado.contingencia),
       banco_senha_id_temporario: senha.id,
       chassi: senha.chassi,
-      codigos_presentes: [
-        'codigo_mecanico',
-        'codigo_radio',
-        'codigo_imobilizador',
-        'codigo_alarme',
-        'pin'
-      ].filter(campo => Boolean(senha[campo]))
+      codigos_presentes: codigosPresentes
     });
   } finally {
     await db.rollback();
