@@ -2,6 +2,9 @@ const {
   buscarSenhaNoBanco,
   normalizarChassi
 } = require('./consulta-banco-senhas');
+const {
+  buscarSenhaFonteVerdade
+} = require('./consulta-api-joelpires');
 
 module.exports = function (app, pool) {
   const autenticarToken = app.locals.autenticarToken;
@@ -226,17 +229,23 @@ let bancoSenhaId = null;
 let origemNome = null;
 
 // --------------------------------------------------------
-// 3.1 Buscar primeiro na BASE PRÓPRIA pelo chassi
+// 3.1 Consultar cache/API Joel Pires (fonte de verdade)
 // --------------------------------------------------------
 
-const consultaBanco = await buscarSenhaNoBanco(connection, {
+const consultaBanco = await buscarSenhaFonteVerdade(connection, {
   chassi,
-  codigoServico: servico.codigo
+  codigoServico: servico.codigo,
+  marca: marca || servico.marca,
+  modelo,
+  ano
 });
 const bancoProprio = consultaBanco.status === 'ENCONTRADO'
   ? [consultaBanco.senha]
   : [];
 const conflitoBanco = consultaBanco.status === 'CONFLITO';
+const apiIndisponivel = consultaBanco.status === 'INDISPONIVEL';
+const montadoraNaoConfigurada =
+  consultaBanco.status === 'MONTADORA_NAO_CONFIGURADA';
 
 // --------------------------------------------------------
 // 3.2 Se encontrou no banco próprio, custo é zero
@@ -247,16 +256,16 @@ if (bancoProprio.length) {
   bancoSenhaId = bancoProprio[0].id;
   const [origensBanco] = await connection.query(
     `SELECT id FROM origens_senha
-     WHERE codigo = 'BASE_PROPRIA' AND ativo = 1 LIMIT 1`
+     WHERE codigo = 'API' AND ativo = 1 LIMIT 1`
   );
   if (!origensBanco.length) {
-    throw new Error('Origem BASE_PROPRIA nao configurada');
+    throw new Error('Origem API nao configurada');
   }
   origemId = origensBanco[0].id;
-  origemNome = 'BANCO_DADOS';
+  origemNome = consultaBanco.origem;
   custo = 0;
 
-} else if (!conflitoBanco) {
+} else if (consultaBanco.status === 'NAO_ENCONTRADO') {
 
   // ------------------------------------------------------
   // 3.3 Não encontrou na base própria:
@@ -342,6 +351,8 @@ if (bancoProprio.length) {
           ano || null,
           conflitoBanco
             ? 'AGUARDANDO_DADOS'
+            : apiIndisponivel
+              ? 'ABERTO'
             : fornecedorId
               ? 'EM_CONSULTA'
               : 'ABERTO',
@@ -477,7 +488,7 @@ if (bancoProprio.length) {
           senhaEncontrada.codigo_radio,
           senhaEncontrada.pin,
           JSON.stringify({
-            origem_atendimento: 'BANCO_DADOS',
+            origem_atendimento: consultaBanco.origem,
             origem_historica_id: senhaEncontrada.origem_id,
             fornecedor_historico_id: senhaEncontrada.fornecedor_id,
             codigo_alarme: senhaEncontrada.codigo_alarme,
@@ -498,6 +509,26 @@ if (bancoProprio.length) {
           JSON.stringify(consultaBanco)]
       );
     }
+    if (apiIndisponivel) {
+      await connection.query(
+        `INSERT INTO pedido_historico
+         (pedido_id, usuario_id, tipo, descricao, dados)
+         VALUES (?, ?, 'API_JOELPIRES_INDISPONIVEL', ?, ?)`,
+        [resultado.insertId, req.usuario.id,
+          'API Joel Pires indisponivel; fornecedor externo nao acionado',
+          JSON.stringify(consultaBanco)]
+      );
+    }
+    if (montadoraNaoConfigurada) {
+      await connection.query(
+        `INSERT INTO pedido_historico
+         (pedido_id, usuario_id, tipo, descricao, dados)
+         VALUES (?, ?, 'MONTADORA_API_NAO_CONFIGURADA', ?, ?)`,
+        [resultado.insertId, req.usuario.id,
+          'Montadora sem correspondencia configurada na API Joel Pires',
+          JSON.stringify({ marca: marca || servico.marca || null })]
+      );
+    }
       await connection.commit();
 
       return res.status(201).json({
@@ -515,6 +546,8 @@ if (bancoProprio.length) {
             ? 'CONCLUIDO'
             : conflitoBanco
               ? 'AGUARDANDO_DADOS'
+              : apiIndisponivel
+                ? 'ABERTO'
               : fornecedorId
                 ? 'EM_CONSULTA'
                 : 'ABERTO',

@@ -1,7 +1,7 @@
 'use strict';
 
 const AMBIENTES = Object.freeze({
-  teste: 'https://testes.api.joelpires.com.br',
+  teste: 'https://staging.api.joelpires.com.br',
   publico: 'https://api.joelpires.com.br'
 });
 
