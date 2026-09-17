@@ -56,7 +56,7 @@ module.exports = async function processarPedidoPago(connection, pedidoId, usuari
       `INSERT INTO pedido_resultados
        (pedido_id,banco_senha_id,origem_id,fornecedor_id,codigo_mecanico,
         codigo_imobilizador,codigo_radio,pin,resultado,custo,status)
-       VALUES (?,?,?,NULL,?,?,?,?,?,0,'ENCONTRADO')`,
+       VALUES (?,?,?,NULL,?,?,?,?,?,0,'CONFIRMADO')`,
       [pedido.id, senha.id, origemAtendimentoId, senha.codigo_mecanico,
        senha.codigo_imobilizador, senha.codigo_radio, senha.pin,
        JSON.stringify({ origem_atendimento: consulta.origem,

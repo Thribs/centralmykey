@@ -507,7 +507,7 @@ if (bancoProprio.length) {
             confiabilidade: senhaEncontrada.confiabilidade
           }),
           0,
-          'ENCONTRADO'
+          'CONFIRMADO'
         ]
       );
     }

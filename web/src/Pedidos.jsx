@@ -112,7 +112,9 @@ function DetalhePedido({
   const pedido = dados.pedido;
   const resultados = dados.resultados || [];
   const historico = dados.historico || [];
-  const resultadoPendente = resultados.find(item => item.status === 'ENCONTRADO');
+  const resultadoPendente = resultados.find(item =>
+    item.status === 'ENCONTRADO' && item.fornecedor_id
+  );
 
   return (
     <div className="order-detail-overlay" role="presentation">
