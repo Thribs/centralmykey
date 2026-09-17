@@ -4118,6 +4118,63 @@ border:1px solid #dbe0eb;border-radius:8px;background:white;cursor:pointer}
   flex-direction: column;
 }
 
+.operation-overlay {
+  position: fixed;
+  z-index: 5000;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(17, 21, 45, 0.72);
+  backdrop-filter: blur(4px);
+}
+
+.operation-progress {
+  display: flex;
+  width: min(430px, calc(100vw - 40px));
+  box-sizing: border-box;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 30px 26px;
+  border-radius: 18px;
+  background: #fff;
+  box-shadow: 0 24px 70px rgba(7, 12, 35, 0.32);
+  color: #11152d;
+  text-align: center;
+}
+
+.operation-progress svg {
+  color: #fa6407;
+  animation: operation-spin 0.9s linear infinite;
+}
+
+.operation-progress strong {
+  font-size: 18px;
+}
+
+.operation-progress span {
+  color: #59627a;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.operation-progress small {
+  color: #858da2;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+@keyframes operation-spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .operation-progress svg {
+    animation-duration: 1.8s;
+  }
+}
+
 .payment-modal .vault-modal-body {
   overflow-y: auto;
   padding: 20px;

@@ -708,18 +708,41 @@ export async function criarPedido(token, dados) {
   return lerResposta(resposta);
 }
 
-export async function confirmarPagamentoManual(token, pedidoId, dados) {
-  const resposta = await fetch(
-    `${API_URL}/api/pedidos/${pedidoId}/pagamento/confirmar-manual`,
-    {
-      method: 'POST',
-      headers: cabecalhoAutenticado(token, {
-        'Content-Type': 'application/json'
-      }),
-      body: JSON.stringify(dados)
-    }
+export async function confirmarPagamentoManual(
+  token,
+  pedidoId,
+  dados,
+  { timeoutMs = 105000 } = {}
+) {
+  const controlador = new AbortController();
+  const temporizador = window.setTimeout(
+    () => controlador.abort(),
+    timeoutMs
   );
 
-  return lerResposta(resposta);
-}
+  try {
+    const resposta = await fetch(
+      `${API_URL}/api/pedidos/${pedidoId}/pagamento/confirmar-manual`,
+      {
+        method: 'POST',
+        headers: cabecalhoAutenticado(token, {
+          'Content-Type': 'application/json'
+        }),
+        body: JSON.stringify(dados),
+        signal: controlador.signal
+      }
+    );
 
+    return lerResposta(resposta);
+  } catch (erro) {
+    if (erro.name === 'AbortError') {
+      throw new Error(
+        'A confirmação ultrapassou 105 segundos. Atualize o pedido antes de tentar novamente para evitar pagamento duplicado.',
+        { cause: erro }
+      );
+    }
+    throw erro;
+  } finally {
+    window.clearTimeout(temporizador);
+  }
+}

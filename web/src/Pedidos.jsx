@@ -32,6 +32,17 @@ const STATUS = {
   ERRO: 'Erro'
 };
 
+function nomeOrigem(origem, codigo) {
+  if (
+    codigo === 'API' ||
+    origem === 'API / Sistema externo' ||
+    origem === 'API'
+  ) {
+    return 'API Joel Pires';
+  }
+  return origem || 'Não definida';
+}
+
 function camposResultado(valor) {
   if (valor == null || valor === '') return [];
   if (typeof valor !== 'object') return [['Resultado', String(valor)]];
@@ -132,7 +143,7 @@ function DetalhePedido({ dados, aoFechar, aoConfirmar }) {
               <div><span>Cliente</span><strong>{pedido.cliente}</strong></div>
               <div><span>Serviço</span><strong>{pedido.servico}</strong></div>
               <div><span>Atendente</span><strong>{pedido.atendente || 'Não informado'}</strong></div>
-              <div><span>Origem</span><strong>{pedido.origem || 'Não definida'}</strong></div>
+              <div><span>Origem</span><strong>{nomeOrigem(pedido.origem, pedido.origem_codigo)}</strong></div>
             </div>
           </section>
 
@@ -173,7 +184,7 @@ function DetalhePedido({ dados, aoFechar, aoConfirmar }) {
                 {resultados.map(resultado => (
                   <article key={resultado.id}>
                     <div>
-                      <strong>{resultado.origem || 'Resultado'}</strong>
+                      <strong>{nomeOrigem(resultado.origem, resultado.origem_codigo)}</strong>
                       <span>{dataHora(resultado.criado_em)}</span>
                     </div>
                     <span className={`order-status status-result-${resultado.status}`}>
@@ -405,7 +416,7 @@ export default function Pedidos() {
                       {pedido.origem_codigo === 'FORNECEDOR' ? (
                         <span className="order-origin"><Truck size={14} />{pedido.fornecedor || pedido.origem}</span>
                       ) : (
-                        <span className="order-origin"><Database size={14} />{pedido.origem || 'Não definida'}</span>
+                        <span className="order-origin"><Database size={14} />{nomeOrigem(pedido.origem, pedido.origem_codigo)}</span>
                       )}
                     </td>
                     <td>{dinheiro(pedido.valor_venda, pedido.moeda)}</td>

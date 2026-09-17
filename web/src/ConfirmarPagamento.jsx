@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { CircleDollarSign, X } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { CircleDollarSign, LoaderCircle, X } from 'lucide-react';
 import { confirmarPagamentoManual } from './api';
 
 export default function ConfirmarPagamento({
@@ -12,11 +12,26 @@ export default function ConfirmarPagamento({
   const [referencia, setReferencia] = useState('');
   const [observacao, setObservacao] = useState('');
   const [salvando, setSalvando] = useState(false);
+  const [etapa, setEtapa] = useState('');
+  const [segundos, setSegundos] = useState(0);
   const [erro, setErro] = useState('');
+
+  useEffect(() => {
+    if (!salvando) return undefined;
+
+    const intervalo = window.setInterval(
+      () => setSegundos(valor => valor + 1),
+      1000
+    );
+
+    return () => window.clearInterval(intervalo);
+  }, [salvando]);
 
   async function confirmar(evento) {
     evento.preventDefault();
+    setSegundos(0);
     setSalvando(true);
+    setEtapa('Confirmando o pagamento e consultando a senha...');
     setErro('');
 
     try {
@@ -25,6 +40,7 @@ export default function ConfirmarPagamento({
         referencia_externa: referencia.trim(),
         observacao: observacao.trim() || null
       });
+      setEtapa('Pagamento confirmado. Atualizando o pedido...');
       await aoConfirmado();
     } catch (falha) {
       setErro(falha.message);
@@ -35,13 +51,35 @@ export default function ConfirmarPagamento({
 
   return (
     <div className="vault-overlay" role="presentation">
+      {salvando && (
+        <div
+          className="operation-overlay"
+          role="status"
+          aria-live="polite"
+          aria-busy="true"
+        >
+          <div className="operation-progress">
+            <LoaderCircle size={42} />
+            <strong>{etapa}</strong>
+            <span>
+              Aguarde. Não feche esta tela nem repita a operação.
+            </span>
+            <small>
+              {segundos}s de 105s
+              {segundos >= 30
+                ? ' · A consulta externa ainda está em andamento.'
+                : ''}
+            </small>
+          </div>
+        </div>
+      )}
       <form className="vault-modal payment-modal" onSubmit={confirmar}>
         <header>
           <div>
             <span>CENTRAL FINANCEIRA</span>
             <h2>Confirmar pagamento</h2>
           </div>
-          <button type="button" onClick={aoFechar} aria-label="Fechar">
+          <button type="button" onClick={aoFechar} aria-label="Fechar" disabled={salvando}>
             <X size={20} />
           </button>
         </header>
