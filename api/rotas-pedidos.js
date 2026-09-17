@@ -5,10 +5,22 @@ const {
 const {
   buscarSenhaFonteVerdade
 } = require('./consulta-api-joelpires');
+const processarPedidoPago = require('./processar-pedido-pago');
 
 module.exports = function (app, pool) {
   const autenticarToken = app.locals.autenticarToken;
   const exigirPermissao = app.locals.exigirPermissao;
+
+  function objetoResultado(valor) {
+    if (valor && typeof valor === 'object') return valor;
+    if (typeof valor !== 'string' || !valor.trim()) return {};
+    try {
+      const convertido = JSON.parse(valor);
+      return convertido && typeof convertido === 'object' ? convertido : {};
+    } catch {
+      return {};
+    }
+  }
 
 
   // ============================================================
@@ -593,6 +605,72 @@ if (bancoProprio.length) {
   // REGISTRAR RESULTADO RECEBIDO DO FORNECEDOR
   // ============================================================
 
+  app.post('/api/pedidos/:id/reprocessar', autenticarToken, exigirPermissao('PEDIDOS_SENHAS', 'editar'), async (req, res) => {
+    const pedidoId = Number(req.params.id);
+
+    if (!Number.isInteger(pedidoId) || pedidoId <= 0) {
+      return res.status(400).json({ ok: false, error: 'ID do pedido inválido' });
+    }
+
+    const connection = await pool.getConnection();
+
+    try {
+      await connection.beginTransaction();
+
+      const [pedidos] = await connection.query(
+        `SELECT p.id, p.status, s.codigo AS codigo_servico
+           FROM pedidos_senha p
+           INNER JOIN servicos s ON s.id = p.servico_id
+          WHERE p.id = ? LIMIT 1 FOR UPDATE`,
+        [pedidoId]
+      );
+
+      if (!pedidos.length) {
+        await connection.rollback();
+        return res.status(404).json({ ok: false, error: 'Pedido não encontrado' });
+      }
+
+      const pedido = pedidos[0];
+      if (pedido.codigo_servico !== 'GM_SENHA') {
+        await connection.rollback();
+        return res.status(409).json({
+          ok: false,
+          error: 'O reprocessamento automático está liberado somente para senha GM'
+        });
+      }
+
+      if (!['ABERTO', 'ERRO', 'AGUARDANDO_DADOS'].includes(pedido.status)) {
+        await connection.rollback();
+        return res.status(409).json({
+          ok: false,
+          error: `Pedido no status ${pedido.status} não pode ser reprocessado`
+        });
+      }
+
+      const processamento = await processarPedidoPago(
+        connection,
+        pedidoId,
+        req.usuario.id
+      );
+
+      await connection.commit();
+      return res.json({
+        ok: true,
+        message: 'Pedido GM reprocessado',
+        processamento
+      });
+    } catch (error) {
+      await connection.rollback();
+      console.error('Erro ao reprocessar pedido GM:', error);
+      return res.status(500).json({
+        ok: false,
+        error: 'Erro ao reprocessar pedido GM'
+      });
+    } finally {
+      connection.release();
+    }
+  });
+
   app.post('/api/pedidos/:id/resultado', autenticarToken, exigirPermissao('PEDIDOS_SENHAS', 'editar'), async (req, res) => {
     const pedidoId = Number(req.params.id);
 
@@ -609,8 +687,7 @@ if (bancoProprio.length) {
       codigo_radio,
       codigo_alarme,
       pin,
-      resultado,
-      usuario_id
+      resultado
     } = req.body;
 
     if (
@@ -727,7 +804,7 @@ if (bancoProprio.length) {
         VALUES (?, ?, ?, ?, ?)`,
         [
           pedido.id,
-          usuario_id || null,
+          req.usuario.id,
           'RESULTADO_RECEBIDO',
           'Resultado do fornecedor registrado e pedido concluído',
           JSON.stringify({
@@ -782,7 +859,7 @@ if (bancoProprio.length) {
 
   app.post('/api/pedidos/:id/resultado/confirmar', autenticarToken, exigirPermissao('PEDIDOS_SENHAS', 'editar'), async (req, res) => {
     const pedidoId = Number(req.params.id);
-    const usuarioId = req.body.usuario_id || null;
+    const usuarioId = req.usuario.id;
 
     if (!Number.isInteger(pedidoId) || pedidoId <= 0) {
       return res.status(400).json({
@@ -847,10 +924,7 @@ if (bancoProprio.length) {
       }
 
       const resultadoEncontrado = resultados[0];
-      const dadosResultado = resultadoEncontrado.resultado &&
-        typeof resultadoEncontrado.resultado === 'object'
-        ? resultadoEncontrado.resultado
-        : {};
+      const dadosResultado = objetoResultado(resultadoEncontrado.resultado);
 
       await connection.query(
         `UPDATE pedido_resultados
@@ -1025,7 +1099,7 @@ if (bancoProprio.length) {
 
   app.post('/api/pedidos/:id/resultado/incorreto', autenticarToken, exigirPermissao('PEDIDOS_SENHAS', 'editar'), async (req, res) => {
     const pedidoId = Number(req.params.id);
-    const usuarioId = req.body.usuario_id || null;
+    const usuarioId = req.usuario.id;
     const motivo = req.body.motivo || 'Resultado informado como incorreto';
 
     if (!Number.isInteger(pedidoId) || pedidoId <= 0) {
@@ -1125,6 +1199,7 @@ if (bancoProprio.length) {
          WHERE fs.codigo_servico = ?
            AND fs.ativo = 1
            AND f.ativo = 1
+           AND (? IS NULL OR fs.fornecedor_id <> ?)
            AND (
              f.horario_inicio IS NULL
              OR f.horario_fim IS NULL
@@ -1132,7 +1207,7 @@ if (bancoProprio.length) {
            )
          ORDER BY fs.custo ASC
          LIMIT 1`,
-        [pedido.codigo_servico]
+        [pedido.codigo_servico, pedido.fornecedor_id, pedido.fornecedor_id]
       );
 
       const fornecedor = fornecedores.length

@@ -1,6 +1,7 @@
 import { Fragment, useEffect, useState } from 'react';
 import {
   CarFront,
+  CheckCircle2,
   CircleDollarSign,
   Clock3,
   Database,
@@ -11,15 +12,19 @@ import {
   Search,
   Truck,
   UserRound,
+  ShieldX,
   X
 } from 'lucide-react';
 import {
   buscarPedido,
   buscarResumoPedidos,
   listarFilaPedidos,
+  reprocessarPedido,
 } from './api';
 import NovoPedido from './NovoPedido';
 import ConfirmarPagamento from './ConfirmarPagamento';
+import ResultadoPedido from './ResultadoPedido';
+import ValidarResultado from './ValidarResultado';
 
 const STATUS = {
   ABERTO: 'Aberto',
@@ -96,10 +101,18 @@ function EstadoVazio() {
   );
 }
 
-function DetalhePedido({ dados, aoFechar, aoConfirmar }) {
+function DetalhePedido({
+  dados,
+  aoFechar,
+  aoConfirmarPagamento,
+  aoRegistrarResultado,
+  aoValidarResultado,
+  aoReprocessar
+}) {
   const pedido = dados.pedido;
   const resultados = dados.resultados || [];
   const historico = dados.historico || [];
+  const resultadoPendente = resultados.find(item => item.status === 'ENCONTRADO');
 
   return (
     <div className="order-detail-overlay" role="presentation">
@@ -129,10 +142,30 @@ function DetalhePedido({ dados, aoFechar, aoConfirmar }) {
                 <button
                   type="button"
                   className="order-payment-button"
-                  onClick={() => aoConfirmar(pedido)}
+                  onClick={() => aoConfirmarPagamento(pedido)}
                 >
                   <CircleDollarSign size={17} />
                   Confirmar pagamento
+                </button>
+              )}
+              {pedido.status === 'EM_CONSULTA' && (
+                <button
+                  type="button"
+                  className="order-payment-button"
+                  onClick={() => aoRegistrarResultado(pedido)}
+                >
+                  <KeyRound size={17} />
+                  Informar resultado
+                </button>
+              )}
+              {['ABERTO', 'ERRO'].includes(pedido.status) && (
+                <button
+                  type="button"
+                  className="order-payment-button"
+                  onClick={() => aoReprocessar(pedido)}
+                >
+                  <RefreshCw size={17} />
+                  Tentar novamente
                 </button>
               )}
           </div>
@@ -216,6 +249,26 @@ function DetalhePedido({ dados, aoFechar, aoConfirmar }) {
                 ))}
               </div>
             )}
+            {resultadoPendente && (
+              <div className="gm-result-actions">
+                <button
+                  type="button"
+                  className="gm-confirm-button"
+                  onClick={() => aoValidarResultado(pedido, 'CORRETO')}
+                >
+                  <CheckCircle2 size={17} />
+                  Cliente confirmou
+                </button>
+                <button
+                  type="button"
+                  className="gm-incorrect-button"
+                  onClick={() => aoValidarResultado(pedido, 'INCORRETO')}
+                >
+                  <ShieldX size={17} />
+                  Senha incorreta
+                </button>
+              </div>
+            )}
           </section>
 
           <section className="order-detail-section">
@@ -255,6 +308,9 @@ export default function Pedidos() {
   const [erro, setErro] = useState('');
   const [detalhe, setDetalhe] = useState(null);
   const [pagamento, setPagamento] = useState(null);
+  const [resultado, setResultado] = useState(null);
+  const [validacao, setValidacao] = useState(null);
+  const [processando, setProcessando] = useState('');
   const [abrindo, setAbrindo] = useState(false);
   const [atualizacao, setAtualizacao] = useState(0);
   const [novoPedido, setNovoPedido] = useState(false);
@@ -304,6 +360,20 @@ export default function Pedidos() {
       setErro(error.message);
     } finally {
       setAbrindo(false);
+    }
+  }
+
+  async function reprocessar(pedido) {
+    setProcessando('Consultando novamente a API Joel Pires...');
+    setErro('');
+    try {
+      await reprocessarPedido(token, pedido.id);
+      await abrirPedido(pedido.id);
+      setAtualizacao(valor => valor + 1);
+    } catch (error) {
+      setErro(error.message);
+    } finally {
+      setProcessando('');
     }
   }
 
@@ -444,7 +514,10 @@ export default function Pedidos() {
         <DetalhePedido
           dados={detalhe}
           aoFechar={() => setDetalhe(null)}
-            aoConfirmar={setPagamento}
+          aoConfirmarPagamento={setPagamento}
+          aoRegistrarResultado={setResultado}
+          aoValidarResultado={(pedido, modo) => setValidacao({ pedido, modo })}
+          aoReprocessar={reprocessar}
         />
       )}
 
@@ -461,6 +534,43 @@ export default function Pedidos() {
             }}
           />
         )}
+
+      {resultado && (
+        <ResultadoPedido
+          token={token}
+          pedido={resultado}
+          aoFechar={() => setResultado(null)}
+          aoSalvo={async () => {
+            const pedidoId = resultado.id;
+            setResultado(null);
+            await abrirPedido(pedidoId);
+            setAtualizacao(valor => valor + 1);
+          }}
+        />
+      )}
+
+      {validacao && (
+        <ValidarResultado
+          token={token}
+          pedido={validacao.pedido}
+          modo={validacao.modo}
+          aoFechar={() => setValidacao(null)}
+          aoConcluido={async () => {
+            const pedidoId = validacao.pedido.id;
+            setValidacao(null);
+            await abrirPedido(pedidoId);
+            setAtualizacao(valor => valor + 1);
+          }}
+        />
+      )}
+
+      {processando && (
+        <div className="operation-overlay page-operation-overlay" role="status" aria-live="polite">
+          <span className="operation-spinner" />
+          <strong>{processando}</strong>
+          <small>Aguarde a conclusão para evitar processamento duplicado.</small>
+        </div>
+      )}
 
       {novoPedido && (
         <NovoPedido

@@ -250,6 +250,63 @@ export async function buscarPedido(token, pedidoId) {
   return lerResposta(resposta);
 }
 
+export async function registrarResultadoPedido(token, pedidoId, dados) {
+  const resposta = await fetch(
+    `${API_URL}/api/pedidos/${pedidoId}/resultado`,
+    {
+      method: 'POST',
+      headers: cabecalhoAutenticado(token, {
+        'Content-Type': 'application/json'
+      }),
+      body: JSON.stringify(dados)
+    }
+  );
+
+  return lerResposta(resposta);
+}
+
+export async function confirmarResultadoPedido(token, pedidoId) {
+  const resposta = await fetch(
+    `${API_URL}/api/pedidos/${pedidoId}/resultado/confirmar`,
+    {
+      method: 'POST',
+      headers: cabecalhoAutenticado(token, {
+        'Content-Type': 'application/json'
+      }),
+      body: JSON.stringify({})
+    }
+  );
+
+  return lerResposta(resposta);
+}
+
+export async function marcarResultadoIncorreto(token, pedidoId, motivo) {
+  const resposta = await fetch(
+    `${API_URL}/api/pedidos/${pedidoId}/resultado/incorreto`,
+    {
+      method: 'POST',
+      headers: cabecalhoAutenticado(token, {
+        'Content-Type': 'application/json'
+      }),
+      body: JSON.stringify({ motivo })
+    }
+  );
+
+  return lerResposta(resposta);
+}
+
+export async function reprocessarPedido(token, pedidoId) {
+  const resposta = await fetch(
+    `${API_URL}/api/pedidos/${pedidoId}/reprocessar`,
+    {
+      method: 'POST',
+      headers: cabecalhoAutenticado(token)
+    }
+  );
+
+  return lerResposta(resposta);
+}
+
 
 export async function buscarResumoBancoSenhas(token) {
   const resposta = await fetch(`${API_URL}/api/banco-senhas/resumo`, {
