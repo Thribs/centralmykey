@@ -256,6 +256,7 @@ const bancoProprio = consultaBanco.status === 'ENCONTRADO'
   : [];
 const conflitoBanco = consultaBanco.status === 'CONFLITO';
 const apiIndisponivel = consultaBanco.status === 'INDISPONIVEL';
+const dadosInvalidos = consultaBanco.status === 'DADOS_INVALIDOS';
 const montadoraNaoConfigurada =
   consultaBanco.status === 'MONTADORA_NAO_CONFIGURADA';
 
@@ -363,6 +364,8 @@ if (bancoProprio.length) {
           ano || null,
           conflitoBanco
             ? 'AGUARDANDO_DADOS'
+            : dadosInvalidos
+              ? 'AGUARDANDO_DADOS'
             : apiIndisponivel
               ? 'ABERTO'
             : fornecedorId
@@ -518,6 +521,16 @@ if (bancoProprio.length) {
          VALUES (?, ?, 'CONFLITO_BASE_DADOS', ?, ?)`,
         [resultado.insertId, req.usuario.id,
           'Senhas divergentes para o mesmo produto e final de chassi',
+          JSON.stringify(consultaBanco)]
+      );
+    }
+    if (dadosInvalidos) {
+      await connection.query(
+        `INSERT INTO pedido_historico
+         (pedido_id, usuario_id, tipo, descricao, dados)
+         VALUES (?, ?, 'DADOS_INVALIDOS_API_JOELPIRES', ?, ?)`,
+        [resultado.insertId, req.usuario.id,
+          'Dados rejeitados pela API Joel Pires; fornecedor externo nao acionado',
           JSON.stringify(consultaBanco)]
       );
     }
