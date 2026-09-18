@@ -38,6 +38,23 @@ module.exports = async function processarPedidoPago(connection, pedidoId, usuari
     return { status: 'AGUARDANDO_DADOS', origem: consulta.origem, conflito: true };
   }
 
+  if (consulta.status === 'DADOS_INVALIDOS') {
+    await connection.query(
+      `UPDATE pedidos_senha SET status='AGUARDANDO_DADOS', custo=0,
+       fornecedor_id=NULL, origem_id=NULL WHERE id=?`, [pedido.id]
+    );
+    await registrarHistorico(connection, pedido.id, usuarioId,
+      'DADOS_INVALIDOS_API_JOELPIRES',
+      'Dados rejeitados pela API Joel Pires; fornecedor externo nao acionado',
+      consulta);
+    return {
+      status: 'AGUARDANDO_DADOS',
+      origem: 'API_JOELPIRES',
+      dados_invalidos: true,
+      mensagem: consulta.mensagem
+    };
+  }
+
   if (consulta.status === 'ENCONTRADO') {
     const senha = consulta.senha;
     const [origens] = await connection.query(

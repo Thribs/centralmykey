@@ -313,6 +313,35 @@ async function buscarSenhaFonteVerdade(connection, entrada, opcoes = {}) {
       senha
     };
   } catch (erro) {
+    const nomeErroApi = erro.resposta?.error?.name ||
+      erro.resposta?.erro?.name || null;
+    const mensagemErroApi = erro.resposta?.error?.mensagem ||
+      erro.resposta?.error?.message ||
+      erro.resposta?.erro?.mensagem ||
+      erro.resposta?.erro?.message ||
+      erro.message;
+
+    if (
+      erro.httpStatus === 404 &&
+      nomeErroApi === 'SenhaNotFoundError'
+    ) {
+      return {
+        status: 'NAO_ENCONTRADO',
+        origem: 'API_JOELPIRES',
+        montadoraId
+      };
+    }
+
+    if ([400, 417, 422].includes(erro.httpStatus)) {
+      return {
+        status: 'DADOS_INVALIDOS',
+        origem: 'API_JOELPIRES',
+        montadoraId,
+        erro: nomeErroApi || erro.codigo,
+        mensagem: mensagemErroApi
+      };
+    }
+
     const cacheVencido = await buscarCache(connection, contexto, { permitirVencido: true });
     if (cacheVencido) {
       return {
