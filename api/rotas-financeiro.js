@@ -253,6 +253,19 @@ module.exports = function (app, pool) {
           observacao
         } = req.body;
 
+        const meioPagamento = String(meio_pagamento || '')
+          .trim()
+          .toUpperCase();
+        const referenciaExterna = referencia_externa
+          ? String(referencia_externa).trim()
+          : null;
+        const comprovanteUrl = comprovante_url
+          ? String(comprovante_url).trim()
+          : null;
+        const observacaoPagamento = observacao
+          ? String(observacao).trim()
+          : null;
+
         if (!Number.isInteger(pedidoId) || pedidoId <= 0) {
           return res.status(400).json({
             ok: false,
@@ -271,14 +284,14 @@ module.exports = function (app, pool) {
           'OUTRO'
         ];
 
-        if (!meiosPermitidos.includes(meio_pagamento)) {
+        if (!meiosPermitidos.includes(meioPagamento)) {
           return res.status(400).json({
             ok: false,
             error: 'Meio de pagamento invalido'
           });
         }
 
-        if (!referencia_externa && !comprovante_url) {
+        if (!referenciaExterna && !comprovanteUrl) {
           return res.status(400).json({
             ok: false,
             error:
@@ -287,8 +300,8 @@ module.exports = function (app, pool) {
         }
 
         if (
-          referencia_externa &&
-          String(referencia_externa).length > 120
+          referenciaExterna &&
+          referenciaExterna.length > 120
         ) {
           return res.status(400).json({
             ok: false,
@@ -329,6 +342,65 @@ module.exports = function (app, pool) {
         }
 
         const pedido = pedidos[0];
+
+        const [pagamentosExistentes] = await connection.query(
+          `SELECT
+             pg.id,
+             pg.lancamento_id,
+             pg.valor,
+             pg.moeda,
+             pg.meio_pagamento,
+             pg.referencia_externa,
+             pg.comprovante_url
+           FROM pagamentos pg
+           INNER JOIN lancamentos_financeiros lf
+             ON lf.id = pg.lancamento_id
+           WHERE lf.pedido_senha_id = ?
+             AND lf.origem = 'CONFIRMACAO_MANUAL'
+           ORDER BY pg.id DESC
+           LIMIT 1`,
+          [pedido.id]
+        );
+
+        const pagamentoExistente = pagamentosExistentes[0] || null;
+        const mesmaConfirmacao = pagamentoExistente &&
+          pagamentoExistente.meio_pagamento === meioPagamento &&
+          (pagamentoExistente.referencia_externa || null) ===
+            referenciaExterna &&
+          (pagamentoExistente.comprovante_url || null) ===
+            comprovanteUrl;
+
+        if (
+          pedido.status !== 'AGUARDANDO_PAGAMENTO' &&
+          mesmaConfirmacao
+        ) {
+          await connection.rollback();
+
+          return res.json({
+            ok: true,
+            idempotente: true,
+            mensagem: 'Pagamento já confirmado anteriormente',
+            pedido: {
+              id: pedido.id,
+              protocolo: pedido.protocolo,
+              cliente: pedido.cliente,
+              servico: pedido.servico,
+              status: pedido.status
+            },
+            pagamento: {
+              id: pagamentoExistente.id,
+              lancamento_id: pagamentoExistente.lancamento_id,
+              valor: Number(pagamentoExistente.valor),
+              moeda: pagamentoExistente.moeda,
+              meio_pagamento: pagamentoExistente.meio_pagamento,
+              confirmado_por: req.usuario.nome
+            },
+            processamento: {
+              status: pedido.status,
+              reutilizado: true
+            }
+          });
+        }
 
         if (pedido.status !== 'AGUARDANDO_PAGAMENTO') {
           await connection.rollback();
@@ -403,16 +475,10 @@ module.exports = function (app, pool) {
             lancamento.insertId,
             valor,
             pedido.moeda,
-            meio_pagamento,
-            referencia_externa
-              ? String(referencia_externa).trim()
-              : null,
-            comprovante_url
-              ? String(comprovante_url).trim()
-              : null,
-            observacao
-              ? String(observacao).trim()
-              : null,
+            meioPagamento,
+            referenciaExterna,
+            comprovanteUrl,
+            observacaoPagamento,
             req.usuario.id
           ]
         );
@@ -447,9 +513,8 @@ module.exports = function (app, pool) {
               pagamento_id: pagamento.insertId,
               valor,
               moeda: pedido.moeda,
-              meio_pagamento,
-              referencia_externa:
-                referencia_externa || null
+              meio_pagamento: meioPagamento,
+              referencia_externa: referenciaExterna
             })
           ]
         );
@@ -490,7 +555,7 @@ module.exports = function (app, pool) {
               lancamento_id: lancamento.insertId,
               valor,
               moeda: pedido.moeda,
-              meio_pagamento
+              meio_pagamento: meioPagamento
             }),
             req.ip || null
           ]
@@ -513,7 +578,7 @@ module.exports = function (app, pool) {
             lancamento_id: lancamento.insertId,
             valor,
             moeda: pedido.moeda,
-            meio_pagamento,
+            meio_pagamento: meioPagamento,
             confirmado_por: req.usuario.nome
           },
         processamento
