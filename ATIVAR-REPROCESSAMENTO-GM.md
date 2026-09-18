@@ -1,14 +1,16 @@
 # Ativação do reprocessamento automático GM
 
-## Estado preparado
+## Estado atual
 
 - Branch: `feature/reprocessamento-automatico-gm`.
 - Commit do worker: `0c8cb68`.
-- Código instalado na API publicada, com ativação desligada.
-- O worker não abre conexão com o banco enquanto estiver desligado.
-- Auditoria em 2026-09-18: nenhum pedido real elegível para o primeiro lote.
+- Ativação autorizada por Thiago e executada em 2026-09-18 às 15:39 (-03).
+- Código instalado na API publicada, com o worker habilitado.
+- Backup anterior à ativação: `/opt/centralmykey-backups/20260918T153941-0300-ativacao-reprocessamento-gm`.
+- Auditorias anterior e posterior à ativação: nenhum pedido real elegível para o primeiro lote.
+- Suíte completa, systemd e `/health` validados depois da ativação.
 
-## Comportamento que precisa de aprovação do Thiago
+## Comportamento aprovado pelo Thiago
 
 Ao ativar, a Central verificará a cada 5 minutos até 10 pedidos GM cujo último evento seja indisponibilidade da API Joel Pires e que estejam aguardando há pelo menos 5 minutos.
 
