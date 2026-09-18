@@ -6,8 +6,18 @@ const mysql = require('mysql2/promise');
 const processarFaturasSemanais = require('./processar-faturas-semanais');
 const processarMidiasWhatsapp = require('./processar-midias-whatsapp');
 const processarAnexosExpirados = require('./processar-anexos-expirados');
+const {
+  reprocessarPedidosGm
+} = require('./reprocessar-pedidos-gm');
 
 const app = express();
+
+function inteiroConfiguradoIntervalo(valor, padrao) {
+  const numero = Number(valor);
+  return Number.isInteger(numero) && numero >= 10000 && numero <= 86400000
+    ? numero
+    : padrao;
+}
 
 app.use(cors());
 app.use(express.json({
@@ -539,6 +549,27 @@ async function executarLimpezaAnexos() {
   }
 }
 
+let reprocessamentoGmEmAndamento = false;
+
+async function executarReprocessamentoGm() {
+  if (reprocessamentoGmEmAndamento) return;
+  reprocessamentoGmEmAndamento = true;
+
+  try {
+    const resultado = await reprocessarPedidosGm(pool);
+    if (
+      resultado.executado &&
+      (resultado.encontrados > 0 || resultado.falhas > 0)
+    ) {
+      console.log('Reprocessamento automático GM:', resultado);
+    }
+  } catch (error) {
+    console.error('Erro no reprocessamento automático GM:', error);
+  } finally {
+    reprocessamentoGmEmAndamento = false;
+  }
+}
+
 require('./rotas-openai')(app, pool);
 
 app.listen(port, '127.0.0.1', () => {
@@ -570,4 +601,16 @@ app.listen(port, '127.0.0.1', () => {
   );
 
   intervaloLimpezaAnexos.unref();
+
+  executarReprocessamentoGm();
+
+  const intervaloReprocessamentoGm = setInterval(
+    executarReprocessamentoGm,
+    inteiroConfiguradoIntervalo(
+      process.env.REPROCESSAMENTO_GM_INTERVALO_MS,
+      5 * 60 * 1000
+    )
+  );
+
+  intervaloReprocessamentoGm.unref();
 });

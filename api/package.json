@@ -4,7 +4,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "node teste-consulta-banco.js && node teste-consulta-api-joelpires.js && node teste-fluxo-gm-pos-pagamento.js"
+    "test": "node teste-consulta-banco.js && node teste-consulta-api-joelpires.js && node teste-fluxo-gm-pos-pagamento.js && node teste-reprocessamento-automatico-gm.js"
   },
   "keywords": [],
   "author": "",
