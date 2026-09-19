@@ -9,6 +9,9 @@ const processarAnexosExpirados = require('./processar-anexos-expirados');
 const {
   reprocessarPedidosGm
 } = require('./reprocessar-pedidos-gm');
+const {
+  processarComunicacoesOutbox
+} = require('./processar-comunicacoes-outbox');
 
 const app = express();
 
@@ -570,6 +573,30 @@ async function executarReprocessamentoGm() {
   }
 }
 
+let comunicacoesOutboxEmAndamento = false;
+
+async function executarComunicacoesOutbox() {
+  if (comunicacoesOutboxEmAndamento) return;
+  comunicacoesOutboxEmAndamento = true;
+
+  try {
+    const resultado = await processarComunicacoesOutbox(
+      pool,
+      app.locals.enviarModeloWhatsapp
+    );
+    if (
+      resultado.executado &&
+      (resultado.encontrados > 0 || resultado.falhas > 0)
+    ) {
+      console.log('Processamento da outbox de comunicações:', resultado);
+    }
+  } catch (error) {
+    console.error('Erro no processamento da outbox:', error);
+  } finally {
+    comunicacoesOutboxEmAndamento = false;
+  }
+}
+
 require('./rotas-openai')(app, pool);
 
 app.listen(port, '127.0.0.1', () => {
@@ -613,4 +640,16 @@ app.listen(port, '127.0.0.1', () => {
   );
 
   intervaloReprocessamentoGm.unref();
+
+  executarComunicacoesOutbox();
+
+  const intervaloComunicacoes = setInterval(
+    executarComunicacoesOutbox,
+    inteiroConfiguradoIntervalo(
+      process.env.COMUNICACOES_OUTBOX_INTERVALO_MS,
+      30 * 1000
+    )
+  );
+
+  intervaloComunicacoes.unref();
 });

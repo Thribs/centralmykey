@@ -307,6 +307,28 @@ export async function reprocessarPedido(token, pedidoId) {
   return lerResposta(resposta);
 }
 
+export async function reprocessarComunicacaoFornecedor(
+  token,
+  pedidoId,
+  comunicacaoId,
+  confirmarNaoEnviado = false
+) {
+  const resposta = await fetch(
+    `${API_URL}/api/pedidos/${pedidoId}/comunicacoes/${comunicacaoId}/reprocessar`,
+    {
+      method: 'POST',
+      headers: cabecalhoAutenticado(token, {
+        'Content-Type': 'application/json'
+      }),
+      body: JSON.stringify({
+        confirmar_nao_enviado: Boolean(confirmarNaoEnviado)
+      })
+    }
+  );
+
+  return lerResposta(resposta);
+}
+
 
 export async function buscarResumoBancoSenhas(token) {
   const resposta = await fetch(`${API_URL}/api/banco-senhas/resumo`, {

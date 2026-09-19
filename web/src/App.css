@@ -2334,6 +2334,45 @@
 .status-order-CANCELADO,
 .status-order-ERRO { background: #fee8eb; color: #bd2639; }
 
+.communication-state {
+  margin-top: 5px;
+  font-weight: 700;
+}
+
+.communication-PENDENTE,
+.communication-PROCESSANDO { color: #846200 !important; }
+.communication-ENVIADA { color: #16834a !important; }
+.communication-FALHOU,
+.communication-INCERTA { color: #bd2639 !important; }
+
+.supplier-communications {
+  display: grid;
+  gap: 8px;
+}
+
+.supplier-communications article {
+  padding: 11px;
+  border: 1px solid #e6e8f0;
+  border-radius: 10px;
+  background: #fafbff;
+}
+
+.supplier-communications strong,
+.supplier-communications small {
+  display: block;
+}
+
+.supplier-communications small {
+  margin-top: 4px;
+  color: #7d8397;
+}
+
+.supplier-communications p {
+  margin: 8px 0 0;
+  color: #bd2639;
+  font-size: 11px;
+}
+
 .order-opening {
   position: fixed;
   z-index: 110;

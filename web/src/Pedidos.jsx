@@ -20,6 +20,7 @@ import {
   buscarResumoPedidos,
   listarFilaPedidos,
   reprocessarPedido,
+  reprocessarComunicacaoFornecedor,
 } from './api';
 import NovoPedido from './NovoPedido';
 import ConfirmarPagamento from './ConfirmarPagamento';
@@ -35,6 +36,15 @@ const STATUS = {
   CONCLUIDO: 'Concluído',
   CANCELADO: 'Cancelado',
   ERRO: 'Erro'
+};
+
+const STATUS_COMUNICACAO = {
+  PENDENTE: 'Aguardando envio',
+  PROCESSANDO: 'Enviando',
+  ENVIADA: 'Enviada ao fornecedor',
+  FALHOU: 'Falha no envio',
+  INCERTA: 'Envio incerto',
+  CANCELADA: 'Envio cancelado'
 };
 
 function nomeOrigem(origem, codigo) {
@@ -107,11 +117,13 @@ function DetalhePedido({
   aoConfirmarPagamento,
   aoRegistrarResultado,
   aoValidarResultado,
-  aoReprocessar
+  aoReprocessar,
+  aoReprocessarComunicacao
 }) {
   const pedido = dados.pedido;
   const resultados = dados.resultados || [];
   const historico = dados.historico || [];
+  const comunicacoes = dados.comunicacoes || [];
   const resultadoPendente = resultados.find(item =>
     item.status === 'ENCONTRADO' && item.fornecedor_id
   );
@@ -274,6 +286,55 @@ function DetalhePedido({
           </section>
 
           <section className="order-detail-section">
+            <h3><Truck size={17} /> Comunicação com fornecedor</h3>
+            {comunicacoes.length === 0 ? (
+              <p className="order-section-empty">
+                Nenhum envio ao fornecedor foi registrado.
+              </p>
+            ) : (
+              <div className="supplier-communications">
+                {comunicacoes.map(comunicacao => (
+                  <article key={comunicacao.id}>
+                    <div>
+                      <strong>
+                        {STATUS_COMUNICACAO[comunicacao.status] ||
+                          comunicacao.status}
+                      </strong>
+                      <small>
+                        Tentativas: {Number(comunicacao.tentativas || 0)} ·{' '}
+                        {dataHora(
+                          comunicacao.enviado_em || comunicacao.atualizado_em
+                        )}
+                      </small>
+                    </div>
+                    {comunicacao.erro_codigo && (
+                      <p>
+                        {comunicacao.erro_codigo === 'FORNECEDOR_SEM_WHATSAPP'
+                          ? 'Cadastre um WhatsApp válido para o fornecedor.'
+                          : comunicacao.status === 'INCERTA'
+                            ? 'Confirme manualmente antes de tentar novo envio.'
+                            : 'Verifique a configuração da integração.'}
+                      </p>
+                    )}
+                    {['FALHOU', 'INCERTA'].includes(comunicacao.status) && (
+                      <button
+                        type="button"
+                        className="order-payment-button"
+                        onClick={() =>
+                          aoReprocessarComunicacao(pedido, comunicacao)
+                        }
+                      >
+                        <RefreshCw size={15} />
+                        Tentar envio novamente
+                      </button>
+                    )}
+                  </article>
+                ))}
+              </div>
+            )}
+          </section>
+
+          <section className="order-detail-section">
             <h3><History size={17} /> Histórico</h3>
             {historico.length === 0 ? (
               <p className="order-section-empty">Nenhum histórico registrado.</p>
@@ -379,11 +440,42 @@ export default function Pedidos() {
     }
   }
 
+  async function reprocessarComunicacao(pedido, comunicacao) {
+    const incerta = comunicacao.status === 'INCERTA';
+    if (
+      incerta &&
+      !window.confirm(
+        'O envio anterior pode ter sido recebido. Confirma que o fornecedor não recebeu a consulta e deseja tentar novamente?'
+      )
+    ) {
+      return;
+    }
+
+    setProcessando('Reagendando o envio ao fornecedor...');
+    setErro('');
+    try {
+      await reprocessarComunicacaoFornecedor(
+        token,
+        pedido.id,
+        comunicacao.id,
+        incerta
+      );
+      await abrirPedido(pedido.id);
+      setAtualizacao(valor => valor + 1);
+    } catch (error) {
+      setErro(error.message);
+    } finally {
+      setProcessando('');
+    }
+  }
+
   const indicadores = resumo?.indicadores || {};
 
   const cards = [
     ['Total hoje', indicadores.total || 0, KeyRound, 'blue'],
     ['Em consulta', indicadores.em_consulta || 0, Search, 'purple'],
+    ['Aguardando envio', indicadores.aguardando_envio_fornecedor || 0, Truck, 'orange'],
+    ['Falhas de envio', indicadores.falhas_envio_fornecedor || 0, ShieldX, 'red'],
     ['Aguardando pagamento', indicadores.aguardando_pagamento || 0, Clock3, 'orange'],
     ['Concluídos', indicadores.concluidos || 0, Database, 'green']
   ];
@@ -496,6 +588,12 @@ export default function Pedidos() {
                       <span className={`order-status status-order-${pedido.status}`}>
                         {STATUS[pedido.status] || pedido.status}
                       </span>
+                      {pedido.comunicacao_fornecedor_status && (
+                        <small className={`communication-state communication-${pedido.comunicacao_fornecedor_status}`}>
+                          {STATUS_COMUNICACAO[pedido.comunicacao_fornecedor_status] ||
+                            pedido.comunicacao_fornecedor_status}
+                        </small>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -520,6 +618,7 @@ export default function Pedidos() {
           aoRegistrarResultado={setResultado}
           aoValidarResultado={(pedido, modo) => setValidacao({ pedido, modo })}
           aoReprocessar={reprocessar}
+          aoReprocessarComunicacao={reprocessarComunicacao}
         />
       )}
 

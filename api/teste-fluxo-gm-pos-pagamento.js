@@ -8,6 +8,9 @@ const processarPedidoPago = require('./processar-pedido-pago');
 const {
   buscarSenhaFonteVerdade
 } = require('./consulta-api-joelpires');
+const {
+  criarTabelaOutboxTemporaria
+} = require('./teste-suporte-outbox');
 
 dotenv.config({
   path: process.env.CENTRALMYKEY_ENV_PATH ||
@@ -139,6 +142,7 @@ async function executarEmTransacao(
 
   try {
     await connection.beginTransaction();
+    await criarTabelaOutboxTemporaria(connection);
     await connection.query(
       "SET timestamp = UNIX_TIMESTAMP('2026-09-18 12:00:00')"
     );

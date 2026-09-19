@@ -6,6 +6,10 @@ const {
   buscarSenhaFonteVerdade
 } = require('./consulta-api-joelpires');
 const processarPedidoPago = require('./processar-pedido-pago');
+const {
+  agendarConsultaFornecedor,
+  reagendarConsultaFornecedor
+} = require('./agendar-consulta-fornecedor');
 
 module.exports = function (app, pool) {
   const autenticarToken = app.locals.autenticarToken;
@@ -235,6 +239,7 @@ if (cliente.tipo_cobranca === 'ANTECIPADO') {
 
 let fornecedorId = null;
 let fornecedorNome = null;
+let fornecedorSelecionado = null;
 let custo = 0;
 let origemId = null;
 let bancoSenhaId = null;
@@ -290,6 +295,8 @@ if (bancoProprio.length) {
         fs.fornecedor_id,
         fs.custo,
         f.nome AS fornecedor,
+        f.whatsapp,
+        f.telefone,
         f.horario_inicio,
         f.horario_fim
      FROM fornecedor_servicos fs
@@ -312,6 +319,7 @@ if (bancoProprio.length) {
 
     fornecedorId = fornecedores[0].fornecedor_id;
     fornecedorNome = fornecedores[0].fornecedor;
+    fornecedorSelecionado = fornecedores[0];
     custo = Number(fornecedores[0].custo);
 
     origemId = 2;
@@ -462,6 +470,21 @@ if (bancoProprio.length) {
         ]
       );
 
+      const envioFornecedor = fornecedorSelecionado
+        ? await agendarConsultaFornecedor(connection, {
+            pedido: {
+              id: resultado.insertId,
+              protocolo,
+              chassi: normalizarChassi(chassi),
+              marca: marca || servico.marca || null,
+              modelo: modelo || null,
+              ano: ano || null
+            },
+            fornecedor: fornecedorSelecionado,
+            usuarioId: req.usuario.id
+          })
+        : null;
+
 if (bancoProprio.length) {
       const senhaEncontrada = bancoProprio[0];
       await connection.query(
@@ -566,6 +589,7 @@ if (bancoProprio.length) {
           fornecedor_id: fornecedorId,
           fornecedor: fornecedorNome,
           custo,
+          envio_fornecedor: envioFornecedor,
           valor_venda: Number(servico.preco_base || 0),
           status: bancoProprio.length
             ? 'CONCLUIDO'
@@ -683,6 +707,69 @@ if (bancoProprio.length) {
       connection.release();
     }
   });
+
+  app.post(
+    '/api/pedidos/:id/comunicacoes/:comunicacaoId/reprocessar',
+    autenticarToken,
+    exigirPermissao('PEDIDOS_SENHAS', 'editar'),
+    async (req, res) => {
+      const pedidoId = Number(req.params.id);
+      const comunicacaoId = Number(req.params.comunicacaoId);
+
+      if (
+        !Number.isInteger(pedidoId) || pedidoId <= 0 ||
+        !Number.isInteger(comunicacaoId) || comunicacaoId <= 0
+      ) {
+        return res.status(400).json({
+          ok: false,
+          error: 'Pedido ou comunicação inválida'
+        });
+      }
+
+      const connection = await pool.getConnection();
+      try {
+        await connection.beginTransaction();
+        const comunicacao = await reagendarConsultaFornecedor(connection, {
+          pedidoId,
+          comunicacaoId,
+          usuarioId: req.usuario.id,
+          confirmarIncerto: req.body?.confirmar_nao_enviado === true
+        });
+        await connection.commit();
+        return res.json({
+          ok: true,
+          mensagem: 'Envio ao fornecedor reagendado',
+          comunicacao
+        });
+      } catch (error) {
+        await connection.rollback();
+
+        if (error.codigo === 'COMUNICACAO_NAO_ENCONTRADA') {
+          return res.status(404).json({ ok: false, error: error.message });
+        }
+
+        if (
+          error.codigo === 'ENVIO_INCERTO_EXIGE_CONFIRMACAO' ||
+          error.codigo === 'COMUNICACAO_NAO_REPROCESSAVEL' ||
+          error.codigo === 'FORNECEDOR_SEM_WHATSAPP'
+        ) {
+          return res.status(409).json({
+            ok: false,
+            codigo: error.codigo,
+            error: error.message
+          });
+        }
+
+        console.error('Erro ao reagendar envio ao fornecedor:', error);
+        return res.status(500).json({
+          ok: false,
+          error: 'Erro ao reagendar envio ao fornecedor'
+        });
+      } finally {
+        connection.release();
+      }
+    }
+  );
 
   app.post('/api/pedidos/:id/resultado', autenticarToken, exigirPermissao('PEDIDOS_SENHAS', 'editar'), async (req, res) => {
     const pedidoId = Number(req.params.id);
@@ -803,6 +890,18 @@ if (bancoProprio.length) {
          SET status = 'CONCLUIDO',
              concluido_em = NOW()
          WHERE id = ?`,
+        [pedido.id]
+      );
+
+      await connection.query(
+        `UPDATE comunicacoes_outbox
+            SET status = 'CANCELADA',
+                erro_codigo = 'RESULTADO_RECEBIDO',
+                erro_detalhe =
+                  'Envio cancelado porque o resultado já foi recebido'
+          WHERE pedido_id = ?
+            AND finalidade = 'CONSULTA_FORNECEDOR'
+            AND status IN ('PENDENTE', 'FALHOU')`,
         [pedido.id]
       );
 
@@ -1133,6 +1232,11 @@ if (bancoProprio.length) {
            p.protocolo,
            p.status,
            p.servico_id,
+           p.chassi,
+           p.marca,
+           p.modelo,
+           p.ano,
+           p.fornecedor_id,
            s.codigo AS codigo_servico
          FROM pedidos_senha p
          INNER JOIN servicos s
@@ -1205,7 +1309,9 @@ if (bancoProprio.length) {
         `SELECT
            fs.fornecedor_id,
            fs.custo,
-           f.nome AS fornecedor
+           f.nome AS fornecedor,
+           f.whatsapp,
+           f.telefone
          FROM fornecedor_servicos fs
          INNER JOIN fornecedores f
            ON f.id = fs.fornecedor_id
@@ -1248,6 +1354,14 @@ if (bancoProprio.length) {
         ]
       );
 
+      const comunicacao = fornecedor
+        ? await agendarConsultaFornecedor(connection, {
+            pedido,
+            fornecedor,
+            usuarioId
+          })
+        : null;
+
       await connection.query(
         `INSERT INTO pedido_historico (
           pedido_id,
@@ -1270,7 +1384,9 @@ if (bancoProprio.length) {
             status_novo: statusNovo,
             fornecedor_id: fornecedor
               ? fornecedor.fornecedor_id
-              : null
+              : null,
+            comunicacao_id: comunicacao?.id || null,
+            envio_status: comunicacao?.status || null
           })
         ]
       );
@@ -1295,7 +1411,8 @@ if (bancoProprio.length) {
           ? {
               id: fornecedor.fornecedor_id,
               nome: fornecedor.fornecedor,
-              custo: Number(fornecedor.custo)
+              custo: Number(fornecedor.custo),
+              envio: comunicacao
             }
           : null
       });
@@ -1425,11 +1542,32 @@ if (bancoProprio.length) {
         [pedidoId]
       );
 
+      const [comunicacoes] = await pool.query(
+        `SELECT
+           id,
+           canal,
+           finalidade,
+           fornecedor_id,
+           status,
+           tentativas,
+           mensagem_externa_id,
+           erro_codigo,
+           erro_detalhe,
+           enviado_em,
+           criado_em,
+           atualizado_em
+         FROM comunicacoes_outbox
+         WHERE pedido_id = ?
+         ORDER BY id DESC`,
+        [pedidoId]
+      );
+
       return res.json({
         ok: true,
         pedido: pedidos[0],
         resultados,
-        historico
+        historico,
+        comunicacoes
       });
 
     } catch (error) {
@@ -1461,8 +1599,21 @@ if (bancoProprio.length) {
            SUM(p.status = 'CANCELADO') AS cancelados,
            SUM(p.status = 'ERRO') AS com_erro,
            SUM(p.origem_id = 1) AS atendidos_base_propria,
-           SUM(p.origem_id = 2) AS enviados_fornecedor
+           SUM(p.origem_id = 2) AS atribuidos_fornecedor,
+           SUM(COALESCE(co.enviada, 0)) AS enviados_fornecedor,
+           SUM(COALESCE(co.pendente, 0)) AS aguardando_envio_fornecedor,
+           SUM(COALESCE(co.com_falha, 0)) AS falhas_envio_fornecedor
          FROM pedidos_senha p
+         LEFT JOIN (
+           SELECT
+             pedido_id,
+             MAX(status = 'ENVIADA') AS enviada,
+             MAX(status = 'PENDENTE') AS pendente,
+             MAX(status IN ('FALHOU', 'INCERTA')) AS com_falha
+           FROM comunicacoes_outbox
+           WHERE finalidade = 'CONSULTA_FORNECEDOR'
+           GROUP BY pedido_id
+         ) co ON co.pedido_id = p.id
          WHERE p.criado_em >= CURDATE()
            AND p.criado_em < CURDATE() + INTERVAL 1 DAY`
       );
@@ -1505,8 +1656,17 @@ if (bancoProprio.length) {
           atendidos_base_propria: Number(
             resumo.atendidos_base_propria || 0
           ),
+          atribuidos_fornecedor: Number(
+            resumo.atribuidos_fornecedor || 0
+          ),
           enviados_fornecedor: Number(
             resumo.enviados_fornecedor || 0
+          ),
+          aguardando_envio_fornecedor: Number(
+            resumo.aguardando_envio_fornecedor || 0
+          ),
+          falhas_envio_fornecedor: Number(
+            resumo.falhas_envio_fornecedor || 0
           )
         },
         financeiro: financeiro.map((item) => ({
@@ -1654,6 +1814,8 @@ if (bancoProprio.length) {
            u.nome AS atendente,
            pr.id AS resultado_id,
            pr.status AS resultado_status,
+           co.status AS comunicacao_fornecedor_status,
+           co.erro_codigo AS comunicacao_fornecedor_erro,
            p.criado_em,
            p.atualizado_em,
            p.concluido_em
@@ -1674,6 +1836,21 @@ if (bancoProprio.length) {
              FROM pedido_resultados pr2
              WHERE pr2.pedido_id = p.id
            )
+         LEFT JOIN (
+           SELECT pedido_id, status, erro_codigo
+           FROM (
+             SELECT
+               pedido_id,
+               status,
+               erro_codigo,
+               ROW_NUMBER() OVER (
+                 PARTITION BY pedido_id ORDER BY id DESC
+               ) AS ordem
+             FROM comunicacoes_outbox
+             WHERE finalidade = 'CONSULTA_FORNECEDOR'
+           ) comunicacoes_ordenadas
+           WHERE ordem = 1
+         ) co ON co.pedido_id = p.id
          ${where}
          ORDER BY p.id DESC
          LIMIT ${limite}

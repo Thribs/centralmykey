@@ -173,3 +173,17 @@ Os testes integrados criaram registros somente dentro das transações e executa
 ## Próximo marco recomendado
 
 O próximo marco deve ser **o contrato da máquina de estados GM junto com o teste funcional e a idempotência da confirmação manual de pagamento**. Pagamento é a entrada do fluxo já testado e hoje apresenta o maior risco imediato: o frontend admite que um timeout pode levar o operador a repetir a confirmação, enquanto a rota não possui uma chave de idempotência comprovada. Fechar esse ponto cria uma base segura para a outbox, o envio ao fornecedor, a entrega e os cancelamentos seguintes.
+
+## Progresso posterior à auditoria da v0.5.0
+
+Na branch `feature/pagamento-manual-idempotente`, ainda não publicada:
+
+- a confirmação manual foi tornada idempotente por pedido, meio e referência/comprovante;
+- foi adicionado teste funcional da rota HTTP com MySQL e rollback;
+- foi criada uma outbox transacional para consultas a fornecedores;
+- o transporte WhatsApp usa modelo da Meta e permanece desabilitado por padrão;
+- timeout, rede e HTTP 5xx de envio são classificados como `INCERTA` e não repetem automaticamente;
+- a interface diferencia consulta atribuída, pendente, enviada, falha e incerta;
+- a ativação continua bloqueada até homologar o modelo da Meta e cadastrar contatos válidos dos fornecedores.
+
+Esses itens continuam **PARCIAIS** até a migração ser validada, o modelo ser homologado, o fluxo ser publicado com backup e um envio controlado ser comprovado sem dados reais.

@@ -1,6 +1,9 @@
 'use strict';
 
 const { buscarSenhaFonteVerdade } = require('./consulta-api-joelpires');
+const {
+  agendarConsultaFornecedor
+} = require('./agendar-consulta-fornecedor');
 
 async function registrarHistorico(connection, pedidoId, usuarioId, tipo, descricao, dados) {
   await connection.query(
@@ -12,7 +15,7 @@ async function registrarHistorico(connection, pedidoId, usuarioId, tipo, descric
 
 module.exports = async function processarPedidoPago(connection, pedidoId, usuarioId) {
   const [pedidos] = await connection.query(
-    `SELECT p.id, p.chassi, p.marca, p.modelo, p.ano, p.status,
+    `SELECT p.id, p.protocolo, p.chassi, p.marca, p.modelo, p.ano, p.status,
             s.codigo AS codigo_servico, s.marca AS marca_servico
        FROM pedidos_senha p
        INNER JOIN servicos s ON s.id = p.servico_id
@@ -116,7 +119,8 @@ module.exports = async function processarPedidoPago(connection, pedidoId, usuari
   }
 
   const [fornecedores] = await connection.query(
-    `SELECT fs.fornecedor_id,fs.custo,f.nome AS fornecedor
+    `SELECT fs.fornecedor_id,fs.custo,f.nome AS fornecedor,
+            f.whatsapp,f.telefone
        FROM fornecedor_servicos fs INNER JOIN fornecedores f ON f.id=fs.fornecedor_id
       WHERE fs.codigo_servico=? AND fs.ativo=1 AND f.ativo=1
         AND (f.horario_inicio IS NULL OR f.horario_fim IS NULL
@@ -133,12 +137,20 @@ module.exports = async function processarPedidoPago(connection, pedidoId, usuari
       `UPDATE pedidos_senha SET status='EM_CONSULTA',fornecedor_id=?,origem_id=?,custo=? WHERE id=?`,
       [fornecedor.fornecedor_id, origemId, Number(fornecedor.custo), pedido.id]
     );
+    const comunicacao = await agendarConsultaFornecedor(connection, {
+      pedido,
+      fornecedor,
+      usuarioId
+    });
     await registrarHistorico(connection, pedido.id, usuarioId, 'PROCESSADO_APOS_PAGAMENTO',
       'Pedido encaminhado ao fornecedor apos busca no banco de dados',
       { status: 'EM_CONSULTA', fornecedor_id: fornecedor.fornecedor_id,
-        fornecedor: fornecedor.fornecedor, custo: Number(fornecedor.custo) });
+        fornecedor: fornecedor.fornecedor, custo: Number(fornecedor.custo),
+        comunicacao_id: comunicacao.id,
+        envio_status: comunicacao.status });
     return { status: 'EM_CONSULTA', origem: 'FORNECEDOR',
-      fornecedor_id: fornecedor.fornecedor_id, fornecedor: fornecedor.fornecedor };
+      fornecedor_id: fornecedor.fornecedor_id, fornecedor: fornecedor.fornecedor,
+      custo: Number(fornecedor.custo), comunicacao };
   }
   await connection.query(
     `UPDATE pedidos_senha SET status='ABERTO',custo=0,fornecedor_id=NULL,origem_id=NULL WHERE id=?`,
