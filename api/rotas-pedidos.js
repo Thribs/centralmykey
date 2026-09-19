@@ -26,6 +26,37 @@ module.exports = function (app, pool) {
     }
   }
 
+  function valorResultado(valor) {
+    const texto = String(valor ?? '').trim();
+    return texto || null;
+  }
+
+  function jsonCanonico(valor) {
+    if (Array.isArray(valor)) {
+      return valor.map(jsonCanonico);
+    }
+    if (valor && typeof valor === 'object') {
+      return Object.fromEntries(
+        Object.keys(valor).sort().map(chave => [
+          chave,
+          jsonCanonico(valor[chave])
+        ])
+      );
+    }
+    return valor;
+  }
+
+  function mesmoResultadoFornecedor(registro, dados) {
+    if (!registro) return false;
+    const existente = objetoResultado(registro.resultado);
+    return registro.codigo_mecanico === dados.codigo_mecanico &&
+      registro.codigo_imobilizador === dados.codigo_imobilizador &&
+      registro.codigo_radio === dados.codigo_radio &&
+      registro.pin === dados.pin &&
+      JSON.stringify(jsonCanonico(existente)) ===
+        JSON.stringify(jsonCanonico(dados.resultado));
+  }
+
 
   // ============================================================
   // CENTRAL MYKEY - PEDIDOS DE SENHA
@@ -788,14 +819,25 @@ if (bancoProprio.length) {
       codigo_alarme,
       pin,
       resultado
-    } = req.body;
+    } = req.body || {};
+
+    const dadosRecebidos = {
+      codigo_mecanico: valorResultado(codigo_mecanico),
+      codigo_imobilizador: valorResultado(codigo_imobilizador),
+      codigo_radio: valorResultado(codigo_radio),
+      pin: valorResultado(pin),
+      resultado: {
+        ...(resultado && typeof resultado === 'object' ? resultado : {}),
+        codigo_alarme: valorResultado(codigo_alarme)
+      }
+    };
 
     if (
-      !codigo_mecanico &&
-      !codigo_imobilizador &&
-      !codigo_radio &&
-      !codigo_alarme &&
-      !pin
+      !dadosRecebidos.codigo_mecanico &&
+      !dadosRecebidos.codigo_imobilizador &&
+      !dadosRecebidos.codigo_radio &&
+      !dadosRecebidos.resultado.codigo_alarme &&
+      !dadosRecebidos.pin
     ) {
       return res.status(400).json({
         ok: false,
@@ -834,21 +876,51 @@ if (bancoProprio.length) {
 
       const pedido = pedidos[0];
 
-      if (pedido.status === 'CONCLUIDO') {
-        await connection.rollback();
+      if (pedido.status === 'CONCLUIDO' && pedido.fornecedor_id) {
+        const [[resultadoExistente]] = await connection.query(
+          `SELECT
+             id, fornecedor_id, codigo_mecanico,
+             codigo_imobilizador, codigo_radio, pin, resultado
+           FROM pedido_resultados
+           WHERE pedido_id = ?
+             AND fornecedor_id = ?
+             AND status IN ('ENCONTRADO', 'CONFIRMADO')
+           ORDER BY id DESC
+           LIMIT 1`,
+          [pedido.id, pedido.fornecedor_id]
+        );
 
-        return res.status(409).json({
-          ok: false,
-          error: 'Este pedido já está concluído'
-        });
+        if (mesmoResultadoFornecedor(resultadoExistente, dadosRecebidos)) {
+          await connection.rollback();
+          return res.json({
+            ok: true,
+            idempotente: true,
+            message: 'Este resultado já havia sido registrado',
+            pedido: {
+              id: pedido.id,
+              protocolo: pedido.protocolo,
+              status: 'CONCLUIDO',
+              fornecedor_id: pedido.fornecedor_id,
+              custo: Number(pedido.custo || 0)
+            },
+            resultado: {
+              id: resultadoExistente.id,
+              codigo_mecanico: dadosRecebidos.codigo_mecanico,
+              codigo_imobilizador: dadosRecebidos.codigo_imobilizador,
+              codigo_radio: dadosRecebidos.codigo_radio,
+              codigo_alarme: dadosRecebidos.resultado.codigo_alarme,
+              pin: dadosRecebidos.pin
+            }
+          });
+        }
       }
 
-      if (pedido.status === 'CANCELADO') {
+      if (pedido.status !== 'EM_CONSULTA' || !pedido.fornecedor_id) {
         await connection.rollback();
 
         return res.status(409).json({
           ok: false,
-          error: 'Não é possível lançar resultado em pedido cancelado'
+          error: `Pedido no status ${pedido.status} não pode receber resultado de fornecedor`
         });
       }
 
@@ -872,14 +944,11 @@ if (bancoProprio.length) {
           null,
           pedido.origem_id || 2,
           pedido.fornecedor_id,
-          codigo_mecanico || null,
-          codigo_imobilizador || null,
-          codigo_radio || null,
-          pin || null,
-          JSON.stringify({
-            ...(resultado && typeof resultado === 'object' ? resultado : {}),
-            codigo_alarme: codigo_alarme || null
-          }),
+          dadosRecebidos.codigo_mecanico,
+          dadosRecebidos.codigo_imobilizador,
+          dadosRecebidos.codigo_radio,
+          dadosRecebidos.pin,
+          JSON.stringify(dadosRecebidos.resultado),
           Number(pedido.custo || 0),
           'ENCONTRADO'
         ]
@@ -942,11 +1011,11 @@ if (bancoProprio.length) {
         },
         resultado: {
           id: registro.insertId,
-          codigo_mecanico: codigo_mecanico || null,
-          codigo_imobilizador: codigo_imobilizador || null,
-          codigo_radio: codigo_radio || null,
-          codigo_alarme: codigo_alarme || null,
-          pin: pin || null
+          codigo_mecanico: dadosRecebidos.codigo_mecanico,
+          codigo_imobilizador: dadosRecebidos.codigo_imobilizador,
+          codigo_radio: dadosRecebidos.codigo_radio,
+          codigo_alarme: dadosRecebidos.resultado.codigo_alarme,
+          pin: dadosRecebidos.pin
         }
       });
 

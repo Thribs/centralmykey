@@ -184,6 +184,8 @@ Na branch `feature/pagamento-manual-idempotente`, ainda não publicada:
 - o transporte WhatsApp usa modelo da Meta e permanece desabilitado por padrão;
 - timeout, rede e HTTP 5xx de envio são classificados como `INCERTA` e não repetem automaticamente;
 - a interface diferencia consulta atribuída, pendente, enviada, falha e incerta;
+- o retorno manual do fornecedor só é aceito em pedido `EM_CONSULTA` com fornecedor atribuído, e a repetição do mesmo resultado é idempotente;
+- a rota de retorno possui teste HTTP com MySQL e rollback, incluindo estado inválido, cancelamento da comunicação pendente e tentativa divergente;
 - a ativação continua bloqueada até homologar o modelo da Meta e cadastrar contatos válidos dos fornecedores.
 
 Esses itens continuam **PARCIAIS** até a migração ser validada, o modelo ser homologado, o fluxo ser publicado com backup e um envio controlado ser comprovado sem dados reais.
