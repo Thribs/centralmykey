@@ -10,6 +10,10 @@ const {
   agendarConsultaFornecedor,
   reagendarConsultaFornecedor
 } = require('./agendar-consulta-fornecedor');
+const {
+  agendarEntregaCliente,
+  reagendarEntregaCliente
+} = require('./agendar-entrega-cliente');
 
 module.exports = function (app, pool) {
   const autenticarToken = app.locals.autenticarToken;
@@ -155,7 +159,13 @@ const [clientes] = await connection.query(
       dia_fechamento,
       prazo_pagamento_dias,
       limite_credito,
-      credito_status
+      credito_status,
+      telefone,
+      telefone_normalizado,
+      (SELECT ct.telefone_normalizado
+         FROM cliente_telefones ct
+        WHERE ct.cliente_id = clientes.id
+        ORDER BY ct.id LIMIT 1) AS telefone_alternativo
    FROM clientes
    WHERE id = ?
      AND ativo = 1
@@ -515,6 +525,7 @@ if (bancoProprio.length) {
             usuarioId: req.usuario.id
           })
         : null;
+      let entregaCliente = null;
 
 if (bancoProprio.length) {
       const senhaEncontrada = bancoProprio[0];
@@ -532,7 +543,7 @@ if (bancoProprio.length) {
         [resultado.insertId]
       );
 
-      await connection.query(
+      const [registroResultado] = await connection.query(
         `INSERT INTO pedido_resultados (
           pedido_id,
           banco_senha_id,
@@ -567,6 +578,23 @@ if (bancoProprio.length) {
           'CONFIRMADO'
         ]
       );
+      entregaCliente = await agendarEntregaCliente(connection, {
+        pedido: { id: resultado.insertId, protocolo },
+        cliente: {
+          telefone_normalizado:
+            cliente.telefone_normalizado || cliente.telefone_alternativo,
+          telefone: cliente.telefone
+        },
+        resultado: {
+          id: registroResultado.insertId,
+          codigo_mecanico: senhaEncontrada.codigo_mecanico,
+          codigo_imobilizador: senhaEncontrada.codigo_imobilizador,
+          codigo_radio: senhaEncontrada.codigo_radio,
+          pin: senhaEncontrada.pin,
+          resultado: { codigo_alarme: senhaEncontrada.codigo_alarme }
+        },
+        usuarioId: req.usuario.id
+      });
     }
     if (conflitoBanco) {
       await connection.query(
@@ -621,6 +649,7 @@ if (bancoProprio.length) {
           fornecedor: fornecedorNome,
           custo,
           envio_fornecedor: envioFornecedor,
+          entrega_cliente: entregaCliente,
           valor_venda: Number(servico.preco_base || 0),
           status: bancoProprio.length
             ? 'CONCLUIDO'
@@ -760,7 +789,22 @@ if (bancoProprio.length) {
       const connection = await pool.getConnection();
       try {
         await connection.beginTransaction();
-        const comunicacao = await reagendarConsultaFornecedor(connection, {
+        const [[registroComunicacao]] = await connection.query(
+          `SELECT finalidade
+             FROM comunicacoes_outbox
+            WHERE id = ? AND pedido_id = ?
+            LIMIT 1`,
+          [comunicacaoId, pedidoId]
+        );
+        if (!registroComunicacao) {
+          const erro = new Error('Comunicação não encontrada');
+          erro.codigo = 'COMUNICACAO_NAO_ENCONTRADA';
+          throw erro;
+        }
+        const reagendar = registroComunicacao.finalidade === 'ENTREGA_CLIENTE'
+          ? reagendarEntregaCliente
+          : reagendarConsultaFornecedor;
+        const comunicacao = await reagendar(connection, {
           pedidoId,
           comunicacaoId,
           usuarioId: req.usuario.id,
@@ -769,7 +813,7 @@ if (bancoProprio.length) {
         await connection.commit();
         return res.json({
           ok: true,
-          mensagem: 'Envio ao fornecedor reagendado',
+          mensagem: 'Comunicação reagendada',
           comunicacao
         });
       } catch (error) {
@@ -782,7 +826,8 @@ if (bancoProprio.length) {
         if (
           error.codigo === 'ENVIO_INCERTO_EXIGE_CONFIRMACAO' ||
           error.codigo === 'COMUNICACAO_NAO_REPROCESSAVEL' ||
-          error.codigo === 'FORNECEDOR_SEM_WHATSAPP'
+          error.codigo === 'FORNECEDOR_SEM_WHATSAPP' ||
+          error.codigo === 'CLIENTE_SEM_WHATSAPP'
         ) {
           return res.status(409).json({
             ok: false,
@@ -1063,10 +1108,18 @@ if (bancoProprio.length) {
            p.modelo,
            p.ano,
            p.fornecedor_id,
+           c.telefone,
+           c.telefone_normalizado,
+           (SELECT ct.telefone_normalizado
+              FROM cliente_telefones ct
+             WHERE ct.cliente_id = c.id
+             ORDER BY ct.id LIMIT 1) AS telefone_alternativo,
            s.codigo AS tipo
          FROM pedidos_senha p
          INNER JOIN servicos s
            ON s.id = p.servico_id
+         INNER JOIN clientes c
+           ON c.id = p.cliente_id
          WHERE p.id = ?
          LIMIT 1
          FOR UPDATE`,
@@ -1227,6 +1280,24 @@ if (bancoProprio.length) {
         }
       }
 
+      const entrega = await agendarEntregaCliente(connection, {
+        pedido,
+        cliente: {
+          telefone_normalizado:
+            pedido.telefone_normalizado || pedido.telefone_alternativo,
+          telefone: pedido.telefone
+        },
+        resultado: {
+          id: resultadoEncontrado.id,
+          codigo_mecanico: resultadoEncontrado.codigo_mecanico,
+          codigo_imobilizador: resultadoEncontrado.codigo_imobilizador,
+          codigo_radio: resultadoEncontrado.codigo_radio,
+          pin: resultadoEncontrado.pin,
+          resultado: dadosResultado
+        },
+        usuarioId
+      });
+
       await connection.query(
         `INSERT INTO pedido_historico (
           pedido_id,
@@ -1244,7 +1315,9 @@ if (bancoProprio.length) {
           JSON.stringify({
             resultado_id: resultadoEncontrado.id,
             banco_senha_id: bancoSenhaId,
-            acao_base: acaoBase
+            acao_base: acaoBase,
+            entrega_id: entrega.id,
+            entrega_status: entrega.status
           })
         ]
       );
@@ -1257,7 +1330,8 @@ if (bancoProprio.length) {
         pedido_id: pedido.id,
         resultado_id: resultadoEncontrado.id,
         banco_senha_id: bancoSenhaId,
-        acao_base: acaoBase
+        acao_base: acaoBase,
+        entrega
       });
 
     } catch (error) {
@@ -1616,6 +1690,7 @@ if (bancoProprio.length) {
            id,
            canal,
            finalidade,
+           resultado_id,
            fornecedor_id,
            status,
            tentativas,
@@ -1623,6 +1698,8 @@ if (bancoProprio.length) {
            erro_codigo,
            erro_detalhe,
            enviado_em,
+           entregue_em,
+           lida_em,
            criado_em,
            atualizado_em
          FROM comunicacoes_outbox
@@ -1669,20 +1746,28 @@ if (bancoProprio.length) {
            SUM(p.status = 'ERRO') AS com_erro,
            SUM(p.origem_id = 1) AS atendidos_base_propria,
            SUM(p.origem_id = 2) AS atribuidos_fornecedor,
-           SUM(COALESCE(co.enviada, 0)) AS enviados_fornecedor,
-           SUM(COALESCE(co.pendente, 0)) AS aguardando_envio_fornecedor,
-           SUM(COALESCE(co.com_falha, 0)) AS falhas_envio_fornecedor
+           SUM(COALESCE(com.enviada_fornecedor, 0)) AS enviados_fornecedor,
+           SUM(COALESCE(com.pendente_fornecedor, 0)) AS aguardando_envio_fornecedor,
+           SUM(COALESCE(com.falha_fornecedor, 0)) AS falhas_envio_fornecedor,
+           SUM(COALESCE(com.pendente_cliente, 0)) AS aguardando_entrega_cliente,
+           SUM(COALESCE(com.falha_cliente, 0)) AS falhas_entrega_cliente
          FROM pedidos_senha p
          LEFT JOIN (
            SELECT
              pedido_id,
-             MAX(status = 'ENVIADA') AS enviada,
-             MAX(status = 'PENDENTE') AS pendente,
-             MAX(status IN ('FALHOU', 'INCERTA')) AS com_falha
+             MAX(finalidade = 'CONSULTA_FORNECEDOR' AND status = 'ENVIADA')
+               AS enviada_fornecedor,
+             MAX(finalidade = 'CONSULTA_FORNECEDOR' AND status = 'PENDENTE')
+               AS pendente_fornecedor,
+             MAX(finalidade = 'CONSULTA_FORNECEDOR'
+                 AND status IN ('FALHOU', 'INCERTA')) AS falha_fornecedor,
+             MAX(finalidade = 'ENTREGA_CLIENTE' AND status = 'PENDENTE')
+               AS pendente_cliente,
+             MAX(finalidade = 'ENTREGA_CLIENTE'
+                 AND status IN ('FALHOU', 'INCERTA')) AS falha_cliente
            FROM comunicacoes_outbox
-           WHERE finalidade = 'CONSULTA_FORNECEDOR'
            GROUP BY pedido_id
-         ) co ON co.pedido_id = p.id
+         ) com ON com.pedido_id = p.id
          WHERE p.criado_em >= CURDATE()
            AND p.criado_em < CURDATE() + INTERVAL 1 DAY`
       );
@@ -1736,6 +1821,12 @@ if (bancoProprio.length) {
           ),
           falhas_envio_fornecedor: Number(
             resumo.falhas_envio_fornecedor || 0
+          ),
+          aguardando_entrega_cliente: Number(
+            resumo.aguardando_entrega_cliente || 0
+          ),
+          falhas_entrega_cliente: Number(
+            resumo.falhas_entrega_cliente || 0
           )
         },
         financeiro: financeiro.map((item) => ({
@@ -1883,8 +1974,10 @@ if (bancoProprio.length) {
            u.nome AS atendente,
            pr.id AS resultado_id,
            pr.status AS resultado_status,
-           co.status AS comunicacao_fornecedor_status,
-           co.erro_codigo AS comunicacao_fornecedor_erro,
+           com.comunicacao_fornecedor_status,
+           com.comunicacao_fornecedor_erro,
+           com.entrega_cliente_status,
+           com.entrega_cliente_erro,
            p.criado_em,
            p.atualizado_em,
            p.concluido_em
@@ -1906,20 +1999,31 @@ if (bancoProprio.length) {
              WHERE pr2.pedido_id = p.id
            )
          LEFT JOIN (
-           SELECT pedido_id, status, erro_codigo
+           SELECT
+             pedido_id,
+             MAX(CASE WHEN finalidade = 'CONSULTA_FORNECEDOR'
+               THEN status END) AS comunicacao_fornecedor_status,
+             MAX(CASE WHEN finalidade = 'CONSULTA_FORNECEDOR'
+               THEN erro_codigo END) AS comunicacao_fornecedor_erro,
+             MAX(CASE WHEN finalidade = 'ENTREGA_CLIENTE'
+               THEN status END) AS entrega_cliente_status,
+             MAX(CASE WHEN finalidade = 'ENTREGA_CLIENTE'
+               THEN erro_codigo END) AS entrega_cliente_erro
            FROM (
              SELECT
                pedido_id,
+               finalidade,
                status,
                erro_codigo,
                ROW_NUMBER() OVER (
-                 PARTITION BY pedido_id ORDER BY id DESC
+                 PARTITION BY pedido_id, finalidade ORDER BY id DESC
                ) AS ordem
              FROM comunicacoes_outbox
-             WHERE finalidade = 'CONSULTA_FORNECEDOR'
+             WHERE finalidade IN ('CONSULTA_FORNECEDOR', 'ENTREGA_CLIENTE')
            ) comunicacoes_ordenadas
            WHERE ordem = 1
-         ) co ON co.pedido_id = p.id
+           GROUP BY pedido_id
+         ) com ON com.pedido_id = p.id
          ${where}
          ORDER BY p.id DESC
          LIMIT ${limite}

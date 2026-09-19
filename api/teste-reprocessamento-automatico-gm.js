@@ -10,6 +10,9 @@ const {
   processarCandidato,
   reprocessarPedidosGm
 } = require('./reprocessar-pedidos-gm');
+const {
+  criarTabelaOutboxTemporaria
+} = require('./teste-suporte-outbox');
 
 dotenv.config({
   path: process.env.CENTRALMYKEY_ENV_PATH || path.join(__dirname, '.env'),
@@ -104,6 +107,7 @@ async function emTransacao(ultimoHistorico, executar) {
   let erro;
   try {
     await connection.beginTransaction();
+    await criarTabelaOutboxTemporaria(connection);
     await connection.query("SET timestamp=UNIX_TIMESTAMP('2026-09-18 12:00:00')");
     contexto = await criarPedido(connection, ultimoHistorico);
     await executar(connection, contexto);

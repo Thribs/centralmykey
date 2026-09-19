@@ -2341,7 +2341,9 @@
 
 .communication-PENDENTE,
 .communication-PROCESSANDO { color: #846200 !important; }
-.communication-ENVIADA { color: #16834a !important; }
+.communication-ENVIADA,
+.communication-ENTREGUE,
+.communication-LIDA { color: #16834a !important; }
 .communication-FALHOU,
 .communication-INCERTA { color: #bd2639 !important; }
 

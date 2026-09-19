@@ -8,10 +8,12 @@ async function criarTabelaOutboxTemporaria(connection) {
        canal ENUM('WHATSAPP') NOT NULL,
        finalidade ENUM('CONSULTA_FORNECEDOR','ENTREGA_CLIENTE') NOT NULL,
        pedido_id BIGINT NOT NULL,
+       resultado_id BIGINT NULL,
        fornecedor_id BIGINT NULL,
        destinatario VARCHAR(25) NULL,
        payload JSON NOT NULL,
-       status ENUM('PENDENTE','PROCESSANDO','ENVIADA','FALHOU','INCERTA','CANCELADA')
+       status ENUM('PENDENTE','PROCESSANDO','ENVIADA','ENTREGUE','LIDA',
+                   'FALHOU','INCERTA','CANCELADA')
          NOT NULL DEFAULT 'PENDENTE',
        tentativas INT NOT NULL DEFAULT 0,
        processar_apos DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -19,6 +21,8 @@ async function criarTabelaOutboxTemporaria(connection) {
        erro_codigo VARCHAR(80) NULL,
        erro_detalhe VARCHAR(500) NULL,
        enviado_em DATETIME NULL,
+       entregue_em DATETIME NULL,
+       lida_em DATETIME NULL,
        criado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
        atualizado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
          ON UPDATE CURRENT_TIMESTAMP

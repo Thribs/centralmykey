@@ -41,7 +41,9 @@ const STATUS = {
 const STATUS_COMUNICACAO = {
   PENDENTE: 'Aguardando envio',
   PROCESSANDO: 'Enviando',
-  ENVIADA: 'Enviada ao fornecedor',
+  ENVIADA: 'Enviada',
+  ENTREGUE: 'Entregue',
+  LIDA: 'Lida',
   FALHOU: 'Falha no envio',
   INCERTA: 'Envio incerto',
   CANCELADA: 'Envio cancelado'
@@ -111,6 +113,53 @@ function EstadoVazio() {
   );
 }
 
+function ListaComunicacoes({ itens, vazio, pedido, aoReprocessar }) {
+  if (itens.length === 0) {
+    return <p className="order-section-empty">{vazio}</p>;
+  }
+  return (
+    <div className="supplier-communications">
+      {itens.map(comunicacao => (
+        <article key={comunicacao.id}>
+          <div>
+            <strong>
+              {STATUS_COMUNICACAO[comunicacao.status] || comunicacao.status}
+            </strong>
+            <small>
+              Tentativas: {Number(comunicacao.tentativas || 0)} ·{' '}
+              {dataHora(
+                comunicacao.lida_em || comunicacao.entregue_em ||
+                comunicacao.enviado_em || comunicacao.atualizado_em
+              )}
+            </small>
+          </div>
+          {comunicacao.erro_codigo && (
+            <p>
+              {comunicacao.erro_codigo === 'FORNECEDOR_SEM_WHATSAPP'
+                ? 'Cadastre um WhatsApp válido para o fornecedor.'
+                : comunicacao.erro_codigo === 'CLIENTE_SEM_WHATSAPP'
+                  ? 'Cadastre um WhatsApp válido para o cliente.'
+                  : comunicacao.status === 'INCERTA'
+                    ? 'Confirme manualmente antes de tentar novo envio.'
+                    : 'Verifique a configuração da integração.'}
+            </p>
+          )}
+          {['FALHOU', 'INCERTA'].includes(comunicacao.status) && (
+            <button
+              type="button"
+              className="order-payment-button"
+              onClick={() => aoReprocessar(pedido, comunicacao)}
+            >
+              <RefreshCw size={15} />
+              Tentar envio novamente
+            </button>
+          )}
+        </article>
+      ))}
+    </div>
+  );
+}
+
 function DetalhePedido({
   dados,
   aoFechar,
@@ -124,6 +173,12 @@ function DetalhePedido({
   const resultados = dados.resultados || [];
   const historico = dados.historico || [];
   const comunicacoes = dados.comunicacoes || [];
+  const consultasFornecedor = comunicacoes.filter(
+    item => item.finalidade === 'CONSULTA_FORNECEDOR'
+  );
+  const entregasCliente = comunicacoes.filter(
+    item => item.finalidade === 'ENTREGA_CLIENTE'
+  );
   const resultadoPendente = resultados.find(item =>
     item.status === 'ENCONTRADO' && item.fornecedor_id
   );
@@ -287,51 +342,22 @@ function DetalhePedido({
 
           <section className="order-detail-section">
             <h3><Truck size={17} /> Comunicação com fornecedor</h3>
-            {comunicacoes.length === 0 ? (
-              <p className="order-section-empty">
-                Nenhum envio ao fornecedor foi registrado.
-              </p>
-            ) : (
-              <div className="supplier-communications">
-                {comunicacoes.map(comunicacao => (
-                  <article key={comunicacao.id}>
-                    <div>
-                      <strong>
-                        {STATUS_COMUNICACAO[comunicacao.status] ||
-                          comunicacao.status}
-                      </strong>
-                      <small>
-                        Tentativas: {Number(comunicacao.tentativas || 0)} ·{' '}
-                        {dataHora(
-                          comunicacao.enviado_em || comunicacao.atualizado_em
-                        )}
-                      </small>
-                    </div>
-                    {comunicacao.erro_codigo && (
-                      <p>
-                        {comunicacao.erro_codigo === 'FORNECEDOR_SEM_WHATSAPP'
-                          ? 'Cadastre um WhatsApp válido para o fornecedor.'
-                          : comunicacao.status === 'INCERTA'
-                            ? 'Confirme manualmente antes de tentar novo envio.'
-                            : 'Verifique a configuração da integração.'}
-                      </p>
-                    )}
-                    {['FALHOU', 'INCERTA'].includes(comunicacao.status) && (
-                      <button
-                        type="button"
-                        className="order-payment-button"
-                        onClick={() =>
-                          aoReprocessarComunicacao(pedido, comunicacao)
-                        }
-                      >
-                        <RefreshCw size={15} />
-                        Tentar envio novamente
-                      </button>
-                    )}
-                  </article>
-                ))}
-              </div>
-            )}
+            <ListaComunicacoes
+              itens={consultasFornecedor}
+              vazio="Nenhum envio ao fornecedor foi registrado."
+              pedido={pedido}
+              aoReprocessar={aoReprocessarComunicacao}
+            />
+          </section>
+
+          <section className="order-detail-section">
+            <h3><CheckCircle2 size={17} /> Entrega ao cliente</h3>
+            <ListaComunicacoes
+              itens={entregasCliente}
+              vazio="O resultado ainda não foi preparado para entrega."
+              pedido={pedido}
+              aoReprocessar={aoReprocessarComunicacao}
+            />
           </section>
 
           <section className="order-detail-section">
@@ -476,6 +502,8 @@ export default function Pedidos() {
     ['Em consulta', indicadores.em_consulta || 0, Search, 'purple'],
     ['Aguardando envio', indicadores.aguardando_envio_fornecedor || 0, Truck, 'orange'],
     ['Falhas de envio', indicadores.falhas_envio_fornecedor || 0, ShieldX, 'red'],
+    ['Aguardando entrega', indicadores.aguardando_entrega_cliente || 0, Clock3, 'orange'],
+    ['Falhas na entrega', indicadores.falhas_entrega_cliente || 0, ShieldX, 'red'],
     ['Aguardando pagamento', indicadores.aguardando_pagamento || 0, Clock3, 'orange'],
     ['Concluídos', indicadores.concluidos || 0, Database, 'green']
   ];
@@ -592,6 +620,12 @@ export default function Pedidos() {
                         <small className={`communication-state communication-${pedido.comunicacao_fornecedor_status}`}>
                           {STATUS_COMUNICACAO[pedido.comunicacao_fornecedor_status] ||
                             pedido.comunicacao_fornecedor_status}
+                        </small>
+                      )}
+                      {pedido.entrega_cliente_status && (
+                        <small className={`communication-state communication-${pedido.entrega_cliente_status}`}>
+                          Cliente: {STATUS_COMUNICACAO[pedido.entrega_cliente_status] ||
+                            pedido.entrega_cliente_status}
                         </small>
                       )}
                     </td>

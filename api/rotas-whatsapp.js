@@ -350,6 +350,59 @@ module.exports = function (app, pool) {
             mensagemExternaId
           ]
         );
+
+        await pool.query(
+          `UPDATE comunicacoes_outbox
+              SET status = CASE
+                    WHEN status = 'LIDA' THEN 'LIDA'
+                    WHEN status = 'ENTREGUE' AND ? = 'ENVIADA'
+                      THEN 'ENTREGUE'
+                    WHEN status IN ('ENTREGUE', 'LIDA') AND ? = 'FALHOU'
+                      THEN status
+                    ELSE ?
+                  END,
+                  enviado_em = CASE WHEN ? = 'ENVIADA'
+                    THEN COALESCE(enviado_em,
+                      IF(? > 0, FROM_UNIXTIME(?), NOW()))
+                    ELSE enviado_em END,
+                  entregue_em = CASE WHEN ? = 'ENTREGUE'
+                    THEN COALESCE(entregue_em,
+                      IF(? > 0, FROM_UNIXTIME(?), NOW()))
+                    ELSE entregue_em END,
+                  lida_em = CASE WHEN ? = 'LIDA'
+                    THEN COALESCE(lida_em,
+                      IF(? > 0, FROM_UNIXTIME(?), NOW()))
+                    ELSE lida_em END,
+                  erro_codigo = CASE WHEN ? = 'FALHOU' THEN ? ELSE NULL END,
+                  erro_detalhe = CASE WHEN ? = 'FALHOU' THEN ? ELSE NULL END
+            WHERE mensagem_externa_id = ?`,
+          [
+            novoStatus,
+            novoStatus,
+            novoStatus,
+            novoStatus,
+            horarioUnix,
+            horarioUnix,
+            novoStatus,
+            horarioUnix,
+            horarioUnix,
+            novoStatus,
+            horarioUnix,
+            horarioUnix,
+            novoStatus,
+            erroMeta?.code ? String(erroMeta.code).slice(0, 80) : null,
+            novoStatus,
+            erroMeta
+              ? String(
+                  erroMeta.error_data?.details ||
+                  erroMeta.message ||
+                  erroMeta.title ||
+                  'Falha informada pela Meta'
+                ).slice(0, 500)
+              : null,
+            mensagemExternaId
+          ]
+        );
       }
 
       if (!mensagens.length) {

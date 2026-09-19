@@ -5,6 +5,9 @@ const path = require('path');
 const express = require('express');
 const dotenv = require('dotenv');
 const mysql = require('mysql2/promise');
+const {
+  criarTabelaOutboxTemporaria
+} = require('./teste-suporte-outbox');
 
 dotenv.config({
   path: process.env.CENTRALMYKEY_ENV_PATH || path.join(__dirname, '.env'),
@@ -139,6 +142,7 @@ async function executar() {
 
   try {
     await connection.beginTransaction();
+    await criarTabelaOutboxTemporaria(connection);
 
     const [[servico]] = await connection.query(
       `SELECT id, preco_base FROM servicos

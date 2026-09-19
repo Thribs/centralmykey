@@ -186,6 +186,9 @@ Na branch `feature/pagamento-manual-idempotente`, ainda não publicada:
 - a interface diferencia consulta atribuída, pendente, enviada, falha e incerta;
 - o retorno manual do fornecedor só é aceito em pedido `EM_CONSULTA` com fornecedor atribuído, e a repetição do mesmo resultado é idempotente;
 - a rota de retorno possui teste HTTP com MySQL e rollback, incluindo estado inválido, cancelamento da comunicação pendente e tentativa divergente;
-- a ativação continua bloqueada até homologar o modelo da Meta e cadastrar contatos válidos dos fornecedores.
+- resultados confirmados são preparados uma única vez para entrega ao cliente pela outbox, tanto na resposta automática da API quanto após confirmação do fornecedor;
+- a interface separa consulta ao fornecedor de entrega ao cliente e mostra pendências e falhas de cada finalidade;
+- o webhook assinado da Meta registra `ENTREGUE` e `LIDA` sem permitir regressão, com teste funcional e rollback;
+- a ativação continua bloqueada até homologar os dois modelos da Meta e confirmar contatos válidos de fornecedores e clientes.
 
 Esses itens continuam **PARCIAIS** até a migração ser validada, o modelo ser homologado, o fluxo ser publicado com backup e um envio controlado ser comprovado sem dados reais.

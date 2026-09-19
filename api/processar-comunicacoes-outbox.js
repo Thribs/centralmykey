@@ -20,13 +20,22 @@ function configuracao(opcoes = {}) {
       1,
       100
     ),
-    nomeModelo: String(
-      opcoes.nomeModelo ||
+    nomeModeloFornecedor: String(
+      opcoes.nomeModeloFornecedor || opcoes.nomeModelo ||
       process.env.WHATSAPP_MODELO_CONSULTA_FORNECEDOR || ''
     ).trim(),
-    idiomaModelo: String(
-      opcoes.idiomaModelo ||
+    nomeModeloEntrega: String(
+      opcoes.nomeModeloEntrega ||
+      process.env.WHATSAPP_MODELO_ENTREGA_RESULTADO || ''
+    ).trim(),
+    idiomaModeloFornecedor: String(
+      opcoes.idiomaModeloFornecedor || opcoes.idiomaModelo ||
       process.env.WHATSAPP_MODELO_CONSULTA_FORNECEDOR_IDIOMA ||
+      'pt_BR'
+    ).trim(),
+    idiomaModeloEntrega: String(
+      opcoes.idiomaModeloEntrega || opcoes.idiomaModelo ||
+      process.env.WHATSAPP_MODELO_ENTREGA_RESULTADO_IDIOMA ||
       'pt_BR'
     ).trim()
   };
@@ -49,6 +58,7 @@ function falhaIncerta(erro) {
 
 async function registrarFalha(connection, item, erro) {
   const status = falhaIncerta(erro) ? 'INCERTA' : 'FALHOU';
+  const entregaCliente = item.finalidade === 'ENTREGA_CLIENTE';
   const codigo = String(
     erro?.codigo || erro?.name || 'ERRO_ENVIO'
   ).slice(0, 80);
@@ -64,15 +74,21 @@ async function registrarFalha(connection, item, erro) {
   await connection.query(
     `INSERT INTO pedido_historico
        (pedido_id, usuario_id, tipo, descricao, dados)
-     VALUES (?, NULL, 'CONSULTA_FORNECEDOR_ENVIO_FALHOU', ?, ?)`,
+     VALUES (?, NULL, ?, ?, ?)`,
     [
       item.pedido_id,
+      entregaCliente
+        ? 'ENTREGA_CLIENTE_ENVIO_FALHOU'
+        : 'CONSULTA_FORNECEDOR_ENVIO_FALHOU',
       status === 'INCERTA'
-        ? 'Envio ao fornecedor com resultado incerto; repetição automática bloqueada'
-        : 'Não foi possível enviar a consulta ao fornecedor',
+        ? `${entregaCliente ? 'Entrega ao cliente' : 'Envio ao fornecedor'} com resultado incerto; repetição automática bloqueada`
+        : entregaCliente
+          ? 'Não foi possível enviar o resultado ao cliente'
+          : 'Não foi possível enviar a consulta ao fornecedor',
       JSON.stringify({
         comunicacao_id: item.id,
         fornecedor_id: item.fornecedor_id,
+        resultado_id: item.resultado_id,
         status,
         erro_codigo: codigo
       })
@@ -98,7 +114,8 @@ async function processarComunicacao(connection, itemId, enviarModelo, opcoes = {
   }
 
   const [[item]] = await connection.query(
-    `SELECT id, pedido_id, fornecedor_id, destinatario, payload
+    `SELECT id, pedido_id, resultado_id, fornecedor_id,
+            finalidade, destinatario, payload
        FROM comunicacoes_outbox WHERE id = ? LIMIT 1`,
     [itemId]
   );
@@ -107,11 +124,24 @@ async function processarComunicacao(connection, itemId, enviarModelo, opcoes = {
     return { processada: false, motivo: 'NAO_ENCONTRADA' };
   }
   const payload = objetoJson(item.payload);
+  const entregaCliente = item.finalidade === 'ENTREGA_CLIENTE';
+  const nomeModelo = entregaCliente
+    ? cfg.nomeModeloEntrega
+    : cfg.nomeModeloFornecedor;
+  const idiomaModelo = entregaCliente
+    ? cfg.idiomaModeloEntrega
+    : cfg.idiomaModeloFornecedor;
 
   try {
-    if (!cfg.nomeModelo) {
-      const erro = new Error('Modelo de consulta ao fornecedor não configurado');
-      erro.codigo = 'MODELO_FORNECEDOR_NAO_CONFIGURADO';
+    if (!nomeModelo) {
+      const erro = new Error(
+        entregaCliente
+          ? 'Modelo de entrega ao cliente não configurado'
+          : 'Modelo de consulta ao fornecedor não configurado'
+      );
+      erro.codigo = entregaCliente
+        ? 'MODELO_ENTREGA_NAO_CONFIGURADO'
+        : 'MODELO_FORNECEDOR_NAO_CONFIGURADO';
       throw erro;
     }
 
@@ -123,8 +153,8 @@ async function processarComunicacao(connection, itemId, enviarModelo, opcoes = {
 
     const envio = await enviarModelo({
       telefone: item.destinatario,
-      nome: cfg.nomeModelo,
-      idioma: cfg.idiomaModelo,
+      nome: nomeModelo,
+      idioma: idiomaModelo,
       parametros: Array.isArray(payload.parametros)
         ? payload.parametros
         : []
@@ -141,13 +171,19 @@ async function processarComunicacao(connection, itemId, enviarModelo, opcoes = {
     await connection.query(
       `INSERT INTO pedido_historico
          (pedido_id, usuario_id, tipo, descricao, dados)
-       VALUES (?, NULL, 'CONSULTA_ENVIADA_FORNECEDOR', ?, ?)`,
+       VALUES (?, NULL, ?, ?, ?)`,
       [
         item.pedido_id,
-        'Consulta enviada ao fornecedor pelo WhatsApp',
+        entregaCliente
+          ? 'RESULTADO_ENVIADO_CLIENTE'
+          : 'CONSULTA_ENVIADA_FORNECEDOR',
+        entregaCliente
+          ? 'Resultado enviado ao cliente pelo WhatsApp'
+          : 'Consulta enviada ao fornecedor pelo WhatsApp',
         JSON.stringify({
           comunicacao_id: item.id,
           fornecedor_id: item.fornecedor_id,
+          resultado_id: item.resultado_id,
           mensagem_externa_id: envio.mensagem_externa_id,
           status: 'ENVIADA'
         })

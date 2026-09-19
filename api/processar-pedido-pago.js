@@ -4,6 +4,9 @@ const { buscarSenhaFonteVerdade } = require('./consulta-api-joelpires');
 const {
   agendarConsultaFornecedor
 } = require('./agendar-consulta-fornecedor');
+const {
+  agendarEntregaCliente
+} = require('./agendar-entrega-cliente');
 
 async function registrarHistorico(connection, pedidoId, usuarioId, tipo, descricao, dados) {
   await connection.query(
@@ -16,9 +19,15 @@ async function registrarHistorico(connection, pedidoId, usuarioId, tipo, descric
 module.exports = async function processarPedidoPago(connection, pedidoId, usuarioId) {
   const [pedidos] = await connection.query(
     `SELECT p.id, p.protocolo, p.chassi, p.marca, p.modelo, p.ano, p.status,
-            s.codigo AS codigo_servico, s.marca AS marca_servico
+            s.codigo AS codigo_servico, s.marca AS marca_servico,
+            c.telefone, c.telefone_normalizado,
+            (SELECT ct.telefone_normalizado
+               FROM cliente_telefones ct
+              WHERE ct.cliente_id = c.id
+              ORDER BY ct.id LIMIT 1) AS telefone_alternativo
        FROM pedidos_senha p
        INNER JOIN servicos s ON s.id = p.servico_id
+       INNER JOIN clientes c ON c.id = p.cliente_id
       WHERE p.id = ? LIMIT 1 FOR UPDATE`, [pedidoId]
   );
   if (!pedidos.length) throw new Error('Pedido pago nao encontrado');
@@ -72,7 +81,7 @@ module.exports = async function processarPedidoPago(connection, pedidoId, usuari
       `UPDATE pedidos_senha SET status='CONCLUIDO', custo=0, fornecedor_id=NULL,
        origem_id=?, concluido_em=NOW() WHERE id=?`, [origemAtendimentoId, pedido.id]
     );
-    await connection.query(
+    const [registroResultado] = await connection.query(
       `INSERT INTO pedido_resultados
        (pedido_id,banco_senha_id,origem_id,fornecedor_id,codigo_mecanico,
         codigo_imobilizador,codigo_radio,pin,resultado,custo,status)
@@ -85,12 +94,31 @@ module.exports = async function processarPedidoPago(connection, pedidoId, usuari
          codigo_alarme: senha.codigo_alarme,
          confiabilidade: senha.confiabilidade, final8: consulta.final8 })]
     );
+    const entrega = await agendarEntregaCliente(connection, {
+      pedido,
+      cliente: {
+        telefone_normalizado:
+          pedido.telefone_normalizado || pedido.telefone_alternativo,
+        telefone: pedido.telefone
+      },
+      resultado: {
+        id: registroResultado.insertId,
+        codigo_mecanico: senha.codigo_mecanico,
+        codigo_imobilizador: senha.codigo_imobilizador,
+        codigo_radio: senha.codigo_radio,
+        pin: senha.pin,
+        resultado: { codigo_alarme: senha.codigo_alarme }
+      },
+      usuarioId
+    });
     await registrarHistorico(connection, pedido.id, usuarioId, 'PROCESSADO_APOS_PAGAMENTO',
       'Senha localizada pela API Joel Pires apos pagamento',
       { status: 'CONCLUIDO', origem: consulta.origem, banco_senha_id: senha.id,
-        contingencia: Boolean(consulta.contingencia) });
+        contingencia: Boolean(consulta.contingencia),
+        entrega_id: entrega.id, entrega_status: entrega.status });
     return { status: 'CONCLUIDO', origem: consulta.origem,
-      resultado_automatico: true, contingencia: Boolean(consulta.contingencia) };
+      resultado_automatico: true, contingencia: Boolean(consulta.contingencia),
+      entrega };
   }
 
   if (consulta.status === 'INDISPONIVEL') {
