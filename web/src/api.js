@@ -586,6 +586,78 @@ export async function buscarFatura(token, faturaId) {
   return lerResposta(resposta);
 }
 
+export async function listarFechamentosFornecedores(token, filtros = {}) {
+  const parametros = new URLSearchParams();
+  if (filtros.status) parametros.set('status', filtros.status);
+  if (filtros.fornecedorId) {
+    parametros.set('fornecedor_id', filtros.fornecedorId);
+  }
+  const consulta = parametros.toString();
+  const resposta = await fetch(
+    `${API_URL}/api/fechamentos-fornecedores${consulta ? `?${consulta}` : ''}`,
+    { headers: cabecalhoAutenticado(token) }
+  );
+  return lerResposta(resposta);
+}
+
+export async function listarFornecedoresFechamento(token) {
+  const resposta = await fetch(
+    `${API_URL}/api/fechamentos-fornecedores/fornecedores`,
+    { headers: cabecalhoAutenticado(token) }
+  );
+  return lerResposta(resposta);
+}
+
+export async function buscarFechamentoFornecedor(token, fechamentoId) {
+  const resposta = await fetch(
+    `${API_URL}/api/fechamentos-fornecedores/${fechamentoId}`,
+    { headers: cabecalhoAutenticado(token) }
+  );
+  return lerResposta(resposta);
+}
+
+export async function gerarFechamentoFornecedor(token, fornecedorId, dados) {
+  const resposta = await fetch(
+    `${API_URL}/api/fornecedores/${fornecedorId}/fechamentos/gerar`,
+    {
+      method: 'POST',
+      headers: cabecalhoAutenticado(token, {
+        'Content-Type': 'application/json'
+      }),
+      body: JSON.stringify(dados)
+    }
+  );
+  return lerResposta(resposta);
+}
+
+export async function fecharFechamentoFornecedor(token, fechamentoId) {
+  const resposta = await fetch(
+    `${API_URL}/api/fechamentos-fornecedores/${fechamentoId}/fechar`,
+    {
+      method: 'POST',
+      headers: cabecalhoAutenticado(token, {
+        'Content-Type': 'application/json'
+      }),
+      body: '{}'
+    }
+  );
+  return lerResposta(resposta);
+}
+
+export async function pagarFechamentoFornecedor(token, fechamentoId, dados) {
+  const resposta = await fetch(
+    `${API_URL}/api/fechamentos-fornecedores/${fechamentoId}/pagar`,
+    {
+      method: 'POST',
+      headers: cabecalhoAutenticado(token, {
+        'Content-Type': 'application/json'
+      }),
+      body: JSON.stringify(dados)
+    }
+  );
+  return lerResposta(resposta);
+}
+
 export async function buscarRelatorioOperacional(token, filtros = {}) {
   const parametros = new URLSearchParams();
 

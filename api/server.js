@@ -454,6 +454,7 @@ app.post('/api/clientes', autenticarToken, exigirPermissao('CLIENTES', 'criar'),
 });
 
 require('./rotas-financeiro')(app, pool);
+require('./rotas-fechamentos-fornecedores')(app, pool);
 require('./rotas-whatsapp')(app, pool);
 require('./rotas-whatsapp-admin')(app, pool);
 require('./rotas-atendimento')(app, pool);

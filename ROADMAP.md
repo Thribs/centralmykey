@@ -191,6 +191,9 @@ Na branch `feature/pagamento-manual-idempotente`, ainda não publicada:
 - o webhook assinado da Meta registra `ENTREGUE` e `LIDA` sem permitir regressão, com teste funcional e rollback;
 - o cancelamento seguro possui rota, interface, histórico, auditoria e teste HTTP com rollback; pedidos sem obrigação externa cancelam comunicações e ajustam fatura aberta;
 - pagamentos existentes, consulta já enviada, fatura fechada e pedido concluído são bloqueados com códigos explícitos até existir política de estorno e custo aprovada;
+- o fechamento semanal de fornecedores apura somente resultados confirmados, impede duplicidade, cria uma despesa após aprovação e registra o pagamento manual de forma idempotente;
+- a interface financeira permite gerar a última semana concluída, conferir os itens, aprovar e registrar o pagamento; períodos ainda abertos não podem ser aprovados;
+- o teste funcional do fechamento percorre rotas, persistência e financeiro usando MySQL com rollback e confirma que não deixa resíduos;
 - a ativação continua bloqueada até homologar os dois modelos da Meta e confirmar contatos válidos de fornecedores e clientes.
 
-Esses itens continuam **PARCIAIS** até a migração ser validada, o modelo ser homologado, o fluxo ser publicado com backup e um envio controlado ser comprovado sem dados reais.
+Esses itens continuam **PARCIAIS** até as migrações serem validadas para publicação, os modelos serem homologados, o fluxo ser publicado com backup e um envio controlado ser comprovado sem dados reais. O fechamento de fornecedores também depende da aprovação da política operacional de período e pagamento; ele registra pagamentos realizados, mas não movimenta a conta bancária.

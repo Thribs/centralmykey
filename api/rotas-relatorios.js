@@ -103,13 +103,16 @@ module.exports = function(app, pool) {
 
         const [hoje] = await pool.query(`
           SELECT
-            moeda,
+            pg.moeda,
             COUNT(*) AS quantidade,
-            SUM(valor) AS valor
-          FROM pagamentos
-          WHERE DATE(data_pagamento) = CURDATE()
-          GROUP BY moeda
-          ORDER BY moeda
+            SUM(pg.valor) AS valor
+          FROM pagamentos pg
+          INNER JOIN lancamentos_financeiros lf
+            ON lf.id = pg.lancamento_id
+          WHERE DATE(pg.data_pagamento) = CURDATE()
+            AND lf.tipo = 'RECEITA'
+          GROUP BY pg.moeda
+          ORDER BY pg.moeda
         `);
 
         return res.json({

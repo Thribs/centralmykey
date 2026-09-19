@@ -4,6 +4,7 @@ import {
   CircleDollarSign,
   Clock3,
   FileText,
+  HandCoins,
   RefreshCw,
   Search,
   TrendingDown,
@@ -13,9 +14,15 @@ import {
 } from 'lucide-react';
 import {
   buscarFatura,
+  buscarFechamentoFornecedor,
   buscarResumoFinanceiro,
+  fecharFechamentoFornecedor,
+  gerarFechamentoFornecedor,
+  listarFechamentosFornecedores,
   listarFaturas,
-  listarLancamentosFinanceiros
+  listarFornecedoresFechamento,
+  listarLancamentosFinanceiros,
+  pagarFechamentoFornecedor
 } from './api';
 
 function tokenLocal() {
@@ -54,6 +61,22 @@ function data(valor) {
 
 function porMoeda(lista, moeda = 'BRL') {
   return lista.find(item => item.moeda === moeda) || {};
+}
+
+function ultimaSemanaConcluida() {
+  const hoje = new Date();
+  hoje.setHours(12, 0, 0, 0);
+  const deslocamento = hoje.getDay() === 0 ? -6 : 1 - hoje.getDay();
+  const inicio = new Date(hoje);
+  inicio.setDate(hoje.getDate() + deslocamento - 7);
+  const fim = new Date(inicio);
+  fim.setDate(inicio.getDate() + 6);
+  const iso = valor => [
+    valor.getFullYear(),
+    String(valor.getMonth() + 1).padStart(2, '0'),
+    String(valor.getDate()).padStart(2, '0')
+  ].join('-');
+  return { periodo_inicio: iso(inicio), periodo_fim: iso(fim), moeda: 'BRL' };
 }
 
 function DetalheFatura({ dados, aoFechar }) {
@@ -111,6 +134,52 @@ function DetalheFatura({ dados, aoFechar }) {
   );
 }
 
+function DetalheFechamentoFornecedor({ dados, aoFechar }) {
+  const fechamento = dados.fechamento || {};
+  const itens = dados.itens || [];
+  return (
+    <div className="finance-overlay">
+      <aside className="finance-detail">
+        <header>
+          <div>
+            <span>FECHAMENTO DO FORNECEDOR</span>
+            <h2>Fechamento #{fechamento.id}</h2>
+          </div>
+          <button type="button" onClick={aoFechar}><X size={20} /></button>
+        </header>
+        <div className="finance-detail-body">
+          <section className="finance-detail-card">
+            <div><span>Fornecedor</span><strong>{fechamento.fornecedor}</strong></div>
+            <div><span>Status</span><strong>{fechamento.status}</strong></div>
+            <div>
+              <span>Período</span>
+              <strong>{data(fechamento.periodo_inicio)} até {data(fechamento.periodo_fim)}</strong>
+            </div>
+            <div><span>Resultados</span><strong>{Number(fechamento.quantidade_itens || 0)}</strong></div>
+            <div><span>Valor</span><strong>{dinheiro(fechamento.valor_total, fechamento.moeda)}</strong></div>
+          </section>
+          <h3>Resultados incluídos</h3>
+          {itens.length === 0 ? (
+            <p className="finance-empty">Nenhum resultado encontrado.</p>
+          ) : (
+            <div className="finance-items">
+              {itens.map(item => (
+                <article key={item.id}>
+                  <div>
+                    <strong>{item.protocolo}</strong>
+                    <span>Resultado #{item.resultado_id}</span>
+                  </div>
+                  <strong>{dinheiro(item.custo, fechamento.moeda)}</strong>
+                </article>
+              ))}
+            </div>
+          )}
+        </div>
+      </aside>
+    </div>
+  );
+}
+
 export default function Financeiro() {
   const token = useMemo(() => tokenLocal(), []);
   const [resumo, setResumo] = useState({
@@ -120,6 +189,9 @@ export default function Financeiro() {
   });
   const [faturas, setFaturas] = useState([]);
   const [lancamentos, setLancamentos] = useState([]);
+  const [fechamentos, setFechamentos] = useState([]);
+  const [fornecedores, setFornecedores] = useState([]);
+  const [fornecedorId, setFornecedorId] = useState('');
   const [aba, setAba] = useState('faturas');
   const [busca, setBusca] = useState('');
   const [tipo, setTipo] = useState('');
@@ -127,13 +199,20 @@ export default function Financeiro() {
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState('');
   const [detalhe, setDetalhe] = useState(null);
+  const [detalheFornecedor, setDetalheFornecedor] = useState(null);
 
   const carregar = useCallback(async () => {
     setCarregando(true);
     setErro('');
 
     try {
-      const [indicadores, listaFaturas, listaLancamentos] =
+      const [
+        indicadores,
+        listaFaturas,
+        listaLancamentos,
+        listaFechamentos,
+        listaFornecedores
+      ] =
         await Promise.all([
           buscarResumoFinanceiro(token),
           listarFaturas(token, {
@@ -143,18 +222,25 @@ export default function Financeiro() {
             busca,
             tipo,
             status: aba === 'lancamentos' ? status : ''
-          })
+          }),
+          listarFechamentosFornecedores(token, {
+            status: aba === 'fornecedores' ? status : '',
+            fornecedorId: aba === 'fornecedores' ? fornecedorId : ''
+          }),
+          listarFornecedoresFechamento(token)
         ]);
 
       setResumo(indicadores);
       setFaturas(listaFaturas.dados || []);
       setLancamentos(listaLancamentos.dados || []);
+      setFechamentos(listaFechamentos.dados || []);
+      setFornecedores(listaFornecedores.dados || []);
     } catch (falha) {
       setErro(falha.message);
     } finally {
       setCarregando(false);
     }
-  }, [token, busca, tipo, status, aba]);
+  }, [token, busca, tipo, status, aba, fornecedorId]);
 
   useEffect(() => {
     carregar();
@@ -167,6 +253,68 @@ export default function Financeiro() {
       setDetalhe(await buscarFatura(token, id));
     } catch (falha) {
       setErro(falha.message);
+    }
+  }
+
+  async function abrirFechamento(id) {
+    setErro('');
+    try {
+      setDetalheFornecedor(await buscarFechamentoFornecedor(token, id));
+    } catch (falha) {
+      setErro(falha.message);
+    }
+  }
+
+  async function gerarFechamento() {
+    if (!fornecedorId) {
+      setErro('Selecione um fornecedor para gerar o fechamento.');
+      return;
+    }
+    const periodo = ultimaSemanaConcluida();
+    if (!window.confirm(
+      `Gerar o fechamento de ${data(periodo.periodo_inicio)} até ${data(periodo.periodo_fim)}?`
+    )) return;
+    setCarregando(true);
+    setErro('');
+    try {
+      await gerarFechamentoFornecedor(token, fornecedorId, periodo);
+      await carregar();
+    } catch (falha) {
+      setErro(falha.message);
+      setCarregando(false);
+    }
+  }
+
+  async function aprovarFechamento(item) {
+    if (!window.confirm(`Aprovar o fechamento #${item.id}?`)) return;
+    setCarregando(true);
+    setErro('');
+    try {
+      await fecharFechamentoFornecedor(token, item.id);
+      await carregar();
+    } catch (falha) {
+      setErro(falha.message);
+      setCarregando(false);
+    }
+  }
+
+  async function pagarFechamento(item) {
+    const referencia = window.prompt(
+      `Informe a referência do pagamento do fechamento #${item.id}:`
+    );
+    if (!referencia?.trim()) return;
+    if (!window.confirm('Confirma que o pagamento ao fornecedor foi realizado?')) return;
+    setCarregando(true);
+    setErro('');
+    try {
+      await pagarFechamentoFornecedor(token, item.id, {
+        meio_pagamento: 'PIX',
+        referencia_externa: referencia.trim()
+      });
+      await carregar();
+    } catch (falha) {
+      setErro(falha.message);
+      setCarregando(false);
     }
   }
 
@@ -255,6 +403,16 @@ export default function Financeiro() {
           >
             <Wallet size={16} /> Lançamentos
           </button>
+          <button
+            type="button"
+            className={aba === 'fornecedores' ? 'active' : ''}
+            onClick={() => {
+              setAba('fornecedores');
+              setStatus('');
+            }}
+          >
+            <HandCoins size={16} /> Fornecedores
+          </button>
         </div>
 
         <div className="finance-filters">
@@ -276,6 +434,23 @@ export default function Financeiro() {
             </>
           )}
 
+          {aba === 'fornecedores' && (
+            <>
+              <select
+                value={fornecedorId}
+                onChange={evento => setFornecedorId(evento.target.value)}
+              >
+                <option value="">Todos os fornecedores</option>
+                {fornecedores.map(item => (
+                  <option key={item.id} value={item.id}>{item.nome}</option>
+                ))}
+              </select>
+              <button type="button" onClick={gerarFechamento}>
+                Gerar última semana
+              </button>
+            </>
+          )}
+
           <select value={status} onChange={evento => setStatus(evento.target.value)}>
             <option value="">Todos os status</option>
             {aba === 'faturas' ? (
@@ -285,6 +460,13 @@ export default function Financeiro() {
                 <option value="PAGA">Paga</option>
                 <option value="VENCIDA">Vencida</option>
                 <option value="CANCELADA">Cancelada</option>
+              </>
+            ) : aba === 'fornecedores' ? (
+              <>
+                <option value="RASCUNHO">Rascunho</option>
+                <option value="FECHADO">Fechado</option>
+                <option value="PAGO">Pago</option>
+                <option value="CANCELADO">Cancelado</option>
               </>
             ) : (
               <>
@@ -341,6 +523,65 @@ export default function Financeiro() {
                 ))}
               </tbody>
             </table>
+          ) : aba === 'fornecedores' ? (
+            <table className="finance-table">
+              <thead>
+                <tr>
+                  <th>Fechamento</th>
+                  <th>Fornecedor</th>
+                  <th>Período</th>
+                  <th>Resultados</th>
+                  <th>Valor</th>
+                  <th>Status</th>
+                  <th>Ações</th>
+                </tr>
+              </thead>
+              <tbody>
+                {!carregando && fechamentos.length === 0 && (
+                  <tr><td colSpan="7" className="finance-empty">
+                    Nenhum fechamento encontrado.
+                  </td></tr>
+                )}
+                {fechamentos.map(item => (
+                  <tr key={item.id} onClick={() => abrirFechamento(item.id)}>
+                    <td><strong>#{item.id}</strong></td>
+                    <td>{item.fornecedor}</td>
+                    <td>{data(item.periodo_inicio)}–{data(item.periodo_fim)}</td>
+                    <td>{Number(item.quantidade_itens || 0)}</td>
+                    <td><strong>{dinheiro(item.valor_total, item.moeda)}</strong></td>
+                    <td>
+                      <span className={`finance-status status-${item.status}`}>
+                        {item.status}
+                      </span>
+                    </td>
+                    <td>
+                      {item.status === 'RASCUNHO' && (
+                        <button
+                          type="button"
+                          onClick={evento => {
+                            evento.stopPropagation();
+                            aprovarFechamento(item);
+                          }}
+                        >
+                          Aprovar
+                        </button>
+                      )}
+                      {item.status === 'FECHADO' && (
+                        <button
+                          type="button"
+                          onClick={evento => {
+                            evento.stopPropagation();
+                            pagarFechamento(item);
+                          }}
+                        >
+                          Registrar pagamento
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           ) : (
             <table className="finance-table">
               <thead>
@@ -390,6 +631,12 @@ export default function Financeiro() {
 
       {detalhe && (
         <DetalheFatura dados={detalhe} aoFechar={() => setDetalhe(null)} />
+      )}
+      {detalheFornecedor && (
+        <DetalheFechamentoFornecedor
+          dados={detalheFornecedor}
+          aoFechar={() => setDetalheFornecedor(null)}
+        />
       )}
     </section>
   );
