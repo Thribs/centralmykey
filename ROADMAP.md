@@ -189,6 +189,8 @@ Na branch `feature/pagamento-manual-idempotente`, ainda não publicada:
 - resultados confirmados são preparados uma única vez para entrega ao cliente pela outbox, tanto na resposta automática da API quanto após confirmação do fornecedor;
 - a interface separa consulta ao fornecedor de entrega ao cliente e mostra pendências e falhas de cada finalidade;
 - o webhook assinado da Meta registra `ENTREGUE` e `LIDA` sem permitir regressão, com teste funcional e rollback;
+- o cancelamento seguro possui rota, interface, histórico, auditoria e teste HTTP com rollback; pedidos sem obrigação externa cancelam comunicações e ajustam fatura aberta;
+- pagamentos existentes, consulta já enviada, fatura fechada e pedido concluído são bloqueados com códigos explícitos até existir política de estorno e custo aprovada;
 - a ativação continua bloqueada até homologar os dois modelos da Meta e confirmar contatos válidos de fornecedores e clientes.
 
 Esses itens continuam **PARCIAIS** até a migração ser validada, o modelo ser homologado, o fluxo ser publicado com backup e um envio controlado ser comprovado sem dados reais.

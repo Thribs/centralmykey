@@ -307,6 +307,21 @@ export async function reprocessarPedido(token, pedidoId) {
   return lerResposta(resposta);
 }
 
+export async function cancelarPedido(token, pedidoId, motivo) {
+  const resposta = await fetch(
+    `${API_URL}/api/pedidos/${pedidoId}/cancelar`,
+    {
+      method: 'POST',
+      headers: cabecalhoAutenticado(token, {
+        'Content-Type': 'application/json'
+      }),
+      body: JSON.stringify({ motivo })
+    }
+  );
+
+  return lerResposta(resposta);
+}
+
 export async function reprocessarComunicacaoFornecedor(
   token,
   pedidoId,

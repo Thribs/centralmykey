@@ -14,6 +14,7 @@ const {
   agendarEntregaCliente,
   reagendarEntregaCliente
 } = require('./agendar-entrega-cliente');
+const { cancelarPedido } = require('./cancelar-pedido');
 
 module.exports = function (app, pool) {
   const autenticarToken = app.locals.autenticarToken;
@@ -840,6 +841,73 @@ if (bancoProprio.length) {
         return res.status(500).json({
           ok: false,
           error: 'Erro ao reagendar envio ao fornecedor'
+        });
+      } finally {
+        connection.release();
+      }
+    }
+  );
+
+  app.post(
+    '/api/pedidos/:id/cancelar',
+    autenticarToken,
+    exigirPermissao('PEDIDOS_SENHAS', 'editar'),
+    async (req, res) => {
+      const pedidoId = Number(req.params.id);
+      if (!Number.isInteger(pedidoId) || pedidoId <= 0) {
+        return res.status(400).json({ ok: false, error: 'Pedido inválido' });
+      }
+
+      const connection = await pool.getConnection();
+      try {
+        await connection.beginTransaction();
+        const cancelamento = await cancelarPedido(connection, {
+          pedidoId,
+          usuarioId: req.usuario.id,
+          motivo: req.body?.motivo,
+          ip: req.ip || null
+        });
+        await connection.commit();
+        return res.json({
+          ok: true,
+          mensagem: cancelamento.idempotente
+            ? 'Pedido já estava cancelado'
+            : 'Pedido cancelado',
+          cancelamento
+        });
+      } catch (error) {
+        await connection.rollback();
+        if (error.codigo === 'PEDIDO_NAO_ENCONTRADO') {
+          return res.status(404).json({
+            ok: false,
+            codigo: error.codigo,
+            error: error.message
+          });
+        }
+        const conflitos = new Set([
+          'PEDIDO_JA_CONCLUIDO',
+          'ESTORNO_FINANCEIRO_NECESSARIO',
+          'CUSTO_FORNECEDOR_REQUER_DECISAO',
+          'FATURA_REQUER_AJUSTE'
+        ]);
+        if (error.codigo === 'MOTIVO_CANCELAMENTO_INVALIDO') {
+          return res.status(400).json({
+            ok: false,
+            codigo: error.codigo,
+            error: error.message
+          });
+        }
+        if (conflitos.has(error.codigo)) {
+          return res.status(409).json({
+            ok: false,
+            codigo: error.codigo,
+            error: error.message
+          });
+        }
+        console.error('Erro ao cancelar pedido:', error);
+        return res.status(500).json({
+          ok: false,
+          error: 'Erro ao cancelar pedido'
         });
       } finally {
         connection.release();

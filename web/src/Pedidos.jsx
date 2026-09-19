@@ -1,6 +1,7 @@
 import { Fragment, useEffect, useState } from 'react';
 import {
   CarFront,
+  Ban,
   CheckCircle2,
   CircleDollarSign,
   Clock3,
@@ -19,6 +20,7 @@ import {
   buscarPedido,
   buscarResumoPedidos,
   listarFilaPedidos,
+  cancelarPedido,
   reprocessarPedido,
   reprocessarComunicacaoFornecedor,
 } from './api';
@@ -167,6 +169,7 @@ function DetalhePedido({
   aoRegistrarResultado,
   aoValidarResultado,
   aoReprocessar,
+  aoCancelar,
   aoReprocessarComunicacao
 }) {
   const pedido = dados.pedido;
@@ -235,6 +238,16 @@ function DetalhePedido({
                 >
                   <RefreshCw size={17} />
                   Tentar novamente
+                </button>
+              )}
+              {!['CONCLUIDO', 'CANCELADO'].includes(pedido.status) && (
+                <button
+                  type="button"
+                  className="gm-incorrect-button"
+                  onClick={() => aoCancelar(pedido)}
+                >
+                  <Ban size={17} />
+                  Cancelar pedido
                 </button>
               )}
           </div>
@@ -468,16 +481,19 @@ export default function Pedidos() {
 
   async function reprocessarComunicacao(pedido, comunicacao) {
     const incerta = comunicacao.status === 'INCERTA';
+    const destino = comunicacao.finalidade === 'ENTREGA_CLIENTE'
+      ? 'cliente'
+      : 'fornecedor';
     if (
       incerta &&
       !window.confirm(
-        'O envio anterior pode ter sido recebido. Confirma que o fornecedor não recebeu a consulta e deseja tentar novamente?'
+        `O envio anterior pode ter sido recebido. Confirma que o ${destino} não recebeu a mensagem e deseja tentar novamente?`
       )
     ) {
       return;
     }
 
-    setProcessando('Reagendando o envio ao fornecedor...');
+    setProcessando('Reagendando a comunicação...');
     setErro('');
     try {
       await reprocessarComunicacaoFornecedor(
@@ -486,6 +502,26 @@ export default function Pedidos() {
         comunicacao.id,
         incerta
       );
+      await abrirPedido(pedido.id);
+      setAtualizacao(valor => valor + 1);
+    } catch (error) {
+      setErro(error.message);
+    } finally {
+      setProcessando('');
+    }
+  }
+
+  async function cancelar(pedido) {
+    const motivo = window.prompt(
+      `Informe o motivo para cancelar o pedido ${pedido.protocolo}:`
+    );
+    if (!motivo?.trim()) return;
+    if (!window.confirm('Confirma o cancelamento deste pedido?')) return;
+
+    setProcessando('Cancelando o pedido...');
+    setErro('');
+    try {
+      await cancelarPedido(token, pedido.id, motivo.trim());
       await abrirPedido(pedido.id);
       setAtualizacao(valor => valor + 1);
     } catch (error) {
@@ -652,6 +688,7 @@ export default function Pedidos() {
           aoRegistrarResultado={setResultado}
           aoValidarResultado={(pedido, modo) => setValidacao({ pedido, modo })}
           aoReprocessar={reprocessar}
+          aoCancelar={cancelar}
           aoReprocessarComunicacao={reprocessarComunicacao}
         />
       )}
