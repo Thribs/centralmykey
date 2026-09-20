@@ -1,3 +1,5 @@
+import { requisitar } from './http';
+
 export const API_URL =
   import.meta.env.VITE_API_URL ||
   'https://api-central.aiepires.com.br';
@@ -18,7 +20,7 @@ async function lerResposta(resposta) {
 }
 
 export async function fazerLogin(login, senha) {
-  const resposta = await fetch(`${API_URL}/api/auth/login`, {
+  const resposta = await requisitar(`${API_URL}/api/auth/login`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json'
@@ -30,7 +32,7 @@ export async function fazerLogin(login, senha) {
 }
 
 export async function buscarSessao(token) {
-  const resposta = await fetch(`${API_URL}/api/auth/me`, {
+  const resposta = await requisitar(`${API_URL}/api/auth/me`, {
     headers: {
       Authorization: `Bearer ${token}`
     }
@@ -40,14 +42,14 @@ export async function buscarSessao(token) {
 }
 
 export async function buscarResumoNotificacoes(token) {
-  const resposta = await fetch(`${API_URL}/api/notificacoes/resumo`, {
+  const resposta = await requisitar(`${API_URL}/api/notificacoes/resumo`, {
     headers: cabecalhoAutenticado(token)
   });
   return lerResposta(resposta);
 }
 
 export async function listarNotificacoes(token, limite = 20) {
-  const resposta = await fetch(
+  const resposta = await requisitar(
     `${API_URL}/api/notificacoes?limite=${encodeURIComponent(limite)}`,
     { headers: cabecalhoAutenticado(token) }
   );
@@ -55,7 +57,7 @@ export async function listarNotificacoes(token, limite = 20) {
 }
 
 export async function marcarNotificacaoLida(token, notificacaoId) {
-  const resposta = await fetch(
+  const resposta = await requisitar(
     `${API_URL}/api/notificacoes/${notificacaoId}/ler`,
     {
       method: 'PATCH',
@@ -66,7 +68,7 @@ export async function marcarNotificacaoLida(token, notificacaoId) {
 }
 
 export async function marcarTodasNotificacoesLidas(token) {
-  const resposta = await fetch(`${API_URL}/api/notificacoes/ler-todas`, {
+  const resposta = await requisitar(`${API_URL}/api/notificacoes/ler-todas`, {
     method: 'POST',
     headers: cabecalhoAutenticado(token)
   });
@@ -80,7 +82,7 @@ export async function listarAuditoria(token, filtros = {}) {
       parametros.set(chave, valor);
     }
   }
-  const resposta = await fetch(
+  const resposta = await requisitar(
     `${API_URL}/api/auditoria?${parametros.toString()}`,
     { headers: cabecalhoAutenticado(token) }
   );
@@ -88,7 +90,7 @@ export async function listarAuditoria(token, filtros = {}) {
 }
 
 export async function buscarFiltrosAuditoria(token) {
-  const resposta = await fetch(`${API_URL}/api/auditoria/filtros`, {
+  const resposta = await requisitar(`${API_URL}/api/auditoria/filtros`, {
     headers: cabecalhoAutenticado(token)
   });
   return lerResposta(resposta);
@@ -96,7 +98,7 @@ export async function buscarFiltrosAuditoria(token) {
 
 
 export async function trocarSenha(token, senhaAtual, novaSenha) {
-  const resposta = await fetch(`${API_URL}/api/auth/trocar-senha`, {
+  const resposta = await requisitar(`${API_URL}/api/auth/trocar-senha`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -128,7 +130,7 @@ export async function listarAtendimentos(token, filtros = {}) {
   if (filtros.busca) parametros.set('busca', filtros.busca);
 
   const consulta = parametros.toString();
-  const resposta = await fetch(
+  const resposta = await requisitar(
     `${API_URL}/api/atendimentos${consulta ? `?${consulta}` : ''}`,
     {
       headers: cabecalhoAutenticado(token)
@@ -139,7 +141,7 @@ export async function listarAtendimentos(token, filtros = {}) {
 }
 
 export async function buscarAtendimento(token, atendimentoId) {
-  const resposta = await fetch(
+  const resposta = await requisitar(
     `${API_URL}/api/atendimentos/${atendimentoId}`,
     {
       headers: cabecalhoAutenticado(token)
@@ -150,7 +152,7 @@ export async function buscarAtendimento(token, atendimentoId) {
 }
 
 export async function assumirAtendimento(token, atendimentoId) {
-  const resposta = await fetch(
+  const resposta = await requisitar(
     `${API_URL}/api/atendimentos/${atendimentoId}/assumir`,
     {
       method: 'POST',
@@ -163,7 +165,7 @@ export async function assumirAtendimento(token, atendimentoId) {
 
 
 export async function enviarNotaInterna(token, atendimentoId, texto) {
-  const resposta = await fetch(
+  const resposta = await requisitar(
     `${API_URL}/api/atendimentos/${atendimentoId}/mensagens/interna`,
     {
       method: 'POST',
@@ -182,7 +184,7 @@ export async function enviarMensagemWhatsapp(
   atendimentoId,
   texto
 ) {
-  const resposta = await fetch(
+  const resposta = await requisitar(
     `${API_URL}/api/atendimentos/${atendimentoId}/mensagens/whatsapp`,
     {
       method: 'POST',
@@ -203,7 +205,7 @@ export async function alterarStatusAtendimento(
   status,
   observacao = ''
 ) {
-  const resposta = await fetch(
+  const resposta = await requisitar(
     `${API_URL}/api/atendimentos/${atendimentoId}/status`,
     {
       method: 'PATCH',
@@ -219,7 +221,7 @@ export async function alterarStatusAtendimento(
 
 
 export async function listarAtendentesDisponiveis(token) {
-  const resposta = await fetch(
+  const resposta = await requisitar(
     `${API_URL}/api/atendentes-disponiveis`,
     {
       headers: cabecalhoAutenticado(token)
@@ -235,7 +237,7 @@ export async function transferirAtendimento(
   paraUsuarioId,
   motivo
 ) {
-  const resposta = await fetch(
+  const resposta = await requisitar(
     `${API_URL}/api/atendimentos/${atendimentoId}/transferir`,
     {
       method: 'POST',
@@ -253,7 +255,7 @@ export async function transferirAtendimento(
 }
 
 export async function buscarResumoPedidos(token) {
-  const resposta = await fetch(
+  const resposta = await requisitar(
     `${API_URL}/api/fila-pedidos/resumo`,
     {
       headers: cabecalhoAutenticado(token)
@@ -285,7 +287,7 @@ export async function listarFilaPedidos(token, filtros = {}) {
   parametros.set('pagina', String(filtros.pagina || 1));
   parametros.set('limite', String(filtros.limite || 50));
 
-  const resposta = await fetch(
+  const resposta = await requisitar(
     `${API_URL}/api/fila-pedidos?${parametros.toString()}`,
     {
       headers: cabecalhoAutenticado(token)
@@ -296,7 +298,7 @@ export async function listarFilaPedidos(token, filtros = {}) {
 }
 
 export async function buscarPedido(token, pedidoId) {
-  const resposta = await fetch(
+  const resposta = await requisitar(
     `${API_URL}/api/pedidos/${pedidoId}`,
     {
       headers: cabecalhoAutenticado(token)
@@ -307,7 +309,7 @@ export async function buscarPedido(token, pedidoId) {
 }
 
 export async function registrarResultadoPedido(token, pedidoId, dados) {
-  const resposta = await fetch(
+  const resposta = await requisitar(
     `${API_URL}/api/pedidos/${pedidoId}/resultado`,
     {
       method: 'POST',
@@ -322,7 +324,7 @@ export async function registrarResultadoPedido(token, pedidoId, dados) {
 }
 
 export async function confirmarResultadoPedido(token, pedidoId) {
-  const resposta = await fetch(
+  const resposta = await requisitar(
     `${API_URL}/api/pedidos/${pedidoId}/resultado/confirmar`,
     {
       method: 'POST',
@@ -337,7 +339,7 @@ export async function confirmarResultadoPedido(token, pedidoId) {
 }
 
 export async function marcarResultadoIncorreto(token, pedidoId, motivo) {
-  const resposta = await fetch(
+  const resposta = await requisitar(
     `${API_URL}/api/pedidos/${pedidoId}/resultado/incorreto`,
     {
       method: 'POST',
@@ -352,7 +354,7 @@ export async function marcarResultadoIncorreto(token, pedidoId, motivo) {
 }
 
 export async function reprocessarPedido(token, pedidoId) {
-  const resposta = await fetch(
+  const resposta = await requisitar(
     `${API_URL}/api/pedidos/${pedidoId}/reprocessar`,
     {
       method: 'POST',
@@ -364,7 +366,7 @@ export async function reprocessarPedido(token, pedidoId) {
 }
 
 export async function corrigirDadosPedido(token, pedidoId, dados) {
-  const resposta = await fetch(
+  const resposta = await requisitar(
     `${API_URL}/api/pedidos/${pedidoId}/corrigir-dados`,
     {
       method: 'POST',
@@ -378,7 +380,7 @@ export async function corrigirDadosPedido(token, pedidoId, dados) {
 }
 
 export async function cancelarPedido(token, pedidoId, motivo) {
-  const resposta = await fetch(
+  const resposta = await requisitar(
     `${API_URL}/api/pedidos/${pedidoId}/cancelar`,
     {
       method: 'POST',
@@ -393,7 +395,7 @@ export async function cancelarPedido(token, pedidoId, motivo) {
 }
 
 export async function estornarECancelarPedido(token, pedidoId, dados) {
-  const resposta = await fetch(
+  const resposta = await requisitar(
     `${API_URL}/api/pedidos/${pedidoId}/estornar-e-cancelar`,
     {
       method: 'POST',
@@ -413,7 +415,7 @@ export async function reprocessarComunicacaoFornecedor(
   comunicacaoId,
   confirmarNaoEnviado = false
 ) {
-  const resposta = await fetch(
+  const resposta = await requisitar(
     `${API_URL}/api/pedidos/${pedidoId}/comunicacoes/${comunicacaoId}/reprocessar`,
     {
       method: 'POST',
@@ -431,7 +433,7 @@ export async function reprocessarComunicacaoFornecedor(
 
 
 export async function buscarResumoBancoSenhas(token) {
-  const resposta = await fetch(`${API_URL}/api/banco-senhas/resumo`, {
+  const resposta = await requisitar(`${API_URL}/api/banco-senhas/resumo`, {
     headers: cabecalhoAutenticado(token)
   });
 
@@ -439,7 +441,7 @@ export async function buscarResumoBancoSenhas(token) {
 }
 
 export async function listarOrigensSenha(token) {
-  const resposta = await fetch(`${API_URL}/api/origens-senha`, {
+  const resposta = await requisitar(`${API_URL}/api/origens-senha`, {
     headers: cabecalhoAutenticado(token)
   });
 
@@ -460,7 +462,7 @@ export async function listarBancoSenhas(token, filtros = {}) {
   parametros.set('pagina', String(filtros.pagina || 1));
   parametros.set('limite', String(filtros.limite || 50));
 
-  const resposta = await fetch(
+  const resposta = await requisitar(
     `${API_URL}/api/banco-senhas?${parametros.toString()}`,
     { headers: cabecalhoAutenticado(token) }
   );
@@ -469,7 +471,7 @@ export async function listarBancoSenhas(token, filtros = {}) {
 }
 
 export async function cadastrarSenha(token, dados) {
-  const resposta = await fetch(`${API_URL}/api/banco-senhas`, {
+  const resposta = await requisitar(`${API_URL}/api/banco-senhas`, {
     method: 'POST',
     headers: cabecalhoAutenticado(token, {
       'Content-Type': 'application/json'
@@ -481,7 +483,7 @@ export async function cadastrarSenha(token, dados) {
 }
 
 export async function atualizarSenha(token, senhaId, dados) {
-  const resposta = await fetch(
+  const resposta = await requisitar(
     `${API_URL}/api/banco-senhas/${senhaId}`,
     {
       method: 'PUT',
@@ -496,7 +498,7 @@ export async function atualizarSenha(token, senhaId, dados) {
 }
 
 export async function alterarStatusSenha(token, senhaId, ativo) {
-  const resposta = await fetch(
+  const resposta = await requisitar(
     `${API_URL}/api/banco-senhas/${senhaId}/status`,
     {
       method: 'PATCH',
@@ -515,7 +517,7 @@ export async function listarClientes(token, busca = '') {
   const parametros = new URLSearchParams();
   if (busca) parametros.set('busca', busca);
 
-  const resposta = await fetch(
+  const resposta = await requisitar(
     `${API_URL}/api/clientes?${parametros.toString()}`,
     { headers: cabecalhoAutenticado(token) }
   );
@@ -524,7 +526,7 @@ export async function listarClientes(token, busca = '') {
 }
 
 export async function buscarResumoClientes(token) {
-  const resposta = await fetch(`${API_URL}/api/clientes-resumo`, {
+  const resposta = await requisitar(`${API_URL}/api/clientes-resumo`, {
     headers: cabecalhoAutenticado(token)
   });
 
@@ -532,7 +534,7 @@ export async function buscarResumoClientes(token) {
 }
 
 export async function cadastrarCliente(token, dados) {
-  const resposta = await fetch(`${API_URL}/api/clientes`, {
+  const resposta = await requisitar(`${API_URL}/api/clientes`, {
     method: 'POST',
     headers: cabecalhoAutenticado(token, {
       'Content-Type': 'application/json'
@@ -544,7 +546,7 @@ export async function cadastrarCliente(token, dados) {
 }
 
 export async function atualizarCliente(token, id, dados) {
-  const resposta = await fetch(`${API_URL}/api/clientes/${id}`, {
+  const resposta = await requisitar(`${API_URL}/api/clientes/${id}`, {
     method: 'PUT',
     headers: cabecalhoAutenticado(token, {
       'Content-Type': 'application/json'
@@ -556,7 +558,7 @@ export async function atualizarCliente(token, id, dados) {
 }
 
 export async function alterarStatusCliente(token, id, ativo) {
-  const resposta = await fetch(`${API_URL}/api/clientes/${id}/status`, {
+  const resposta = await requisitar(`${API_URL}/api/clientes/${id}/status`, {
     method: 'PATCH',
     headers: cabecalhoAutenticado(token, {
       'Content-Type': 'application/json'
@@ -568,7 +570,7 @@ export async function alterarStatusCliente(token, id, ativo) {
 }
 
 export async function listarFornecedores(token) {
-  const resposta = await fetch(`${API_URL}/api/fornecedores`, {
+  const resposta = await requisitar(`${API_URL}/api/fornecedores`, {
     headers: cabecalhoAutenticado(token)
   });
 
@@ -576,7 +578,7 @@ export async function listarFornecedores(token) {
 }
 
 export async function buscarResumoFornecedores(token) {
-  const resposta = await fetch(`${API_URL}/api/fornecedores-resumo`, {
+  const resposta = await requisitar(`${API_URL}/api/fornecedores-resumo`, {
     headers: cabecalhoAutenticado(token)
   });
 
@@ -584,7 +586,7 @@ export async function buscarResumoFornecedores(token) {
 }
 
 export async function cadastrarFornecedor(token, dados) {
-  const resposta = await fetch(`${API_URL}/api/fornecedores`, {
+  const resposta = await requisitar(`${API_URL}/api/fornecedores`, {
     method: 'POST',
     headers: cabecalhoAutenticado(token, {
       'Content-Type': 'application/json'
@@ -596,7 +598,7 @@ export async function cadastrarFornecedor(token, dados) {
 }
 
 export async function atualizarFornecedor(token, id, dados) {
-  const resposta = await fetch(`${API_URL}/api/fornecedores/${id}`, {
+  const resposta = await requisitar(`${API_URL}/api/fornecedores/${id}`, {
     method: 'PUT',
     headers: cabecalhoAutenticado(token, {
       'Content-Type': 'application/json'
@@ -608,7 +610,7 @@ export async function atualizarFornecedor(token, id, dados) {
 }
 
 export async function alterarStatusFornecedor(token, id, ativo) {
-  const resposta = await fetch(
+  const resposta = await requisitar(
     `${API_URL}/api/fornecedores/${id}/status`,
     {
       method: 'PATCH',
@@ -624,7 +626,7 @@ export async function alterarStatusFornecedor(token, id, ativo) {
 
 
 export async function buscarResumoFinanceiro(token) {
-  const resposta = await fetch(`${API_URL}/api/financeiro/resumo`, {
+  const resposta = await requisitar(`${API_URL}/api/financeiro/resumo`, {
     headers: cabecalhoAutenticado(token)
   });
 
@@ -639,7 +641,7 @@ export async function listarLancamentosFinanceiros(token, filtros = {}) {
   if (filtros.status) parametros.set('status', filtros.status);
   if (filtros.moeda) parametros.set('moeda', filtros.moeda);
 
-  const resposta = await fetch(
+  const resposta = await requisitar(
     `${API_URL}/api/lancamentos-financeiros?${parametros.toString()}`,
     { headers: cabecalhoAutenticado(token) }
   );
@@ -655,7 +657,7 @@ export async function listarFaturas(token, filtros = {}) {
     parametros.set('cliente_id', filtros.clienteId);
   }
 
-  const resposta = await fetch(
+  const resposta = await requisitar(
     `${API_URL}/api/faturas?${parametros.toString()}`,
     { headers: cabecalhoAutenticado(token) }
   );
@@ -664,7 +666,7 @@ export async function listarFaturas(token, filtros = {}) {
 }
 
 export async function buscarFatura(token, faturaId) {
-  const resposta = await fetch(`${API_URL}/api/faturas/${faturaId}`, {
+  const resposta = await requisitar(`${API_URL}/api/faturas/${faturaId}`, {
     headers: cabecalhoAutenticado(token)
   });
 
@@ -678,7 +680,7 @@ export async function listarFechamentosFornecedores(token, filtros = {}) {
     parametros.set('fornecedor_id', filtros.fornecedorId);
   }
   const consulta = parametros.toString();
-  const resposta = await fetch(
+  const resposta = await requisitar(
     `${API_URL}/api/fechamentos-fornecedores${consulta ? `?${consulta}` : ''}`,
     { headers: cabecalhoAutenticado(token) }
   );
@@ -686,7 +688,7 @@ export async function listarFechamentosFornecedores(token, filtros = {}) {
 }
 
 export async function listarFornecedoresFechamento(token) {
-  const resposta = await fetch(
+  const resposta = await requisitar(
     `${API_URL}/api/fechamentos-fornecedores/fornecedores`,
     { headers: cabecalhoAutenticado(token) }
   );
@@ -694,7 +696,7 @@ export async function listarFornecedoresFechamento(token) {
 }
 
 export async function buscarFechamentoFornecedor(token, fechamentoId) {
-  const resposta = await fetch(
+  const resposta = await requisitar(
     `${API_URL}/api/fechamentos-fornecedores/${fechamentoId}`,
     { headers: cabecalhoAutenticado(token) }
   );
@@ -702,7 +704,7 @@ export async function buscarFechamentoFornecedor(token, fechamentoId) {
 }
 
 export async function gerarFechamentoFornecedor(token, fornecedorId, dados) {
-  const resposta = await fetch(
+  const resposta = await requisitar(
     `${API_URL}/api/fornecedores/${fornecedorId}/fechamentos/gerar`,
     {
       method: 'POST',
@@ -716,7 +718,7 @@ export async function gerarFechamentoFornecedor(token, fornecedorId, dados) {
 }
 
 export async function fecharFechamentoFornecedor(token, fechamentoId) {
-  const resposta = await fetch(
+  const resposta = await requisitar(
     `${API_URL}/api/fechamentos-fornecedores/${fechamentoId}/fechar`,
     {
       method: 'POST',
@@ -730,7 +732,7 @@ export async function fecharFechamentoFornecedor(token, fechamentoId) {
 }
 
 export async function pagarFechamentoFornecedor(token, fechamentoId, dados) {
-  const resposta = await fetch(
+  const resposta = await requisitar(
     `${API_URL}/api/fechamentos-fornecedores/${fechamentoId}/pagar`,
     {
       method: 'POST',
@@ -749,7 +751,7 @@ export async function buscarRelatorioOperacional(token, filtros = {}) {
   if (filtros.inicio) parametros.set('inicio', filtros.inicio);
   if (filtros.fim) parametros.set('fim', filtros.fim);
 
-  const resposta = await fetch(
+  const resposta = await requisitar(
     `${API_URL}/api/relatorios/operacional?${parametros.toString()}`,
     { headers: cabecalhoAutenticado(token) }
   );
@@ -759,28 +761,28 @@ export async function buscarRelatorioOperacional(token, filtros = {}) {
 
 
 export async function listarUsuarios(token) {
-  const resposta = await fetch(`${API_URL}/api/usuarios`, {
+  const resposta = await requisitar(`${API_URL}/api/usuarios`, {
     headers: cabecalhoAutenticado(token)
   });
   return lerResposta(resposta);
 }
 
 export async function listarPerfis(token) {
-  const resposta = await fetch(`${API_URL}/api/perfis`, {
+  const resposta = await requisitar(`${API_URL}/api/perfis`, {
     headers: cabecalhoAutenticado(token)
   });
   return lerResposta(resposta);
 }
 
 export async function buscarResumoUsuarios(token) {
-  const resposta = await fetch(`${API_URL}/api/usuarios-resumo`, {
+  const resposta = await requisitar(`${API_URL}/api/usuarios-resumo`, {
     headers: cabecalhoAutenticado(token)
   });
   return lerResposta(resposta);
 }
 
 export async function cadastrarUsuario(token, dados) {
-  const resposta = await fetch(`${API_URL}/api/usuarios`, {
+  const resposta = await requisitar(`${API_URL}/api/usuarios`, {
     method: 'POST',
     headers: cabecalhoAutenticado(token, {
       'Content-Type': 'application/json'
@@ -791,7 +793,7 @@ export async function cadastrarUsuario(token, dados) {
 }
 
 export async function atualizarUsuario(token, id, dados) {
-  const resposta = await fetch(`${API_URL}/api/usuarios/${id}`, {
+  const resposta = await requisitar(`${API_URL}/api/usuarios/${id}`, {
     method: 'PUT',
     headers: cabecalhoAutenticado(token, {
       'Content-Type': 'application/json'
@@ -802,7 +804,7 @@ export async function atualizarUsuario(token, id, dados) {
 }
 
 export async function alterarStatusUsuario(token, id, status) {
-  const resposta = await fetch(`${API_URL}/api/usuarios/${id}/status`, {
+  const resposta = await requisitar(`${API_URL}/api/usuarios/${id}/status`, {
     method: 'PATCH',
     headers: cabecalhoAutenticado(token, {
       'Content-Type': 'application/json'
@@ -813,14 +815,14 @@ export async function alterarStatusUsuario(token, id, status) {
 }
 
 export async function buscarPermissoesUsuario(token, id) {
-  const resposta = await fetch(`${API_URL}/api/usuarios/${id}/permissoes`, {
+  const resposta = await requisitar(`${API_URL}/api/usuarios/${id}/permissoes`, {
     headers: cabecalhoAutenticado(token)
   });
   return lerResposta(resposta);
 }
 
 export async function salvarPermissoesUsuario(token, id, permissoes) {
-  const resposta = await fetch(`${API_URL}/api/usuarios/${id}/permissoes`, {
+  const resposta = await requisitar(`${API_URL}/api/usuarios/${id}/permissoes`, {
     method: 'PUT',
     headers: cabecalhoAutenticado(token, {
       'Content-Type': 'application/json'
@@ -831,21 +833,21 @@ export async function salvarPermissoesUsuario(token, id, permissoes) {
 }
 
 export async function buscarIntegracoes(token) {
-  const resposta = await fetch(`${API_URL}/api/integracoes/resumo`, {
+  const resposta = await requisitar(`${API_URL}/api/integracoes/resumo`, {
     headers: cabecalhoAutenticado(token)
   });
   return lerResposta(resposta);
 }
 
 export async function listarModelosWhatsapp(token) {
-  const resposta = await fetch(`${API_URL}/api/whatsapp/modelos`, {
+  const resposta = await requisitar(`${API_URL}/api/whatsapp/modelos`, {
     headers: cabecalhoAutenticado(token)
   });
   return lerResposta(resposta);
 }
 
 export async function cadastrarModeloWhatsapp(token, dados) {
-  const resposta = await fetch(`${API_URL}/api/whatsapp/modelos`, {
+  const resposta = await requisitar(`${API_URL}/api/whatsapp/modelos`, {
     method: 'POST',
     headers: cabecalhoAutenticado(token, {
       'Content-Type': 'application/json'
@@ -856,7 +858,7 @@ export async function cadastrarModeloWhatsapp(token, dados) {
 }
 
 export async function alterarModeloWhatsapp(token, id, dados) {
-  const resposta = await fetch(
+  const resposta = await requisitar(
     `${API_URL}/api/whatsapp/modelos/${id}/status`,
     {
       method: 'PATCH',
@@ -870,14 +872,14 @@ export async function alterarModeloWhatsapp(token, id, dados) {
 }
 
 export async function listarConfiguracoesSeguras(token) {
-  const resposta = await fetch(`${API_URL}/api/configuracoes-seguras`, {
+  const resposta = await requisitar(`${API_URL}/api/configuracoes-seguras`, {
     headers: cabecalhoAutenticado(token)
   });
   return lerResposta(resposta);
 }
 
 export async function salvarConfiguracao(token, chave, dados) {
-  const resposta = await fetch(
+  const resposta = await requisitar(
     `${API_URL}/api/configuracoes/${encodeURIComponent(chave)}`,
     {
       method: 'PUT',
@@ -891,14 +893,14 @@ export async function salvarConfiguracao(token, chave, dados) {
 }
 
 export async function buscarStatusOpenAI(token) {
-  const resposta = await fetch(`${API_URL}/api/openai/status`, {
+  const resposta = await requisitar(`${API_URL}/api/openai/status`, {
     headers: cabecalhoAutenticado(token)
   });
   return lerResposta(resposta);
 }
 
 export async function testarOpenAI(token, pergunta) {
-  const resposta = await fetch(`${API_URL}/api/openai/teste`, {
+  const resposta = await requisitar(`${API_URL}/api/openai/teste`, {
     method: 'POST',
     headers: cabecalhoAutenticado(token, {
       'Content-Type': 'application/json'
@@ -911,7 +913,7 @@ export async function testarOpenAI(token, pergunta) {
 
 
 export async function analisarAtendimentoOpenAI(token, mensagem) {
-  const resposta = await fetch(
+  const resposta = await requisitar(
     `${API_URL}/api/openai/analisar-atendimento`,
     {
       method: 'POST',
@@ -929,7 +931,7 @@ export async function analisarAtendimentoOpenAI(token, mensagem) {
 export async function consultarBancoSenhaExato(token, chassi) {
   const parametros = new URLSearchParams({ chassi });
 
-  const resposta = await fetch(
+  const resposta = await requisitar(
     `${API_URL}/api/banco-senhas/consulta-exata?${parametros}`,
     {
       headers: cabecalhoAutenticado(token)
@@ -940,7 +942,7 @@ export async function consultarBancoSenhaExato(token, chassi) {
 }
 
 export async function listarServicos(token) {
-  const resposta = await fetch(`${API_URL}/api/servicos`, {
+  const resposta = await requisitar(`${API_URL}/api/servicos`, {
     headers: cabecalhoAutenticado(token)
   });
 
@@ -948,7 +950,7 @@ export async function listarServicos(token) {
 }
 
 export async function criarPedido(token, dados) {
-  const resposta = await fetch(`${API_URL}/api/pedidos`, {
+  const resposta = await requisitar(`${API_URL}/api/pedidos`, {
     method: 'POST',
     headers: cabecalhoAutenticado(token, {
       'Content-Type': 'application/json'
@@ -972,7 +974,7 @@ export async function confirmarPagamentoManual(
   );
 
   try {
-    const resposta = await fetch(
+    const resposta = await requisitar(
       `${API_URL}/api/pedidos/${pedidoId}/pagamento/confirmar-manual`,
       {
         method: 'POST',

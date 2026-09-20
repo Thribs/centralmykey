@@ -204,6 +204,8 @@ Na branch `feature/pagamento-manual-idempotente`, ainda não publicada:
 - o mesmo teste confirma, sem expor contatos, que os cadastros vivos mantêm Márcio ativo a R$ 22 das 08h às 22h e Emerson ativo a R$ 25 das 08h às 19h;
 - pedidos GM em `AGUARDANDO_DADOS` agora podem ser corrigidos na interface e reprocessados atomicamente pela API, com validação de estado, histórico e auditoria;
 - o teste funcional da correção usa API Joel Pires simulada e MySQL com rollback, e comprova conclusão, resultado e agendamento da entrega sem deixar dados de negócio;
+- todas as chamadas HTTP do frontend agora possuem timeout padrão de 30 segundos e mensagens específicas para indisponibilidade de rede e tempo esgotado;
+- o pagamento preserva seu timeout especial de 105 segundos, e o teste automatizado do frontend cobre sucesso, rede, timeout e cancelamento fornecido pela operação;
 - a ativação continua bloqueada até homologar os dois modelos da Meta e confirmar contatos válidos de fornecedores e clientes.
 
 Esses itens continuam **PARCIAIS** até as migrações serem validadas para publicação, os modelos serem homologados, o fluxo ser publicado com backup e um envio controlado ser comprovado sem dados reais. O fechamento de fornecedores também depende da aprovação da política operacional de período e pagamento; ele registra pagamentos realizados, mas não movimenta a conta bancária.
