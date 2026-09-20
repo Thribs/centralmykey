@@ -29,6 +29,7 @@ import NovoPedido from './NovoPedido';
 import ConfirmarPagamento from './ConfirmarPagamento';
 import ResultadoPedido from './ResultadoPedido';
 import ValidarResultado from './ValidarResultado';
+import CorrigirDadosPedido from './CorrigirDadosPedido';
 
 const STATUS = {
   ABERTO: 'Aberto',
@@ -170,6 +171,7 @@ function DetalhePedido({
   aoRegistrarResultado,
   aoValidarResultado,
   aoReprocessar,
+  aoCorrigir,
   aoCancelar,
   aoReprocessarComunicacao
 }) {
@@ -239,6 +241,16 @@ function DetalhePedido({
                 >
                   <RefreshCw size={17} />
                   Tentar novamente
+                </button>
+              )}
+              {pedido.status === 'AGUARDANDO_DADOS' && (
+                <button
+                  type="button"
+                  className="order-payment-button"
+                  onClick={() => aoCorrigir(pedido)}
+                >
+                  <CarFront size={17} />
+                  Corrigir dados
                 </button>
               )}
               {!['CONCLUIDO', 'CANCELADO'].includes(pedido.status) && (
@@ -413,6 +425,7 @@ export default function Pedidos() {
   const [pagamento, setPagamento] = useState(null);
   const [resultado, setResultado] = useState(null);
   const [validacao, setValidacao] = useState(null);
+  const [correcao, setCorrecao] = useState(null);
   const [processando, setProcessando] = useState('');
   const [abrindo, setAbrindo] = useState(false);
   const [atualizacao, setAtualizacao] = useState(0);
@@ -723,6 +736,7 @@ export default function Pedidos() {
           aoRegistrarResultado={setResultado}
           aoValidarResultado={(pedido, modo) => setValidacao({ pedido, modo })}
           aoReprocessar={reprocessar}
+          aoCorrigir={setCorrecao}
           aoCancelar={cancelar}
           aoReprocessarComunicacao={reprocessarComunicacao}
         />
@@ -765,6 +779,20 @@ export default function Pedidos() {
           aoConcluido={async () => {
             const pedidoId = validacao.pedido.id;
             setValidacao(null);
+            await abrirPedido(pedidoId);
+            setAtualizacao(valor => valor + 1);
+          }}
+        />
+      )}
+
+      {correcao && (
+        <CorrigirDadosPedido
+          token={token}
+          pedido={correcao}
+          aoFechar={() => setCorrecao(null)}
+          aoSalvo={async () => {
+            const pedidoId = correcao.id;
+            setCorrecao(null);
             await abrirPedido(pedidoId);
             setAtualizacao(valor => valor + 1);
           }}

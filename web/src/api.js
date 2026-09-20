@@ -363,6 +363,20 @@ export async function reprocessarPedido(token, pedidoId) {
   return lerResposta(resposta);
 }
 
+export async function corrigirDadosPedido(token, pedidoId, dados) {
+  const resposta = await fetch(
+    `${API_URL}/api/pedidos/${pedidoId}/corrigir-dados`,
+    {
+      method: 'POST',
+      headers: cabecalhoAutenticado(token, {
+        'Content-Type': 'application/json'
+      }),
+      body: JSON.stringify(dados)
+    }
+  );
+  return lerResposta(resposta);
+}
+
 export async function cancelarPedido(token, pedidoId, motivo) {
   const resposta = await fetch(
     `${API_URL}/api/pedidos/${pedidoId}/cancelar`,

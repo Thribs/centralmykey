@@ -202,6 +202,8 @@ Na branch `feature/pagamento-manual-idempotente`, ainda não publicada:
 - a rota de auditoria tem teste funcional de autorização, paginação, filtros, minimização de dados e rollback; a cobertura de gravação das ações do sistema continua desigual;
 - a seleção GM agora possui teste específico de Márcio e Emerson nos limites de 08h, 19h e 22h, fallback por disponibilidade, menor custo e desempate determinístico;
 - o mesmo teste confirma, sem expor contatos, que os cadastros vivos mantêm Márcio ativo a R$ 22 das 08h às 22h e Emerson ativo a R$ 25 das 08h às 19h;
+- pedidos GM em `AGUARDANDO_DADOS` agora podem ser corrigidos na interface e reprocessados atomicamente pela API, com validação de estado, histórico e auditoria;
+- o teste funcional da correção usa API Joel Pires simulada e MySQL com rollback, e comprova conclusão, resultado e agendamento da entrega sem deixar dados de negócio;
 - a ativação continua bloqueada até homologar os dois modelos da Meta e confirmar contatos válidos de fornecedores e clientes.
 
 Esses itens continuam **PARCIAIS** até as migrações serem validadas para publicação, os modelos serem homologados, o fluxo ser publicado com backup e um envio controlado ser comprovado sem dados reais. O fechamento de fornecedores também depende da aprovação da política operacional de período e pagamento; ele registra pagamentos realizados, mas não movimenta a conta bancária.

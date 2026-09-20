@@ -700,8 +700,134 @@ if (bancoProprio.length) {
   });
 
   // ============================================================
-  // REGISTRAR RESULTADO RECEBIDO DO FORNECEDOR
+  // CORRIGIR DADOS REJEITADOS E REPROCESSAR PEDIDO GM
   // ============================================================
+
+  app.post(
+    '/api/pedidos/:id/corrigir-dados',
+    autenticarToken,
+    exigirPermissao('PEDIDOS_SENHAS', 'editar'),
+    async (req, res) => {
+      const pedidoId = Number(req.params.id);
+      if (!Number.isInteger(pedidoId) || pedidoId <= 0) {
+        return res.status(400).json({ ok: false, error: 'ID do pedido inválido' });
+      }
+      let chassi;
+      try {
+        chassi = normalizarChassi(req.body?.chassi);
+      } catch (error) {
+        return res.status(400).json({ ok: false, error: error.message });
+      }
+      const marca = String(req.body?.marca || '').trim().toUpperCase();
+      const modelo = String(req.body?.modelo || '').trim().toUpperCase();
+      const ano = Number(req.body?.ano);
+      const anoMaximo = new Date().getFullYear() + 2;
+      if (!chassi || !marca || !modelo || !Number.isInteger(ano) ||
+          ano < 1900 || ano > anoMaximo) {
+        return res.status(400).json({
+          ok: false,
+          error: `Informe chassi, marca, modelo e ano entre 1900 e ${anoMaximo}`
+        });
+      }
+
+      const connection = await pool.getConnection();
+      try {
+        await connection.beginTransaction();
+        const [[pedido]] = await connection.query(
+          `SELECT p.id, p.protocolo, p.status, p.chassi, p.marca, p.modelo,
+                  p.ano, s.codigo AS codigo_servico
+             FROM pedidos_senha p
+             INNER JOIN servicos s ON s.id = p.servico_id
+            WHERE p.id = ?
+            LIMIT 1
+            FOR UPDATE`,
+          [pedidoId]
+        );
+        if (!pedido) {
+          await connection.rollback();
+          return res.status(404).json({ ok: false, error: 'Pedido não encontrado' });
+        }
+        if (pedido.codigo_servico !== 'GM_SENHA') {
+          await connection.rollback();
+          return res.status(409).json({
+            ok: false,
+            codigo: 'SERVICO_NAO_SUPORTADO',
+            error: 'A correção automática está disponível somente para senha GM'
+          });
+        }
+        if (pedido.status !== 'AGUARDANDO_DADOS') {
+          await connection.rollback();
+          return res.status(409).json({
+            ok: false,
+            codigo: 'PEDIDO_NAO_AGUARDA_DADOS',
+            error: `Pedido no status ${pedido.status} não aceita correção de dados`
+          });
+        }
+        const antes = {
+          chassi: pedido.chassi,
+          marca: pedido.marca,
+          modelo: pedido.modelo,
+          ano: pedido.ano
+        };
+        const depois = { chassi, marca, modelo, ano };
+        await connection.query(
+          `UPDATE pedidos_senha
+              SET chassi = ?, marca = ?, modelo = ?, ano = ?,
+                  fornecedor_id = NULL, origem_id = NULL, custo = 0
+            WHERE id = ?`,
+          [chassi, marca, modelo, ano, pedido.id]
+        );
+        await connection.query(
+          `INSERT INTO pedido_historico
+             (pedido_id, usuario_id, tipo, descricao, dados)
+           VALUES (?, ?, 'DADOS_PEDIDO_CORRIGIDOS', ?, ?)`,
+          [
+            pedido.id,
+            req.usuario.id,
+            'Dados do veículo corrigidos para nova consulta',
+            JSON.stringify({ antes, depois })
+          ]
+        );
+        await connection.query(
+          `INSERT INTO auditoria
+             (usuario_id, modulo, acao, entidade, entidade_id,
+              descricao, dados_antes, dados_depois, ip)
+           VALUES (?, 'PEDIDOS_SENHAS', 'CORRIGIR_DADOS',
+                   'pedidos_senha', ?, ?, ?, ?, ?)`,
+          [
+            req.usuario.id,
+            String(pedido.id),
+            `Dados do pedido ${pedido.protocolo} corrigidos`,
+            JSON.stringify(antes),
+            JSON.stringify(depois),
+            req.ip || null
+          ]
+        );
+        const processamento = await processarPedidoPago(
+          connection,
+          pedido.id,
+          req.usuario.id
+        );
+        await connection.commit();
+        return res.json({
+          ok: true,
+          mensagem: 'Dados corrigidos e pedido reprocessado',
+          pedido_id: pedido.id,
+          dados: depois,
+          processamento
+        });
+      } catch (error) {
+        await connection.rollback();
+        console.error('Erro ao corrigir dados do pedido GM:', error);
+        return res.status(500).json({
+          ok: false,
+          error: 'Erro ao corrigir e reprocessar o pedido GM'
+        });
+      } finally {
+        connection.release();
+      }
+    }
+  );
 
   app.post('/api/pedidos/:id/reprocessar', autenticarToken, exigirPermissao('PEDIDOS_SENHAS', 'editar'), async (req, res) => {
     const pedidoId = Number(req.params.id);
