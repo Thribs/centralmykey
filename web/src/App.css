@@ -3599,6 +3599,57 @@ background:#fff0ee;color:#c33424!important}
 .status-PENDENTE,.status-PAUSADO{background:#fff4db;color:#a86800!important}
 .admin-row-actions{gap:5px}
 .admin-row-actions button,.admin-modal header button{width:32px;height:32px;min-height:32px;padding:0}
+
+.audit-filters {
+  display: grid;
+  grid-template-columns: minmax(240px, 1.6fr) repeat(4, minmax(135px, .7fr)) auto;
+  gap: 10px;
+  padding: 14px;
+  border-bottom: 1px solid #e6e9f1;
+}
+.audit-filters .admin-search { margin: 0 }
+.audit-filters select,.audit-filters input[type='date'] {
+  min-width: 0;
+  height: 42px;
+  padding: 0 11px;
+  border: 1px solid #e0e3ec;
+  border-radius: 10px;
+  color: #35384b;
+  background: #fff;
+  font: inherit;
+  font-size: 12px;
+}
+.audit-filters>button,.audit-more button {
+  min-height: 42px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 0 15px;
+  border: 0;
+  border-radius: 10px;
+  color: #fff;
+  background: #2018dc;
+  font-weight: 750;
+  cursor: pointer;
+}
+.audit-more {
+  display: flex;
+  justify-content: center;
+  padding: 16px;
+  border-top: 1px solid #eef0f5;
+}
+.audit-more button:disabled { opacity: .6; cursor: wait }
+
+@media (max-width: 900px) {
+  .audit-filters { grid-template-columns: 1fr 1fr }
+  .audit-filters .admin-search { grid-column: 1 / -1 }
+}
+
+@media (max-width: 580px) {
+  .audit-filters { grid-template-columns: 1fr }
+  .audit-filters .admin-search { grid-column: auto }
+}
 .admin-error{padding:12px;background:#fff1ef;color:#b52d21;text-align:center;font-size:12px}
 .admin-empty{padding:28px!important;color:#8a92a7;text-align:center}
 .admin-overlay{position:fixed;z-index:1100;inset:0;display:grid;place-items:center;

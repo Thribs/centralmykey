@@ -73,6 +73,27 @@ export async function marcarTodasNotificacoesLidas(token) {
   return lerResposta(resposta);
 }
 
+export async function listarAuditoria(token, filtros = {}) {
+  const parametros = new URLSearchParams();
+  for (const [chave, valor] of Object.entries(filtros)) {
+    if (valor !== '' && valor !== null && valor !== undefined) {
+      parametros.set(chave, valor);
+    }
+  }
+  const resposta = await fetch(
+    `${API_URL}/api/auditoria?${parametros.toString()}`,
+    { headers: cabecalhoAutenticado(token) }
+  );
+  return lerResposta(resposta);
+}
+
+export async function buscarFiltrosAuditoria(token) {
+  const resposta = await fetch(`${API_URL}/api/auditoria/filtros`, {
+    headers: cabecalhoAutenticado(token)
+  });
+  return lerResposta(resposta);
+}
+
 
 export async function trocarSenha(token, senhaAtual, novaSenha) {
   const resposta = await fetch(`${API_URL}/api/auth/trocar-senha`, {

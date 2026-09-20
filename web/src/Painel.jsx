@@ -7,6 +7,7 @@ import Financeiro from './Financeiro';
 import Relatorios from './Relatorios';
 import { Usuarios, Integracoes, Configuracoes } from './Administracao';
 import OpenAILab from './OpenAILab';
+import Auditoria from './Auditoria';
 import {
   buscarResumoNotificacoes,
   listarNotificacoes,
@@ -26,6 +27,7 @@ import {
   MessageCircleMore,
   Plug,
   Search,
+  ScrollText,
   Settings,
   ShieldCheck,
   Truck,
@@ -89,6 +91,13 @@ const MODULOS = [
     codigo: 'CONFIGURACOES',
     nome: 'Configurações',
     icone: Settings
+  },
+  {
+    codigo: 'AUDITORIA',
+    permissaoCodigo: 'CONFIGURACOES',
+    somenteAdministrador: true,
+    nome: 'Auditoria',
+    icone: ScrollText
   }
 ];
 
@@ -341,7 +350,10 @@ export default function Painel({
     );
 
     return MODULOS
-      .filter(item => permitidos.has(item.codigo))
+      .filter(item =>
+        permitidos.has(item.permissaoCodigo || item.codigo) &&
+        (!item.somenteAdministrador || Number(usuario.perfil_id) === 1)
+      )
       .map(item => ({
         ...item,
         aoSelecionar: () => {
@@ -349,7 +361,7 @@ export default function Painel({
           setMenuAberto(false);
         }
       }));
-  }, [permissoes]);
+  }, [permissoes, usuario.perfil_id]);
 
   const atual =
     modulosPermitidos.find(item => item.codigo === moduloAtivo) ||
@@ -504,6 +516,8 @@ export default function Painel({
             </>
           ) : atual?.codigo === 'CONFIGURACOES' ? (
             <Configuracoes />
+          ) : atual?.codigo === 'AUDITORIA' ? (
+            <Auditoria />
           ) : (
             <section className="module-placeholder">
               <div className="placeholder-icon">

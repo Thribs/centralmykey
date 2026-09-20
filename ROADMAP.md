@@ -198,6 +198,8 @@ Na branch `feature/pagamento-manual-idempotente`, ainda não publicada:
 - tentativas de estornar e cancelar após possível envio ao fornecedor são revertidas integralmente; a movimentação bancária continua manual e exige referência ou comprovante;
 - o sino agora possui notificações persistentes com leitura por usuário, visibilidade por permissão, níveis e resolução; falhas da outbox geram alertas e o envio posterior os resolve;
 - as rotas de notificações têm teste funcional com MySQL e rollback, enquanto a interface foi validada por lint e build; outros eventos operacionais ainda precisam ser conectados;
+- administradores agora possuem consulta paginada da auditoria por texto, módulo, usuário e período; a API omite JSONs internos e IP para não expor conteúdo sensível;
+- a rota de auditoria tem teste funcional de autorização, paginação, filtros, minimização de dados e rollback; a cobertura de gravação das ações do sistema continua desigual;
 - a ativação continua bloqueada até homologar os dois modelos da Meta e confirmar contatos válidos de fornecedores e clientes.
 
 Esses itens continuam **PARCIAIS** até as migrações serem validadas para publicação, os modelos serem homologados, o fluxo ser publicado com backup e um envio controlado ser comprovado sem dados reais. O fechamento de fornecedores também depende da aprovação da política operacional de período e pagamento; ele registra pagamentos realizados, mas não movimenta a conta bancária.
