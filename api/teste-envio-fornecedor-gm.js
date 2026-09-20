@@ -16,6 +16,9 @@ const {
 const {
   criarTabelaOutboxTemporaria
 } = require('./teste-suporte-outbox');
+const {
+  criarTabelasNotificacoesTemporarias
+} = require('./teste-suporte-notificacoes');
 
 dotenv.config({
   path: process.env.CENTRALMYKEY_ENV_PATH || path.join(__dirname, '.env'),
@@ -59,6 +62,7 @@ async function executar() {
   try {
     await connection.beginTransaction();
     await criarTabelaOutboxTemporaria(connection);
+    await criarTabelasNotificacoesTemporarias(connection);
     await connection.query(
       "SET timestamp = UNIX_TIMESTAMP('2026-09-18 12:00:00')"
     );
@@ -208,6 +212,13 @@ async function executar() {
       { nomeModelo: 'consulta_fornecedor_gm_teste' }
     );
     assert.strictEqual(resultadoIncerto.status, 'INCERTA');
+    const [[alertaIncerto]] = await connection.query(
+      `SELECT status, nivel FROM notificacoes
+        WHERE chave = ?`,
+      [`COMUNICACAO_OUTBOX:${incerta.insertId}`]
+    );
+    assert.strictEqual(alertaIncerto.status, 'ATIVA');
+    assert.strictEqual(alertaIncerto.nivel, 'CRITICA');
 
     await assert.rejects(
       () => reagendarConsultaFornecedor(connection, {
@@ -244,6 +255,11 @@ async function executar() {
     assert.strictEqual(ciclo.executado, true);
     assert.strictEqual(ciclo.encontrados, 1);
     assert.strictEqual(ciclo.enviados, 1);
+    const [[alertaResolvido]] = await connection.query(
+      'SELECT status FROM notificacoes WHERE chave = ?',
+      [`COMUNICACAO_OUTBOX:${incerta.insertId}`]
+    );
+    assert.strictEqual(alertaResolvido.status, 'RESOLVIDA');
 
     const [[estadoFinal]] = await connection.query(
       `SELECT status, tentativas, mensagem_externa_id

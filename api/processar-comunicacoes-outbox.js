@@ -1,5 +1,10 @@
 'use strict';
 
+const {
+  registrarNotificacao,
+  resolverNotificacao
+} = require('./notificacoes-internas');
+
 const NOME_BLOQUEIO = 'central_mykey_comunicacoes_outbox';
 
 function numeroInteiro(valor, padrao, minimo, maximo) {
@@ -95,6 +100,32 @@ async function registrarFalha(connection, item, erro) {
     ]
   );
 
+  await registrarNotificacao(connection, {
+    chave: `COMUNICACAO_OUTBOX:${item.id}`,
+    tipo: entregaCliente
+      ? 'FALHA_ENTREGA_CLIENTE'
+      : 'FALHA_CONSULTA_FORNECEDOR',
+    nivel: status === 'INCERTA' ? 'CRITICA' : 'ATENCAO',
+    modulo: 'PEDIDOS_SENHAS',
+    titulo: status === 'INCERTA'
+      ? 'Envio com resultado incerto'
+      : 'Falha de comunicação',
+    mensagem: entregaCliente
+      ? `A entrega ao cliente do pedido #${item.pedido_id} exige atenção.`
+      : `A consulta ao fornecedor do pedido #${item.pedido_id} exige atenção.`,
+    entidade: 'comunicacoes_outbox',
+    entidadeId: item.id,
+    dados: {
+      pedido_id: item.pedido_id,
+      comunicacao_id: item.id,
+      finalidade: item.finalidade,
+      status,
+      erro_codigo: codigo
+    }
+  }).catch(error => {
+    console.error('Falha ao criar notificação de comunicação:', error.message);
+  });
+
   return { processada: true, enviada: false, status, erro_codigo: codigo };
 }
 
@@ -189,6 +220,13 @@ async function processarComunicacao(connection, itemId, enviarModelo, opcoes = {
         })
       ]
     );
+
+    await resolverNotificacao(
+      connection,
+      `COMUNICACAO_OUTBOX:${item.id}`
+    ).catch(error => {
+      console.error('Falha ao resolver notificação de comunicação:', error.message);
+    });
 
     return {
       processada: true,

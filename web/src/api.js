@@ -39,6 +39,40 @@ export async function buscarSessao(token) {
   return lerResposta(resposta);
 }
 
+export async function buscarResumoNotificacoes(token) {
+  const resposta = await fetch(`${API_URL}/api/notificacoes/resumo`, {
+    headers: cabecalhoAutenticado(token)
+  });
+  return lerResposta(resposta);
+}
+
+export async function listarNotificacoes(token, limite = 20) {
+  const resposta = await fetch(
+    `${API_URL}/api/notificacoes?limite=${encodeURIComponent(limite)}`,
+    { headers: cabecalhoAutenticado(token) }
+  );
+  return lerResposta(resposta);
+}
+
+export async function marcarNotificacaoLida(token, notificacaoId) {
+  const resposta = await fetch(
+    `${API_URL}/api/notificacoes/${notificacaoId}/ler`,
+    {
+      method: 'PATCH',
+      headers: cabecalhoAutenticado(token)
+    }
+  );
+  return lerResposta(resposta);
+}
+
+export async function marcarTodasNotificacoesLidas(token) {
+  const resposta = await fetch(`${API_URL}/api/notificacoes/ler-todas`, {
+    method: 'POST',
+    headers: cabecalhoAutenticado(token)
+  });
+  return lerResposta(resposta);
+}
+
 
 export async function trocarSenha(token, senhaAtual, novaSenha) {
   const resposta = await fetch(`${API_URL}/api/auth/trocar-senha`, {

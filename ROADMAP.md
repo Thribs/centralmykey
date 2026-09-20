@@ -196,6 +196,8 @@ Na branch `feature/pagamento-manual-idempotente`, ainda não publicada:
 - o teste funcional do fechamento percorre rotas, persistência e financeiro usando MySQL com rollback e confirma que não deixa resíduos;
 - o estorno manual integral registra uma despesa vinculada ao pagamento original e pode cancelar o pedido na mesma transação, com idempotência, histórico, auditoria e teste de rollback;
 - tentativas de estornar e cancelar após possível envio ao fornecedor são revertidas integralmente; a movimentação bancária continua manual e exige referência ou comprovante;
+- o sino agora possui notificações persistentes com leitura por usuário, visibilidade por permissão, níveis e resolução; falhas da outbox geram alertas e o envio posterior os resolve;
+- as rotas de notificações têm teste funcional com MySQL e rollback, enquanto a interface foi validada por lint e build; outros eventos operacionais ainda precisam ser conectados;
 - a ativação continua bloqueada até homologar os dois modelos da Meta e confirmar contatos válidos de fornecedores e clientes.
 
 Esses itens continuam **PARCIAIS** até as migrações serem validadas para publicação, os modelos serem homologados, o fluxo ser publicado com backup e um envio controlado ser comprovado sem dados reais. O fechamento de fornecedores também depende da aprovação da política operacional de período e pagamento; ele registra pagamentos realizados, mas não movimenta a conta bancária.

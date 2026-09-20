@@ -11,6 +11,9 @@ const {
 const {
   criarTabelaOutboxTemporaria
 } = require('./teste-suporte-outbox');
+const {
+  criarTabelasNotificacoesTemporarias
+} = require('./teste-suporte-notificacoes');
 
 dotenv.config({
   path: process.env.CENTRALMYKEY_ENV_PATH || path.join(__dirname, '.env'),
@@ -79,6 +82,7 @@ async function executar() {
   try {
     await connection.beginTransaction();
     await criarTabelaOutboxTemporaria(connection);
+    await criarTabelasNotificacoesTemporarias(connection);
 
     const [[servico]] = await connection.query(
       "SELECT id FROM servicos WHERE codigo='GM_SENHA' AND ativo=1 LIMIT 1"

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import Atendimento from './Atendimento';
 import Pedidos from './Pedidos';
 import BancoSenhas from './BancoSenhas';
@@ -7,6 +7,12 @@ import Financeiro from './Financeiro';
 import Relatorios from './Relatorios';
 import { Usuarios, Integracoes, Configuracoes } from './Administracao';
 import OpenAILab from './OpenAILab';
+import {
+  buscarResumoNotificacoes,
+  listarNotificacoes,
+  marcarNotificacaoLida,
+  marcarTodasNotificacoesLidas
+} from './api';
 import {
   Bell,
   BookKey,
@@ -94,6 +100,148 @@ function iniciais(nome = '') {
     .map(parte => parte[0])
     .join('')
     .toUpperCase() || 'MK';
+}
+
+function dataHoraCurta(valor) {
+  if (!valor) return '';
+  return new Intl.DateTimeFormat('pt-BR', {
+    day: '2-digit',
+    month: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit'
+  }).format(new Date(valor));
+}
+
+function CaixaNotificacoes({ modulos, aoAbrirModulo }) {
+  const token = useMemo(
+    () => localStorage.getItem('central_mykey_token') || '',
+    []
+  );
+  const [aberta, setAberta] = useState(false);
+  const [resumo, setResumo] = useState({ nao_lidas: 0, criticas: 0 });
+  const [itens, setItens] = useState([]);
+  const [carregando, setCarregando] = useState(false);
+  const [erro, setErro] = useState('');
+
+  const carregarResumo = useCallback(async () => {
+    try {
+      setResumo(await buscarResumoNotificacoes(token));
+    } catch {
+      // O sino não deve interromper o restante da Central.
+    }
+  }, [token]);
+
+  const carregarLista = useCallback(async () => {
+    setCarregando(true);
+    setErro('');
+    try {
+      const resposta = await listarNotificacoes(token, 30);
+      setItens(resposta.dados || []);
+    } catch (falha) {
+      setErro(falha.message);
+    } finally {
+      setCarregando(false);
+    }
+  }, [token]);
+
+  useEffect(() => {
+    const inicial = window.setTimeout(carregarResumo, 0);
+    const intervalo = window.setInterval(carregarResumo, 60000);
+    return () => {
+      window.clearTimeout(inicial);
+      window.clearInterval(intervalo);
+    };
+  }, [carregarResumo]);
+
+  async function alternar() {
+    const proximo = !aberta;
+    setAberta(proximo);
+    if (proximo) await carregarLista();
+  }
+
+  async function abrirItem(item) {
+    try {
+      if (!Number(item.lida)) {
+        await marcarNotificacaoLida(token, item.id);
+        setItens(lista => lista.map(atual =>
+          atual.id === item.id ? { ...atual, lida: 1 } : atual
+        ));
+        await carregarResumo();
+      }
+      if (item.modulo && modulos.some(modulo => modulo.codigo === item.modulo)) {
+        aoAbrirModulo(item.modulo);
+        setAberta(false);
+      }
+    } catch (falha) {
+      setErro(falha.message);
+    }
+  }
+
+  async function lerTodas() {
+    setErro('');
+    try {
+      await marcarTodasNotificacoesLidas(token);
+      setItens(lista => lista.map(item => ({ ...item, lida: 1 })));
+      await carregarResumo();
+    } catch (falha) {
+      setErro(falha.message);
+    }
+  }
+
+  return (
+    <div className="notification-wrap">
+      <button
+        type="button"
+        className="icon-button"
+        aria-label="Notificações"
+        aria-expanded={aberta}
+        onClick={alternar}
+      >
+        <Bell size={20} />
+        {Number(resumo.nao_lidas) > 0 && (
+          <span className={Number(resumo.criticas) > 0
+            ? 'notification-badge critical'
+            : 'notification-badge'}>
+            {Number(resumo.nao_lidas) > 99 ? '99+' : resumo.nao_lidas}
+          </span>
+        )}
+      </button>
+
+      {aberta && (
+        <aside className="notification-panel" aria-label="Notificações internas">
+          <header>
+            <div>
+              <strong>Notificações</strong>
+              <span>{Number(resumo.nao_lidas)} não lidas</span>
+            </div>
+            <button type="button" onClick={lerTodas}>Marcar todas</button>
+          </header>
+          <div className="notification-list">
+            {carregando && <p>Carregando...</p>}
+            {!carregando && erro && <p className="notification-error">{erro}</p>}
+            {!carregando && !erro && itens.length === 0 && (
+              <p>Nenhuma pendência ativa.</p>
+            )}
+            {!carregando && itens.map(item => (
+              <button
+                type="button"
+                key={item.id}
+                className={`notification-item level-${item.nivel} ${Number(item.lida) ? 'read' : ''}`}
+                onClick={() => abrirItem(item)}
+              >
+                <span className="notification-level" />
+                <span>
+                  <strong>{item.titulo}</strong>
+                  <small>{item.mensagem}</small>
+                  <time>{dataHoraCurta(item.atualizado_em)}</time>
+                </span>
+              </button>
+            ))}
+          </div>
+        </aside>
+      )}
+    </div>
+  );
 }
 
 function Dashboard({ usuario, modulos }) {
@@ -209,6 +357,13 @@ export default function Painel({
 
   const IconeAtual = atual?.icone || LayoutDashboard;
 
+  function abrirModulo(codigo) {
+    if (modulosPermitidos.some(item => item.codigo === codigo)) {
+      setModuloAtivo(codigo);
+      setMenuAberto(false);
+    }
+  }
+
   return (
     <div className="app-shell">
       <aside className={`sidebar ${menuAberto ? 'sidebar-open' : ''}`}>
@@ -297,14 +452,10 @@ export default function Painel({
               />
             </label>
 
-            <button
-              type="button"
-              className="icon-button"
-              aria-label="Notificações"
-            >
-              <Bell size={20} />
-              <span />
-            </button>
+            <CaixaNotificacoes
+              modulos={modulosPermitidos}
+              aoAbrirModulo={abrirModulo}
+            />
 
             <div className="topbar-profile">
               <div className="user-avatar">

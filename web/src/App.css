@@ -673,6 +673,156 @@
   background: #fa6407;
 }
 
+.notification-wrap {
+  position: relative;
+}
+
+.icon-button > .notification-badge {
+  top: -6px;
+  right: -7px;
+  width: auto;
+  min-width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  padding: 0 5px;
+  border: 2px solid #fff;
+  border-radius: 10px;
+  color: #fff;
+  background: #fa6407;
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.icon-button > .notification-badge.critical {
+  background: #d92d20;
+}
+
+.notification-panel {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  z-index: 40;
+  width: min(390px, calc(100vw - 28px));
+  overflow: hidden;
+  border: 1px solid #e3e6ef;
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 18px 50px rgba(24, 27, 46, 0.18);
+}
+
+.notification-panel > header {
+  min-height: 64px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 13px 15px;
+  border-bottom: 1px solid #eceef4;
+}
+
+.notification-panel > header div {
+  display: grid;
+  gap: 2px;
+}
+
+.notification-panel > header strong {
+  color: #171a30;
+  font-size: 14px;
+}
+
+.notification-panel > header span {
+  color: #85899d;
+  font-size: 11px;
+}
+
+.notification-panel > header button {
+  border: 0;
+  color: #2018dc;
+  background: transparent;
+  font-size: 11px;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.notification-list {
+  max-height: min(440px, 65vh);
+  overflow-y: auto;
+}
+
+.notification-list > p {
+  margin: 0;
+  padding: 28px 18px;
+  color: #7e8297;
+  text-align: center;
+  font-size: 12px;
+}
+
+.notification-list > .notification-error {
+  color: #b42318;
+}
+
+.notification-item {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 9px minmax(0, 1fr);
+  gap: 10px;
+  padding: 14px 15px;
+  border: 0;
+  border-bottom: 1px solid #f0f1f5;
+  color: inherit;
+  background: #f8f8ff;
+  text-align: left;
+  cursor: pointer;
+}
+
+.notification-item:hover {
+  background: #f1f0ff;
+}
+
+.notification-item.read {
+  background: #fff;
+}
+
+.notification-level {
+  width: 8px;
+  height: 8px;
+  margin-top: 5px;
+  border-radius: 50%;
+  background: #667085;
+}
+
+.notification-item.level-ATENCAO .notification-level {
+  background: #f79009;
+}
+
+.notification-item.level-CRITICA .notification-level {
+  background: #d92d20;
+}
+
+.notification-item > span:last-child {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.notification-item strong {
+  color: #25283b;
+  font-size: 12px;
+}
+
+.notification-item small {
+  color: #62677d;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.notification-item time {
+  color: #9a9daf;
+  font-size: 10px;
+}
+
 .topbar-profile {
   gap: 10px;
   padding-left: 5px;
@@ -1013,6 +1163,14 @@
 
   .page-content {
     padding: 18px 14px;
+  }
+
+  .notification-panel {
+    position: fixed;
+    top: 66px;
+    right: 10px;
+    left: 10px;
+    width: auto;
   }
 
   .module-grid {
