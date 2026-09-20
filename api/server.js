@@ -41,6 +41,7 @@ const pool = mysql.createPool({
 });
 
 require('./rotas-auth')(app, pool);
+require('./rotas-health')(app, pool);
 
 const autenticarToken = app.locals.autenticarToken;
 const exigirPermissao = app.locals.exigirPermissao;
@@ -121,41 +122,6 @@ function validarCNPJ(valor) {
 
   return d2 === Number(cnpj[13]);
 }
-
-/* =========================
-   HEALTH
-========================= */
-
-app.get('/health', (req, res) => {
-  res.json({
-    ok: true,
-    service: 'Central MyKey API'
-  });
-});
-
-app.get('/health/db', autenticarToken, exigirPermissao('CONFIGURACOES', 'visualizar'), async (req, res) => {
-  try {
-    const [rows] = await pool.query(`
-      SELECT
-        DATABASE() AS database_name,
-        VERSION() AS mysql_version,
-        NOW() AS server_time
-    `);
-
-    res.json({
-      ok: true,
-      database: rows[0]
-    });
-
-  } catch (error) {
-    console.error(error);
-
-    res.status(500).json({
-      ok: false,
-      error: 'Falha na conexão com o banco'
-    });
-  }
-});
 
 /* =========================
    CONFIGURAÇÕES

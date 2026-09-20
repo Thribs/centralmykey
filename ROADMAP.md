@@ -208,6 +208,8 @@ Na branch `feature/pagamento-manual-idempotente`, ainda não publicada:
 - o pagamento preserva seu timeout especial de 105 segundos, e o teste automatizado do frontend cobre sucesso, rede, timeout e cancelamento fornecido pela operação;
 - pedidos novos agora distinguem cliente, comprador e pagador por snapshots; a interface permite informar pessoas diferentes e o detalhe exibe cada papel;
 - o teste HTTP da criação pós-paga comprova validação, três identidades distintas, persistência e leitura usando tabela MySQL temporária e rollback;
+- a API agora separa vivacidade (`/health`) de prontidão (`/health/ready`); o segundo devolve HTTP 503 quando o MySQL está indisponível sem expor detalhes internos;
+- o teste HTTP de health cobre banco disponível e indisponível com dependência simulada, e o diagnóstico detalhado continua autenticado;
 - a ativação continua bloqueada até homologar os dois modelos da Meta e confirmar contatos válidos de fornecedores e clientes.
 
 Esses itens continuam **PARCIAIS** até as migrações serem validadas para publicação, os modelos serem homologados, o fluxo ser publicado com backup e um envio controlado ser comprovado sem dados reais. O fechamento de fornecedores também depende da aprovação da política operacional de período e pagamento; ele registra pagamentos realizados, mas não movimenta a conta bancária.
