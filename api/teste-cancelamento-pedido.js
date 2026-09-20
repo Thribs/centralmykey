@@ -8,6 +8,9 @@ const mysql = require('mysql2/promise');
 const {
   criarTabelaOutboxTemporaria
 } = require('./teste-suporte-outbox');
+const {
+  criarTabelaEstornosTemporaria
+} = require('./teste-suporte-estornos');
 
 dotenv.config({
   path: process.env.CENTRALMYKEY_ENV_PATH || path.join(__dirname, '.env'),
@@ -83,6 +86,7 @@ async function executar() {
   try {
     await connection.beginTransaction();
     await criarTabelaOutboxTemporaria(connection);
+    await criarTabelaEstornosTemporaria(connection);
     const [[servico]] = await connection.query(
       "SELECT id FROM servicos WHERE codigo='GM_SENHA' AND ativo=1 LIMIT 1"
     );

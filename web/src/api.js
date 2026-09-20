@@ -10,6 +10,7 @@ async function lerResposta(resposta) {
       dados.error || 'Não foi possível concluir a solicitação'
     );
     erro.status = resposta.status;
+    erro.codigo = dados.codigo || null;
     throw erro;
   }
 
@@ -316,6 +317,21 @@ export async function cancelarPedido(token, pedidoId, motivo) {
         'Content-Type': 'application/json'
       }),
       body: JSON.stringify({ motivo })
+    }
+  );
+
+  return lerResposta(resposta);
+}
+
+export async function estornarECancelarPedido(token, pedidoId, dados) {
+  const resposta = await fetch(
+    `${API_URL}/api/pedidos/${pedidoId}/estornar-e-cancelar`,
+    {
+      method: 'POST',
+      headers: cabecalhoAutenticado(token, {
+        'Content-Type': 'application/json'
+      }),
+      body: JSON.stringify(dados)
     }
   );
 

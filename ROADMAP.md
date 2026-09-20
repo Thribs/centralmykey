@@ -194,6 +194,8 @@ Na branch `feature/pagamento-manual-idempotente`, ainda não publicada:
 - o fechamento semanal de fornecedores apura somente resultados confirmados, impede duplicidade, cria uma despesa após aprovação e registra o pagamento manual de forma idempotente;
 - a interface financeira permite gerar a última semana concluída, conferir os itens, aprovar e registrar o pagamento; períodos ainda abertos não podem ser aprovados;
 - o teste funcional do fechamento percorre rotas, persistência e financeiro usando MySQL com rollback e confirma que não deixa resíduos;
+- o estorno manual integral registra uma despesa vinculada ao pagamento original e pode cancelar o pedido na mesma transação, com idempotência, histórico, auditoria e teste de rollback;
+- tentativas de estornar e cancelar após possível envio ao fornecedor são revertidas integralmente; a movimentação bancária continua manual e exige referência ou comprovante;
 - a ativação continua bloqueada até homologar os dois modelos da Meta e confirmar contatos válidos de fornecedores e clientes.
 
 Esses itens continuam **PARCIAIS** até as migrações serem validadas para publicação, os modelos serem homologados, o fluxo ser publicado com backup e um envio controlado ser comprovado sem dados reais. O fechamento de fornecedores também depende da aprovação da política operacional de período e pagamento; ele registra pagamentos realizados, mas não movimenta a conta bancária.

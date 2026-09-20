@@ -21,6 +21,7 @@ import {
   buscarResumoPedidos,
   listarFilaPedidos,
   cancelarPedido,
+  estornarECancelarPedido,
   reprocessarPedido,
   reprocessarComunicacaoFornecedor,
 } from './api';
@@ -525,6 +526,40 @@ export default function Pedidos() {
       await abrirPedido(pedido.id);
       setAtualizacao(valor => valor + 1);
     } catch (error) {
+      if (error.codigo === 'ESTORNO_FINANCEIRO_NECESSARIO') {
+        const meio = window.prompt(
+          'Informe o meio usado na devolução (PIX, DINHEIRO, TRANSFERENCIA ou OUTRO):',
+          'PIX'
+        )?.trim().toUpperCase();
+        if (!meio) {
+          setErro(error.message);
+          return;
+        }
+        const referencia = meio === 'DINHEIRO'
+          ? null
+          : window.prompt('Informe a referência da devolução já realizada:')?.trim();
+        if (meio !== 'DINHEIRO' && !referencia) {
+          setErro('A referência da devolução é obrigatória.');
+          return;
+        }
+        if (!window.confirm(
+          'Confirma que o valor já foi devolvido ao cliente e deseja registrar o estorno e cancelar o pedido?'
+        )) return;
+        try {
+          await estornarECancelarPedido(token, pedido.id, {
+            meio_estorno: meio,
+            referencia_externa: referencia,
+            motivo_estorno: motivo.trim(),
+            motivo_cancelamento: motivo.trim()
+          });
+          await abrirPedido(pedido.id);
+          setAtualizacao(valor => valor + 1);
+          return;
+        } catch (falhaEstorno) {
+          setErro(falhaEstorno.message);
+          return;
+        }
+      }
       setErro(error.message);
     } finally {
       setProcessando('');

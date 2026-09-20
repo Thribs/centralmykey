@@ -52,22 +52,26 @@ async function cancelarPedido(connection, {
 
   const [[financeiro]] = await connection.query(
     `SELECT
-       COUNT(*) AS lancamentos,
-       SUM(lf.status IN ('RECEBIDO', 'PAGO')) AS liquidados,
-       (SELECT COUNT(*)
-          FROM pagamentos pg
-          INNER JOIN lancamentos_financeiros lfp
-            ON lfp.id = pg.lancamento_id
-         WHERE lfp.pedido_senha_id = ?) AS pagamentos
+       SUM(
+         lf.status IN ('RECEBIDO', 'PAGO')
+         AND COALESCE(lf.origem, '') <> 'ESTORNO_MANUAL'
+         AND NOT EXISTS (
+           SELECT pg.lancamento_id
+             FROM pagamentos pg
+             INNER JOIN estornos_pagamentos ep
+               ON ep.pagamento_id = pg.id
+              AND ep.status = 'CONFIRMADO'
+            WHERE pg.lancamento_id = lf.id
+            GROUP BY pg.lancamento_id
+           HAVING ROUND(SUM(ep.valor), 2) >= ROUND(lf.valor, 2)
+         )
+       ) AS liquidados_sem_estorno
      FROM lancamentos_financeiros lf
      WHERE lf.pedido_senha_id = ?
        AND lf.status <> 'CANCELADO'`,
-    [pedido.id, pedido.id]
+    [pedido.id]
   );
-  if (
-    Number(financeiro.liquidados || 0) > 0 ||
-    Number(financeiro.pagamentos || 0) > 0
-  ) {
+  if (Number(financeiro.liquidados_sem_estorno || 0) > 0) {
     throw erroNegocio(
       'ESTORNO_FINANCEIRO_NECESSARIO',
       'O pedido possui pagamento e exige estorno antes do cancelamento'
@@ -138,6 +142,7 @@ async function cancelarPedido(connection, {
     `UPDATE lancamentos_financeiros
         SET status = 'CANCELADO'
       WHERE pedido_senha_id = ?
+        AND COALESCE(origem, '') <> 'ESTORNO_MANUAL'
         AND status IN ('PREVISTO', 'PENDENTE', 'VENCIDO')`,
     [pedido.id]
   );
