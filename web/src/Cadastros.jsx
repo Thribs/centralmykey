@@ -37,7 +37,7 @@ const CLIENTE_INICIAL = {
   cidade: '',
   cadastro_status: 'PROVISORIO',
   tipo_cobranca: 'ANTECIPADO',
-  dia_fechamento: '',
+  dia_fechamento: '1',
   prazo_pagamento_dias: '0',
   limite_credito: '',
   credito_status: 'LIBERADO',
@@ -187,6 +187,7 @@ function ModalCadastro({
                     name="cadastro_status"
                     value={formulario.cadastro_status}
                     onChange={alterar}
+                    disabled={!registro}
                   >
                     <option value="PROVISORIO">Provisório</option>
                     <option value="VALIDADO">Validado</option>
@@ -207,15 +208,21 @@ function ModalCadastro({
                   </select>
                 </label>
                 <label>
-                  Dia de fechamento
-                  <input
-                    type="number"
-                    min="1"
-                    max="31"
+                  Dia da semana do fechamento
+                  <select
                     name="dia_fechamento"
-                    value={formulario.dia_fechamento || ''}
+                    value={formulario.dia_fechamento ?? ''}
                     onChange={alterar}
-                  />
+                    disabled={formulario.tipo_cobranca !== 'FATURAMENTO_SEMANAL'}
+                  >
+                    <option value="0">Domingo</option>
+                    <option value="1">Segunda-feira</option>
+                    <option value="2">Terça-feira</option>
+                    <option value="3">Quarta-feira</option>
+                    <option value="4">Quinta-feira</option>
+                    <option value="5">Sexta-feira</option>
+                    <option value="6">Sábado</option>
+                  </select>
                 </label>
                 <label>
                   Prazo de pagamento
@@ -257,7 +264,7 @@ function ModalCadastro({
                     onChange={alterar}
                   />
                 </label>
-                {!registro && (
+                {!registro ? (
                   <label className="registry-check wide">
                     <input
                       type="checkbox"
@@ -267,6 +274,47 @@ function ModalCadastro({
                     />
                     Cadastrar como cliente VIP
                   </label>
+                ) : (
+                  <label className="wide">
+                    Situação VIP
+                    <select
+                      name="vip_status"
+                      value={formulario.vip_status || ''}
+                      onChange={alterar}
+                    >
+                      <option value="">Sem plano VIP</option>
+                      <option value="ATIVO">Ativo</option>
+                      <option value="AGUARDANDO_PAGAMENTO">Aguardando pagamento</option>
+                      <option value="VENCIDO">Vencido</option>
+                      <option value="SUSPENSO">Suspenso</option>
+                      <option value="CANCELADO">Cancelado</option>
+                    </select>
+                  </label>
+                )}
+                {(formulario.vip || formulario.vip_status) && (
+                  <>
+                    <label>
+                      Mensalidade VIP
+                      <input
+                        type="number"
+                        min="0.01"
+                        step="0.01"
+                        name="valor_mensalidade"
+                        value={formulario.valor_mensalidade ?? '90'}
+                        onChange={alterar}
+                        required
+                      />
+                    </label>
+                    <label>
+                      Próximo vencimento VIP
+                      <input
+                        type="date"
+                        name="proximo_vencimento"
+                        value={String(formulario.proximo_vencimento || '').slice(0, 10)}
+                        onChange={alterar}
+                      />
+                    </label>
+                  </>
                 )}
               </>
             ) : (
@@ -396,6 +444,7 @@ function Indicadores({ tipo, resumo }) {
     ? [
         ['Total', resumo.total, UsersRound],
         ['Ativos', resumo.ativos, CheckCircle2],
+        ['VIP ativos', resumo.vips_ativos, ShieldCheck],
         ['Faturamento semanal', resumo.faturamento_semanal, CircleDollarSign],
         ['Crédito bloqueado', resumo.credito_bloqueado, ShieldCheck]
       ]
