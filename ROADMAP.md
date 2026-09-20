@@ -210,6 +210,8 @@ Na branch `feature/pagamento-manual-idempotente`, ainda não publicada:
 - o teste HTTP da criação pós-paga comprova validação, três identidades distintas, persistência e leitura usando tabela MySQL temporária e rollback;
 - a API agora separa vivacidade (`/health`) de prontidão (`/health/ready`); o segundo devolve HTTP 503 quando o MySQL está indisponível sem expor detalhes internos;
 - o teste HTTP de health cobre banco disponível e indisponível com dependência simulada, e o diagnóstico detalhado continua autenticado;
+- backups agora são gerados atomicamente com API, frontend, dump MySQL, permissões restritas e manifesto SHA-256; a restauração valida integridade e cria um backup de segurança antes de substituir dados;
+- o teste automatizado restaura artefatos e dump fictícios em `/tmp` e rejeita corrupção; um ensaio controlado com MySQL descartável ainda é necessário antes de classificar a restauração de banco como comprovada em ambiente operacional;
 - a ativação continua bloqueada até homologar os dois modelos da Meta e confirmar contatos válidos de fornecedores e clientes.
 
 Esses itens continuam **PARCIAIS** até as migrações serem validadas para publicação, os modelos serem homologados, o fluxo ser publicado com backup e um envio controlado ser comprovado sem dados reais. O fechamento de fornecedores também depende da aprovação da política operacional de período e pagamento; ele registra pagamentos realizados, mas não movimenta a conta bancária.
