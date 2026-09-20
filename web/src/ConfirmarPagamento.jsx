@@ -95,6 +95,9 @@ export default function ConfirmarPagamento({
                   currency: pedido.moeda || 'BRL'
                 })}
               </strong>
+              <small>
+                Pagador: {pedido.partes?.pagador?.nome || pedido.cliente}
+              </small>
             </div>
           </div>
 

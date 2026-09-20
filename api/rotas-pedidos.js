@@ -15,6 +15,11 @@ const {
   reagendarEntregaCliente
 } = require('./agendar-entrega-cliente');
 const { cancelarPedido } = require('./cancelar-pedido');
+const {
+  prepararPartes,
+  registrarPartesPedido,
+  listarPartesPedido
+} = require('./identidades-pedido');
 
 module.exports = function (app, pool) {
   const autenticarToken = app.locals.autenticarToken;
@@ -82,7 +87,9 @@ module.exports = function (app, pool) {
         marca,
         modelo,
         ano,
-        atendente_id
+        atendente_id,
+        comprador,
+        pagador
       } = req.body;
 
       if (!cliente_id || !servico_id) {
@@ -163,6 +170,9 @@ const [clientes] = await connection.query(
       credito_status,
       telefone,
       telefone_normalizado,
+      cpf,
+      cnpj,
+      email,
       (SELECT ct.telefone_normalizado
          FROM cliente_telefones ct
         WHERE ct.cliente_id = clientes.id
@@ -185,6 +195,17 @@ if (!clientes.length) {
 }
 
 const cliente = clientes[0];
+let partesPedido;
+try {
+  partesPedido = prepararPartes(cliente, comprador, pagador);
+} catch (erro) {
+  await connection.rollback();
+  return res.status(400).json({
+    ok: false,
+    codigo: erro.codigo,
+    error: erro.message
+  });
+}
 
 if (
   cliente.tipo_cobranca === 'FATURAMENTO_SEMANAL' &&
@@ -238,6 +259,12 @@ if (cliente.tipo_cobranca === 'ANTECIPADO') {
       Number(servico.preco_base || 0),
       req.usuario.id
     ]
+  );
+
+  await registrarPartesPedido(
+    connection,
+    pedidoAguardando.insertId,
+    partesPedido
   );
 
   await connection.query(
@@ -427,6 +454,12 @@ if (bancoProprio.length) {
           origemId,
           req.usuario.id
         ]
+      );
+
+      await registrarPartesPedido(
+        connection,
+        resultado.insertId,
+        partesPedido
       );
     // --------------------------------------------------------
     // 6. Registrar resultado automático da BASE PRÓPRIA
@@ -1902,12 +1935,22 @@ if (bancoProprio.length) {
         [pedidoId]
       );
 
+      const partes = await listarPartesPedido(
+        pool,
+        pedidoId,
+        {
+          cliente_id: pedidos[0].cliente_id,
+          nome: pedidos[0].cliente
+        }
+      );
+
       return res.json({
         ok: true,
         pedido: pedidos[0],
         resultados,
         historico,
-        comunicacoes
+        comunicacoes,
+        partes
       });
 
     } catch (error) {

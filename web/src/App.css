@@ -4634,3 +4634,20 @@ border:1px solid #dbe0eb;border-radius:8px;background:white;cursor:pointer}
     width: 100%;
   }
 }
+.order-party-toggle {
+  padding: 0.7rem 0;
+}
+
+.order-party-toggle label {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.65rem;
+  cursor: pointer;
+}
+
+.order-party-toggle input[type='checkbox'] {
+  width: 1rem;
+  height: 1rem;
+  margin: 0;
+}

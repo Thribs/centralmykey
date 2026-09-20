@@ -179,6 +179,7 @@ function DetalhePedido({
   const resultados = dados.resultados || [];
   const historico = dados.historico || [];
   const comunicacoes = dados.comunicacoes || [];
+  const partes = dados.partes || {};
   const consultasFornecedor = comunicacoes.filter(
     item => item.finalidade === 'CONSULTA_FORNECEDOR'
   );
@@ -217,7 +218,7 @@ function DetalhePedido({
                 <button
                   type="button"
                   className="order-payment-button"
-                  onClick={() => aoConfirmarPagamento(pedido)}
+                  onClick={() => aoConfirmarPagamento({ ...pedido, partes })}
                 >
                   <CircleDollarSign size={17} />
                   Confirmar pagamento
@@ -266,9 +267,11 @@ function DetalhePedido({
           </div>
 
           <section className="order-detail-section">
-            <h3><UserRound size={17} /> Cliente e serviço</h3>
+            <h3><UserRound size={17} /> Partes e serviço</h3>
             <div className="order-info-grid">
               <div><span>Cliente</span><strong>{pedido.cliente}</strong></div>
+              <div><span>Comprador</span><strong>{partes.comprador?.nome || pedido.cliente}</strong></div>
+              <div><span>Pagador</span><strong>{partes.pagador?.nome || pedido.cliente}</strong></div>
               <div><span>Serviço</span><strong>{pedido.servico}</strong></div>
               <div><span>Atendente</span><strong>{pedido.atendente || 'Não informado'}</strong></div>
               <div><span>Origem</span><strong>{nomeOrigem(pedido.origem, pedido.origem_codigo)}</strong></div>

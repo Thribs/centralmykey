@@ -13,7 +13,15 @@ const INICIAL = {
   chassi: '',
   marca: '',
   modelo: '',
-  ano: ''
+  ano: '',
+  comprador_nome: '',
+  comprador_documento: '',
+  comprador_telefone: '',
+  comprador_email: '',
+  pagador_nome: '',
+  pagador_documento: '',
+  pagador_telefone: '',
+  pagador_email: ''
 };
 
 export default function NovoPedido({
@@ -27,6 +35,8 @@ export default function NovoPedido({
   const [carregando, setCarregando] = useState(true);
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState('');
+  const [compradorEhCliente, setCompradorEhCliente] = useState(true);
+  const [pagadorEhComprador, setPagadorEhComprador] = useState(true);
 
   useEffect(() => {
     Promise.all([
@@ -56,7 +66,34 @@ export default function NovoPedido({
     setErro('');
 
     try {
-      const resposta = await criarPedido(token, formulario);
+      const {
+        comprador_nome,
+        comprador_documento,
+        comprador_telefone,
+        comprador_email,
+        pagador_nome,
+        pagador_documento,
+        pagador_telefone,
+        pagador_email,
+        ...pedido
+      } = formulario;
+      if (!compradorEhCliente) {
+        pedido.comprador = {
+          nome: comprador_nome,
+          documento: comprador_documento,
+          telefone: comprador_telefone,
+          email: comprador_email
+        };
+      }
+      if (!pagadorEhComprador) {
+        pedido.pagador = {
+          nome: pagador_nome,
+          documento: pagador_documento,
+          telefone: pagador_telefone,
+          email: pagador_email
+        };
+      }
+      const resposta = await criarPedido(token, pedido);
       aoCriado(resposta);
     } catch (falha) {
       setErro(falha.message);
@@ -118,6 +155,70 @@ export default function NovoPedido({
                   ))}
                 </select>
               </label>
+
+              <div className="wide order-party-toggle">
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={compradorEhCliente}
+                    onChange={evento => setCompradorEhCliente(evento.target.checked)}
+                  />
+                  O comprador é o próprio cliente
+                </label>
+              </div>
+
+              {!compradorEhCliente && (
+                <>
+                  <label>
+                    Nome do comprador
+                    <input name="comprador_nome" value={formulario.comprador_nome} onChange={alterar} required />
+                  </label>
+                  <label>
+                    Documento do comprador
+                    <input name="comprador_documento" value={formulario.comprador_documento} onChange={alterar} maxLength="30" />
+                  </label>
+                  <label>
+                    Telefone do comprador
+                    <input name="comprador_telefone" value={formulario.comprador_telefone} onChange={alterar} maxLength="25" />
+                  </label>
+                  <label>
+                    E-mail do comprador
+                    <input type="email" name="comprador_email" value={formulario.comprador_email} onChange={alterar} maxLength="180" />
+                  </label>
+                </>
+              )}
+
+              <div className="wide order-party-toggle">
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={pagadorEhComprador}
+                    onChange={evento => setPagadorEhComprador(evento.target.checked)}
+                  />
+                  O pagador é o próprio comprador
+                </label>
+              </div>
+
+              {!pagadorEhComprador && (
+                <>
+                  <label>
+                    Nome do pagador
+                    <input name="pagador_nome" value={formulario.pagador_nome} onChange={alterar} required />
+                  </label>
+                  <label>
+                    Documento do pagador
+                    <input name="pagador_documento" value={formulario.pagador_documento} onChange={alterar} maxLength="30" />
+                  </label>
+                  <label>
+                    Telefone do pagador
+                    <input name="pagador_telefone" value={formulario.pagador_telefone} onChange={alterar} maxLength="25" />
+                  </label>
+                  <label>
+                    E-mail do pagador
+                    <input type="email" name="pagador_email" value={formulario.pagador_email} onChange={alterar} maxLength="180" />
+                  </label>
+                </>
+              )}
 
               <label>
                 Chassi

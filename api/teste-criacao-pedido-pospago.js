@@ -8,6 +8,9 @@ const mysql = require('mysql2/promise');
 const {
   criarTabelaOutboxTemporaria
 } = require('./teste-suporte-outbox');
+const {
+  criarTabelaPartesPedidoTemporaria
+} = require('./teste-suporte-partes-pedido');
 
 dotenv.config({
   path: process.env.CENTRALMYKEY_ENV_PATH || path.join(__dirname, '.env'),
@@ -84,6 +87,7 @@ async function executar() {
   try {
     await connection.beginTransaction();
     await criarTabelaOutboxTemporaria(connection);
+    await criarTabelaPartesPedidoTemporaria(connection);
     await connection.query(
       "SET timestamp = UNIX_TIMESTAMP('2026-09-19 12:00:00')"
     );
@@ -136,6 +140,23 @@ async function executar() {
       };
     };
 
+    const respostaInvalida = await global.fetch(`${api.url}/api/pedidos`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        cliente_id: cliente.insertId,
+        servico_id: servico.id,
+        chassi: `9BGPI11A0${sufixo}`,
+        marca: 'GM',
+        modelo: 'IDENTIDADE INVALIDA',
+        ano: 2026,
+        comprador: { nome: 'COMPRADOR', email: 'email-invalido' }
+      })
+    });
+    const corpoInvalido = await respostaInvalida.json();
+    assert.strictEqual(respostaInvalida.status, 400);
+    assert.strictEqual(corpoInvalido.codigo, 'PARTE_PEDIDO_INVALIDA');
+
     const resposta = await global.fetch(`${api.url}/api/pedidos`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -145,7 +166,19 @@ async function executar() {
         chassi: `9BGPO11A0${sufixo}`,
         marca: 'GM',
         modelo: 'TESTE POS-PAGO',
-        ano: 2026
+        ano: 2026,
+        comprador: {
+          nome: 'COMPRADOR TESTE',
+          documento: '12345678900',
+          telefone: '5511999999999',
+          email: 'comprador@teste.invalid'
+        },
+        pagador: {
+          nome: 'PAGADOR TESTE',
+          documento: '00987654321',
+          telefone: '5511888888888',
+          email: 'pagador@teste.invalid'
+        }
       })
     });
     const corpo = await resposta.json();
@@ -162,6 +195,10 @@ async function executar() {
     const detalhe = await respostaDetalhe.json();
     assert.strictEqual(respostaDetalhe.status, 200);
     assert.strictEqual(detalhe.ok, true);
+    assert.strictEqual(detalhe.partes.cliente.nome.startsWith('CLIENTE TESTE'), true);
+    assert.strictEqual(detalhe.partes.comprador.nome, 'COMPRADOR TESTE');
+    assert.strictEqual(detalhe.partes.pagador.nome, 'PAGADOR TESTE');
+    assert.strictEqual(detalhe.partes.pagador.documento, '00987654321');
     assert.strictEqual(detalhe.comunicacoes.length, 1);
     assert.strictEqual(detalhe.comunicacoes[0].status, 'PENDENTE');
     assert.strictEqual(
@@ -184,6 +221,36 @@ async function executar() {
     assert.strictEqual(
       fila.dados[0].comunicacao_fornecedor_status,
       'PENDENTE'
+    );
+
+    await connection.query(
+      "UPDATE clientes SET tipo_cobranca = 'ANTECIPADO' WHERE id = ?",
+      [cliente.insertId]
+    );
+    const respostaAntecipada = await global.fetch(`${api.url}/api/pedidos`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        cliente_id: cliente.insertId,
+        servico_id: servico.id,
+        chassi: `9BGAN11A0${sufixo}`,
+        marca: 'GM',
+        modelo: 'TESTE ANTECIPADO',
+        ano: 2026
+      })
+    });
+    const antecipada = await respostaAntecipada.json();
+    assert.strictEqual(respostaAntecipada.status, 201);
+    assert.strictEqual(antecipada.pedido.status, 'AGUARDANDO_PAGAMENTO');
+    const [[partesAntecipadas]] = await connection.query(
+      `SELECT COUNT(*) AS total, COUNT(DISTINCT nome) AS nomes
+         FROM pedido_partes WHERE pedido_id = ?`,
+      [antecipada.pedido.id]
+    );
+    assert.deepStrictEqual(
+      [Number(partesAntecipadas.total), Number(partesAntecipadas.nomes)],
+      [3, 1],
+      'Cliente, comprador e pagador devem herdar o mesmo snapshot por padrão'
     );
 
     const respostaResumo = await global.fetch(
@@ -228,8 +295,10 @@ async function executar() {
            AS historicos,
          (SELECT COUNT(*) FROM pedido_historico
            WHERE pedido_id = ? AND tipo = 'CONSULTA_FORNECEDOR_REAGENDADA')
-           AS reagendamentos`,
+           AS reagendamentos,
+         (SELECT COUNT(*) FROM pedido_partes WHERE pedido_id = ?) AS partes`,
       [
+        corpo.pedido.id,
         corpo.pedido.id,
         corpo.pedido.id,
         corpo.pedido.id,
@@ -239,7 +308,7 @@ async function executar() {
     );
     assert.deepStrictEqual(
       Object.values(estado).map(Number),
-      [1, 1, 1, 1, 1]
+      [1, 1, 1, 1, 1, 3]
     );
   } catch (falha) {
     erro = falha;
