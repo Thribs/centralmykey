@@ -4,6 +4,7 @@ const { buscarSenhaFonteVerdade } = require('./consulta-api-joelpires');
 const {
   agendarConsultaFornecedor
 } = require('./agendar-consulta-fornecedor');
+const { selecionarFornecedor } = require('./selecionar-fornecedor');
 const {
   agendarEntregaCliente
 } = require('./agendar-entrega-cliente');
@@ -146,17 +147,11 @@ module.exports = async function processarPedidoPago(connection, pedidoId, usuari
       montadora_nao_configurada: true, aguardando_configuracao: true };
   }
 
-  const [fornecedores] = await connection.query(
-    `SELECT fs.fornecedor_id,fs.custo,f.nome AS fornecedor,
-            f.whatsapp,f.telefone
-       FROM fornecedor_servicos fs INNER JOIN fornecedores f ON f.id=fs.fornecedor_id
-      WHERE fs.codigo_servico=? AND fs.ativo=1 AND f.ativo=1
-        AND (f.horario_inicio IS NULL OR f.horario_fim IS NULL
-          OR CURTIME() BETWEEN f.horario_inicio AND f.horario_fim)
-      ORDER BY fs.custo ASC LIMIT 1`, [pedido.codigo_servico]
+  const fornecedor = await selecionarFornecedor(
+    connection,
+    pedido.codigo_servico
   );
-  if (fornecedores.length) {
-    const fornecedor = fornecedores[0];
+  if (fornecedor) {
     const [origens] = await connection.query(
       `SELECT id FROM origens_senha WHERE codigo='FORNECEDOR' AND ativo=1 LIMIT 1`
     );
