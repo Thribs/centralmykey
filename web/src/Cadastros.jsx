@@ -13,6 +13,7 @@ import {
   ShieldCheck,
   Truck,
   UsersRound,
+  Wrench,
   X
 } from 'lucide-react';
 import {
@@ -20,12 +21,15 @@ import {
   alterarStatusFornecedor,
   atualizarCliente,
   atualizarFornecedor,
+  atualizarServicoFornecedor,
   buscarResumoClientes,
   buscarResumoFornecedores,
   cadastrarCliente,
   cadastrarFornecedor,
+  cadastrarServicoFornecedor,
   listarClientes,
-  listarFornecedores
+  listarFornecedores,
+  listarServicosFornecedor
 } from './api';
 
 const CLIENTE_INICIAL = {
@@ -57,6 +61,19 @@ const FORNECEDOR_INICIAL = {
   horario_inicio: '',
   horario_fim: '',
   observacoes: ''
+};
+
+const SERVICO_FORNECEDOR_INICIAL = {
+  codigo_servico: '',
+  descricao: '',
+  marca: '',
+  modelo: '',
+  ano_inicio: '',
+  ano_fim: '',
+  custo: '',
+  moeda: 'BRL',
+  prazo_estimado_minutos: '',
+  ativo: 1
 };
 
 function obterToken() {
@@ -409,6 +426,289 @@ function ModalCadastro({
   );
 }
 
+function ModalServicosFornecedor({ token, fornecedor, aoFechar }) {
+  const [catalogo, setCatalogo] = useState([]);
+  const [regras, setRegras] = useState([]);
+  const [formulario, setFormulario] = useState(SERVICO_FORNECEDOR_INICIAL);
+  const [editandoId, setEditandoId] = useState(null);
+  const [carregando, setCarregando] = useState(true);
+  const [salvando, setSalvando] = useState(false);
+  const [erro, setErro] = useState('');
+
+  const carregar = useCallback(async () => {
+    setCarregando(true);
+    setErro('');
+    try {
+      const vinculados = await listarServicosFornecedor(token, fornecedor.id);
+      setCatalogo(vinculados.catalogo || []);
+      setRegras(vinculados.dados || []);
+    } catch (falha) {
+      setErro(falha.message);
+    } finally {
+      setCarregando(false);
+    }
+  }, [fornecedor.id, token]);
+
+  useEffect(() => {
+    carregar();
+  }, [carregar]);
+
+  function alterar(evento) {
+    const { name, value, type, checked } = evento.target;
+    setFormulario(atual => {
+      const proximo = {
+        ...atual,
+        [name]: type === 'checkbox' ? (checked ? 1 : 0) : value
+      };
+      if (name === 'codigo_servico') {
+        const servico = catalogo.find(item => item.codigo === value);
+        if (servico) {
+          proximo.descricao = servico.nome;
+          proximo.marca = servico.marca || '';
+        }
+      }
+      return proximo;
+    });
+  }
+
+  function editar(regra) {
+    setEditandoId(regra.id);
+    setFormulario({
+      ...SERVICO_FORNECEDOR_INICIAL,
+      ...regra,
+      ano_inicio: regra.ano_inicio ?? '',
+      ano_fim: regra.ano_fim ?? '',
+      prazo_estimado_minutos: regra.prazo_estimado_minutos ?? ''
+    });
+    setErro('');
+  }
+
+  function limpar() {
+    setEditandoId(null);
+    setFormulario(SERVICO_FORNECEDOR_INICIAL);
+  }
+
+  async function salvar(evento) {
+    evento.preventDefault();
+    setSalvando(true);
+    setErro('');
+    try {
+      if (editandoId) {
+        await atualizarServicoFornecedor(
+          token,
+          fornecedor.id,
+          editandoId,
+          formulario
+        );
+      } else {
+        await cadastrarServicoFornecedor(token, fornecedor.id, formulario);
+      }
+      limpar();
+      await carregar();
+    } catch (falha) {
+      setErro(falha.message);
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  async function alternar(regra) {
+    setErro('');
+    try {
+      await atualizarServicoFornecedor(token, fornecedor.id, regra.id, {
+        ...regra,
+        ativo: regra.ativo ? 0 : 1
+      });
+      await carregar();
+    } catch (falha) {
+      setErro(falha.message);
+    }
+  }
+
+  return (
+    <div className="registry-overlay">
+      <section
+        className="registry-modal registry-services-modal"
+        role="dialog"
+        aria-modal="true"
+      >
+        <header>
+          <div>
+            <span>SERVIÇOS E CUSTOS</span>
+            <h2>{fornecedor.nome}</h2>
+          </div>
+          <button type="button" onClick={aoFechar} aria-label="Fechar">
+            <X size={20} />
+          </button>
+        </header>
+
+        <form onSubmit={salvar}>
+          {erro && <div className="registry-error">{erro}</div>}
+          <div className="registry-form">
+            <label className="wide">
+              Serviço
+              <select
+                name="codigo_servico"
+                value={formulario.codigo_servico}
+                onChange={alterar}
+                required
+              >
+                <option value="">Selecione</option>
+                {catalogo.map(item => (
+                  <option key={item.codigo} value={item.codigo}>
+                    {item.nome} ({item.codigo})
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Custo
+              <input
+                type="number"
+                name="custo"
+                min="0"
+                step="0.01"
+                value={formulario.custo}
+                onChange={alterar}
+                required
+              />
+            </label>
+            <label>
+              Moeda
+              <select name="moeda" value={formulario.moeda} onChange={alterar}>
+                <option value="BRL">BRL</option>
+                <option value="USD">USD</option>
+                <option value="PYG">PYG</option>
+              </select>
+            </label>
+            <label>
+              Marca
+              <input name="marca" value={formulario.marca || ''} onChange={alterar} />
+            </label>
+            <label>
+              Modelo
+              <input name="modelo" value={formulario.modelo || ''} onChange={alterar} />
+            </label>
+            <label>
+              Ano inicial
+              <input
+                type="number"
+                name="ano_inicio"
+                min="1900"
+                max="2200"
+                value={formulario.ano_inicio}
+                onChange={alterar}
+              />
+            </label>
+            <label>
+              Ano final
+              <input
+                type="number"
+                name="ano_fim"
+                min="1900"
+                max="2200"
+                value={formulario.ano_fim}
+                onChange={alterar}
+              />
+            </label>
+            <label>
+              Prazo estimado (minutos)
+              <input
+                type="number"
+                name="prazo_estimado_minutos"
+                min="0"
+                value={formulario.prazo_estimado_minutos}
+                onChange={alterar}
+              />
+            </label>
+            <label className="registry-check">
+              <input
+                type="checkbox"
+                name="ativo"
+                checked={Boolean(Number(formulario.ativo))}
+                onChange={alterar}
+              />
+              Regra ativa
+            </label>
+          </div>
+          <footer>
+            {editandoId && (
+              <button type="button" className="registry-cancel" onClick={limpar}>
+                Cancelar edição
+              </button>
+            )}
+            <button type="submit" className="registry-save" disabled={salvando}>
+              {salvando ? 'Salvando...' : editandoId ? 'Atualizar regra' : 'Adicionar regra'}
+            </button>
+          </footer>
+        </form>
+
+        <div className="registry-service-list">
+          {carregando ? (
+            <p>Carregando serviços...</p>
+          ) : regras.length === 0 ? (
+            <p>Nenhum serviço configurado para este fornecedor.</p>
+          ) : (
+            <div className="registry-table-wrap">
+              <table className="registry-table">
+                <thead>
+                  <tr>
+                    <th>Serviço</th>
+                    <th>Aplicação</th>
+                    <th>Custo</th>
+                    <th>Prazo</th>
+                    <th>Status</th>
+                    <th />
+                  </tr>
+                </thead>
+                <tbody>
+                  {regras.map(regra => (
+                    <tr key={regra.id}>
+                      <td>
+                        <strong>{regra.servico_nome || regra.descricao}</strong>
+                        <span>{regra.codigo_servico}</span>
+                      </td>
+                      <td>
+                        <strong>{[regra.marca, regra.modelo].filter(Boolean).join(' / ') || 'Geral'}</strong>
+                        <span>
+                          {regra.ano_inicio || regra.ano_fim
+                            ? `${regra.ano_inicio || '…'}–${regra.ano_fim || '…'}`
+                            : 'Todos os anos'}
+                        </span>
+                      </td>
+                      <td><strong>{regra.moeda} {Number(regra.custo).toFixed(2)}</strong></td>
+                      <td>{regra.prazo_estimado_minutos ? `${regra.prazo_estimado_minutos} min` : '—'}</td>
+                      <td>
+                        <span className={regra.ativo ? 'registry-active' : 'registry-blocked'}>
+                          {regra.ativo ? 'Ativo' : 'Inativo'}
+                        </span>
+                      </td>
+                      <td>
+                        <div className="registry-row-actions">
+                          <button type="button" title="Editar regra" onClick={() => editar(regra)}>
+                            <Pencil size={16} />
+                          </button>
+                          <button
+                            type="button"
+                            title={regra.ativo ? 'Desativar regra' : 'Ativar regra'}
+                            onClick={() => alternar(regra)}
+                          >
+                            {regra.ativo ? <Ban size={16} /> : <CheckCircle2 size={16} />}
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      </section>
+    </div>
+  );
+}
+
 function Cabecalho({ tipo, carregando, aoAtualizar, aoNovo }) {
   const cliente = tipo === 'cliente';
 
@@ -486,6 +786,7 @@ function TelaCadastro({ tipo }) {
   const [erro, setErro] = useState('');
   const [erroModal, setErroModal] = useState('');
   const [modal, setModal] = useState(null);
+  const [servicosFornecedor, setServicosFornecedor] = useState(null);
   const [salvando, setSalvando] = useState(false);
 
   const carregar = useCallback(async () => {
@@ -736,6 +1037,16 @@ function TelaCadastro({ tipo }) {
                   </td>
                   <td>
                     <div className="registry-row-actions">
+                      {!cliente && (
+                        <button
+                          type="button"
+                          title="Serviços e custos"
+                          aria-label={`Serviços e custos de ${registro.nome}`}
+                          onClick={() => setServicosFornecedor(registro)}
+                        >
+                          <Wrench size={16} />
+                        </button>
+                      )}
                       <button
                         type="button"
                         title="Editar"
@@ -778,6 +1089,14 @@ function TelaCadastro({ tipo }) {
             setErroModal('');
           }}
           aoSalvar={salvar}
+        />
+      )}
+
+      {servicosFornecedor && (
+        <ModalServicosFornecedor
+          token={token}
+          fornecedor={servicosFornecedor}
+          aoFechar={() => setServicosFornecedor(null)}
         />
       )}
     </section>

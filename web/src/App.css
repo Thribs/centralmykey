@@ -3370,6 +3370,16 @@
 .registry-modal footer button {
   min-height:39px;padding:0 16px;border-radius:9px;font-weight:750;cursor:pointer
 }
+.registry-services-modal { width:min(980px,100%);max-height:94vh;overflow-y:auto }
+.registry-services-modal form { max-height:none }
+.registry-service-list { padding:0 20px 20px }
+.registry-service-list>p {
+  margin:0;padding:18px;border:1px dashed #d8deeb;border-radius:10px;
+  color:#77809b;text-align:center
+}
+.registry-service-list .registry-table-wrap {
+  border:1px solid #e2e6f0;border-radius:10px
+}
 .registry-cancel { border:1px solid #dce1ed;background:white;color:#555e78 }
 .registry-save { border:0;background:#fa6407;color:white }
 .rotating { animation:registry-spin .8s linear infinite }

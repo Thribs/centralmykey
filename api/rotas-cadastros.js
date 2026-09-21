@@ -8,6 +8,57 @@ module.exports = function(app, pool) {
     return resultado || null;
   };
 
+  const inteiroOpcional = valor => {
+    if (valor === undefined || valor === null || valor === '') return null;
+    const numero = Number(valor);
+    return Number.isInteger(numero) ? numero : NaN;
+  };
+
+  const validarServicoFornecedor = corpo => {
+    const codigoServico = texto(corpo.codigo_servico)?.toUpperCase();
+    const custo = Number(corpo.custo);
+    const moeda = texto(corpo.moeda)?.toUpperCase() || 'BRL';
+    const anoInicio = inteiroOpcional(corpo.ano_inicio);
+    const anoFim = inteiroOpcional(corpo.ano_fim);
+    const prazo = inteiroOpcional(corpo.prazo_estimado_minutos);
+    const ativo = corpo.ativo === undefined ? 1 : Number(corpo.ativo);
+
+    if (!codigoServico || !Number.isFinite(custo) || custo < 0) {
+      return { erro: 'Serviço e custo não negativo são obrigatórios' };
+    }
+    if (!['BRL', 'USD', 'PYG'].includes(moeda)) {
+      return { erro: 'Moeda inválida' };
+    }
+    if (
+      (anoInicio !== null && (!Number.isInteger(anoInicio) || anoInicio < 1900 || anoInicio > 2200)) ||
+      (anoFim !== null && (!Number.isInteger(anoFim) || anoFim < 1900 || anoFim > 2200)) ||
+      (anoInicio !== null && anoFim !== null && anoInicio > anoFim)
+    ) {
+      return { erro: 'Intervalo de anos inválido' };
+    }
+    if (prazo !== null && (!Number.isInteger(prazo) || prazo < 0)) {
+      return { erro: 'Prazo estimado inválido' };
+    }
+    if (![0, 1].includes(ativo)) {
+      return { erro: 'Status do serviço inválido' };
+    }
+
+    return {
+      dados: {
+        codigo_servico: codigoServico,
+        descricao: texto(corpo.descricao),
+        marca: texto(corpo.marca),
+        modelo: texto(corpo.modelo),
+        ano_inicio: anoInicio,
+        ano_fim: anoFim,
+        custo,
+        moeda,
+        prazo_estimado_minutos: prazo,
+        ativo
+      }
+    };
+  };
+
   // ============================================================
   // FORNECEDORES
   // ============================================================
@@ -210,5 +261,195 @@ module.exports = function(app, pool) {
         });
       }
     }
+  );
+
+  app.get(
+    '/api/fornecedores/:id/servicos',
+    autenticarToken,
+    exigirPermissao('FORNECEDORES', 'visualizar'),
+    async (req, res) => {
+      const fornecedorId = Number(req.params.id);
+      if (!Number.isInteger(fornecedorId) || fornecedorId <= 0) {
+        return res.status(400).json({ ok: false, error: 'Fornecedor inválido' });
+      }
+
+      try {
+        const [fornecedores] = await pool.query(
+          'SELECT id, nome FROM fornecedores WHERE id = ? LIMIT 1',
+          [fornecedorId]
+        );
+        if (!fornecedores.length) {
+          return res.status(404).json({ ok: false, error: 'Fornecedor não encontrado' });
+        }
+
+        const [servicos] = await pool.query(`
+          SELECT fs.id, fs.fornecedor_id, fs.codigo_servico, fs.descricao,
+                 fs.marca, fs.modelo, fs.ano_inicio, fs.ano_fim, fs.custo,
+                 fs.moeda, fs.prazo_estimado_minutos, fs.ativo,
+                 s.nome AS servico_nome, s.ativo AS servico_ativo
+            FROM fornecedor_servicos fs
+            LEFT JOIN servicos s ON s.codigo = fs.codigo_servico
+           WHERE fs.fornecedor_id = ?
+           ORDER BY fs.ativo DESC, fs.codigo_servico, fs.marca, fs.modelo,
+                    fs.ano_inicio, fs.id
+        `, [fornecedorId]);
+        const [catalogo] = await pool.query(`
+          SELECT codigo, nome, categoria, marca, moeda
+            FROM servicos
+           WHERE ativo = 1
+           ORDER BY nome, codigo
+        `);
+
+        return res.json({
+          ok: true,
+          fornecedor: fornecedores[0],
+          total: servicos.length,
+          dados: servicos,
+          catalogo
+        });
+      } catch (error) {
+        console.error('Erro ao listar serviços do fornecedor:', error);
+        return res.status(500).json({
+          ok: false,
+          error: 'Erro ao consultar serviços do fornecedor'
+        });
+      }
+    }
+  );
+
+  const salvarServicoFornecedor = criar => async (req, res) => {
+    const fornecedorId = Number(req.params.id);
+    const vinculoId = criar ? null : Number(req.params.servicoId);
+    if (
+      !Number.isInteger(fornecedorId) || fornecedorId <= 0 ||
+      (!criar && (!Number.isInteger(vinculoId) || vinculoId <= 0))
+    ) {
+      return res.status(400).json({ ok: false, error: 'Identificador inválido' });
+    }
+
+    const validacao = validarServicoFornecedor(req.body || {});
+    if (validacao.erro) {
+      return res.status(400).json({ ok: false, error: validacao.erro });
+    }
+
+    const connection = await pool.getConnection();
+    try {
+      await connection.beginTransaction();
+      const [fornecedores] = await connection.query(
+        'SELECT id FROM fornecedores WHERE id = ? LIMIT 1 FOR UPDATE',
+        [fornecedorId]
+      );
+      if (!fornecedores.length) {
+        await connection.rollback();
+        return res.status(404).json({ ok: false, error: 'Fornecedor não encontrado' });
+      }
+
+      const dados = validacao.dados;
+      const [catalogo] = await connection.query(
+        'SELECT codigo, nome FROM servicos WHERE codigo = ? LIMIT 1',
+        [dados.codigo_servico]
+      );
+      if (!catalogo.length) {
+        await connection.rollback();
+        return res.status(400).json({ ok: false, error: 'Serviço não cadastrado' });
+      }
+      dados.descricao = dados.descricao || catalogo[0].nome;
+
+      let antes = null;
+      if (!criar) {
+        const [atuais] = await connection.query(
+          `SELECT id, fornecedor_id, codigo_servico, descricao, marca, modelo,
+                  ano_inicio, ano_fim, custo, moeda, prazo_estimado_minutos, ativo
+             FROM fornecedor_servicos
+            WHERE id = ? AND fornecedor_id = ? LIMIT 1 FOR UPDATE`,
+          [vinculoId, fornecedorId]
+        );
+        if (!atuais.length) {
+          await connection.rollback();
+          return res.status(404).json({ ok: false, error: 'Serviço do fornecedor não encontrado' });
+        }
+        antes = atuais[0];
+      }
+
+      const [duplicados] = await connection.query(
+        `SELECT id FROM fornecedor_servicos
+          WHERE fornecedor_id = ? AND codigo_servico = ?
+            AND marca <=> ? AND modelo <=> ?
+            AND ano_inicio <=> ? AND ano_fim <=> ?
+            AND (? IS NULL OR id <> ?)
+          LIMIT 1 FOR UPDATE`,
+        [fornecedorId, dados.codigo_servico, dados.marca, dados.modelo,
+         dados.ano_inicio, dados.ano_fim, vinculoId, vinculoId]
+      );
+      if (duplicados.length) {
+        await connection.rollback();
+        return res.status(409).json({
+          ok: false,
+          error: 'Já existe uma regra para esse serviço, marca, modelo e período'
+        });
+      }
+
+      let id = vinculoId;
+      if (criar) {
+        const [resultado] = await connection.query(`
+          INSERT INTO fornecedor_servicos
+            (fornecedor_id, codigo_servico, descricao, marca, modelo,
+             ano_inicio, ano_fim, custo, moeda, prazo_estimado_minutos, ativo)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `, [fornecedorId, dados.codigo_servico, dados.descricao, dados.marca,
+          dados.modelo, dados.ano_inicio, dados.ano_fim, dados.custo,
+          dados.moeda, dados.prazo_estimado_minutos, dados.ativo]);
+        id = resultado.insertId;
+      } else {
+        await connection.query(`
+          UPDATE fornecedor_servicos
+             SET codigo_servico = ?, descricao = ?, marca = ?, modelo = ?,
+                 ano_inicio = ?, ano_fim = ?, custo = ?, moeda = ?,
+                 prazo_estimado_minutos = ?, ativo = ?
+           WHERE id = ? AND fornecedor_id = ?
+        `, [dados.codigo_servico, dados.descricao, dados.marca, dados.modelo,
+          dados.ano_inicio, dados.ano_fim, dados.custo, dados.moeda,
+          dados.prazo_estimado_minutos, dados.ativo, id, fornecedorId]);
+      }
+
+      const depois = { id, fornecedor_id: fornecedorId, ...dados };
+      await connection.query(`
+        INSERT INTO auditoria
+          (usuario_id, modulo, acao, entidade, entidade_id, descricao,
+           dados_antes, dados_depois, ip)
+        VALUES (?, 'FORNECEDORES', ?, 'fornecedor_servicos', ?, ?, ?, ?, ?)
+      `, [req.usuario?.id || null, criar ? 'CRIAR_SERVICO' : 'EDITAR_SERVICO',
+        String(id), criar ? 'Serviço vinculado ao fornecedor' : 'Serviço do fornecedor atualizado',
+        antes ? JSON.stringify(antes) : null, JSON.stringify(depois), req.ip || null]);
+
+      await connection.commit();
+      return res.status(criar ? 201 : 200).json({
+        ok: true,
+        servico_id: id,
+        mensagem: criar
+          ? 'Serviço vinculado ao fornecedor'
+          : 'Serviço do fornecedor atualizado'
+      });
+    } catch (error) {
+      await connection.rollback();
+      console.error('Erro ao salvar serviço do fornecedor:', error);
+      return res.status(500).json({ ok: false, error: 'Erro ao salvar serviço do fornecedor' });
+    } finally {
+      connection.release();
+    }
+  };
+
+  app.post(
+    '/api/fornecedores/:id/servicos',
+    autenticarToken,
+    exigirPermissao('FORNECEDORES', 'editar'),
+    salvarServicoFornecedor(true)
+  );
+
+  app.put(
+    '/api/fornecedores/:id/servicos/:servicoId',
+    autenticarToken,
+    exigirPermissao('FORNECEDORES', 'editar'),
+    salvarServicoFornecedor(false)
   );
 };

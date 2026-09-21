@@ -624,6 +624,50 @@ export async function alterarStatusFornecedor(token, id, ativo) {
   return lerResposta(resposta);
 }
 
+export async function listarServicosFornecedor(token, fornecedorId) {
+  const resposta = await requisitar(
+    `${API_URL}/api/fornecedores/${fornecedorId}/servicos`,
+    { headers: cabecalhoAutenticado(token) }
+  );
+
+  return lerResposta(resposta);
+}
+
+export async function cadastrarServicoFornecedor(token, fornecedorId, dados) {
+  const resposta = await requisitar(
+    `${API_URL}/api/fornecedores/${fornecedorId}/servicos`,
+    {
+      method: 'POST',
+      headers: cabecalhoAutenticado(token, {
+        'Content-Type': 'application/json'
+      }),
+      body: JSON.stringify(dados)
+    }
+  );
+
+  return lerResposta(resposta);
+}
+
+export async function atualizarServicoFornecedor(
+  token,
+  fornecedorId,
+  servicoId,
+  dados
+) {
+  const resposta = await requisitar(
+    `${API_URL}/api/fornecedores/${fornecedorId}/servicos/${servicoId}`,
+    {
+      method: 'PUT',
+      headers: cabecalhoAutenticado(token, {
+        'Content-Type': 'application/json'
+      }),
+      body: JSON.stringify(dados)
+    }
+  );
+
+  return lerResposta(resposta);
+}
+
 
 export async function buscarResumoFinanceiro(token) {
   const resposta = await requisitar(`${API_URL}/api/financeiro/resumo`, {
