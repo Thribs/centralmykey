@@ -62,6 +62,15 @@ async function prepararFixture() {
   await connection.beginTransaction();
   await criarTabelaOutboxTemporaria(connection);
   await criarTabelaPartesPedidoTemporaria(connection);
+  await connection.query(
+    `CREATE TEMPORARY TABLE fornecedor_servicos (
+       id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+       fornecedor_id BIGINT NOT NULL,
+       codigo_servico VARCHAR(60) NOT NULL,
+       custo DECIMAL(12,2) NOT NULL,
+       ativo TINYINT(1) NOT NULL
+     ) ENGINE=InnoDB`
+  );
 
   const [[servico]] = await connection.query(
     "SELECT id, preco_base FROM servicos WHERE codigo='GM_SENHA' AND ativo=1 LIMIT 1"
@@ -76,8 +85,11 @@ async function prepararFixture() {
   const marcador = `${process.pid}-${String(Date.now()).slice(-8)}`;
   const protocolo = `E2E${process.pid}${String(Date.now()).slice(-7)}`;
   const chassi = `9BGE2E1A0${String(Date.now()).slice(-8)}`;
+  const protocoloNaoEncontrado = `NF${process.pid}${String(Date.now()).slice(-7)}`;
+  const chassiNaoEncontrado = `9BGE2E2A0${String(Date.now() + 1).slice(-8)}`;
   const telefone = `5594${String(Date.now()).slice(-8)}`;
   const nomeCliente = `CLIENTE E2E INTEGRADO ${marcador}`;
+  const nomeFornecedor = `FORNECEDOR E2E INTEGRADO ${marcador}`;
   const apiSenhaId = 970000000 + (process.pid % 100000);
 
   const [cliente] = await connection.query(
@@ -95,6 +107,32 @@ async function prepararFixture() {
              'AGUARDANDO_PAGAMENTO', ?, 0, 'BRL')`,
     [protocolo, cliente.insertId, servico.id, chassi, Number(servico.preco_base)]
   );
+  const [pedidoNaoEncontrado] = await connection.query(
+    `INSERT INTO pedidos_senha
+       (protocolo, cliente_id, servico_id, chassi, marca, modelo, ano,
+        status, valor_venda, custo, moeda)
+     VALUES (?, ?, ?, ?, 'GM', 'E2E 404', 2026,
+             'AGUARDANDO_PAGAMENTO', ?, 0, 'BRL')`,
+    [
+      protocoloNaoEncontrado,
+      cliente.insertId,
+      servico.id,
+      chassiNaoEncontrado,
+      Number(servico.preco_base)
+    ]
+  );
+  const [fornecedor] = await connection.query(
+    `INSERT INTO fornecedores
+       (nome, whatsapp, tipo, horario_inicio, horario_fim, ativo)
+     VALUES (?, '5511444444404', 'PESSOA', '00:00:00', '23:59:59', 1)`,
+    [nomeFornecedor]
+  );
+  await connection.query(
+    `INSERT INTO fornecedor_servicos
+       (fornecedor_id, codigo_servico, custo, ativo)
+     VALUES (?, 'GM_SENHA', 0.01, 1)`,
+    [fornecedor.insertId]
+  );
   const clienteSnapshot = {
     id: cliente.insertId,
     nome: nomeCliente,
@@ -106,19 +144,45 @@ async function prepararFixture() {
     pedido.insertId,
     prepararPartes(clienteSnapshot)
   );
+  await registrarPartesPedido(
+    connection,
+    pedidoNaoEncontrado.insertId,
+    prepararPartes(clienteSnapshot)
+  );
 
   contexto = {
-    pedidoId: pedido.insertId,
-    protocolo,
-    chassi,
+    encontrado: {
+      pedidoId: pedido.insertId,
+      protocolo,
+      chassi,
+      apiSenhaId
+    },
+    naoEncontrado: {
+      pedidoId: pedidoNaoEncontrado.insertId,
+      protocolo: protocoloNaoEncontrado,
+      chassi: chassiNaoEncontrado,
+      fornecedorId: fornecedor.insertId,
+      fornecedor: nomeFornecedor
+    },
     nomeCliente,
-    apiSenhaId,
+    nomeFornecedor,
     usuario
   };
 
   global.fetch = async (url, opcoes) => {
     if (!String(url).startsWith('https://mock-e2e.joelpires.invalid/')) {
       return fetchOriginal(url, opcoes);
+    }
+    await new Promise(resolve => setTimeout(resolve, 250));
+    const chassiConsultado = new URL(String(url)).searchParams.get('chassi');
+    if (chassiConsultado === chassiNaoEncontrado.slice(-8)) {
+      return {
+        ok: false,
+        status: 404,
+        text: async () => JSON.stringify({
+          error: { name: 'SenhaNotFoundError', message: 'Não encontrada' }
+        })
+      };
     }
     return {
       ok: true,
@@ -170,16 +234,29 @@ async function iniciar() {
   app.get('/api/e2e/health', (req, res) => res.json({ ok: true }));
   app.get('/api/e2e/contexto', (req, res) => res.json({
     ok: true,
-    pedido_id: contexto.pedidoId,
-    protocolo: contexto.protocolo,
+    encontrado: {
+      pedido_id: contexto.encontrado.pedidoId,
+      protocolo: contexto.encontrado.protocolo
+    },
+    nao_encontrado: {
+      pedido_id: contexto.naoEncontrado.pedidoId,
+      protocolo: contexto.naoEncontrado.protocolo,
+      fornecedor_id: contexto.naoEncontrado.fornecedorId,
+      fornecedor: contexto.naoEncontrado.fornecedor
+    },
     cliente: contexto.nomeCliente
   }));
   app.get('/api/e2e/verificacao', async (req, res) => {
+    const naoEncontrado = req.query.cenario === 'nao_encontrado';
+    const cenario = naoEncontrado
+      ? contexto.naoEncontrado
+      : contexto.encontrado;
     const [[estado]] = await connection.query(
       `SELECT
          p.status,
          p.custo,
          p.fornecedor_id,
+         f.nome AS fornecedor,
          (SELECT COUNT(*) FROM pagamentos pg
            INNER JOIN lancamentos_financeiros lf ON lf.id = pg.lancamento_id
           WHERE lf.pedido_senha_id = p.id) AS pagamentos,
@@ -187,10 +264,14 @@ async function iniciar() {
           WHERE pr.pedido_id = p.id AND pr.status = 'CONFIRMADO'
             AND pr.fornecedor_id IS NULL AND pr.custo = 0) AS resultados,
          (SELECT COUNT(*) FROM banco_senhas bs
-          WHERE JSON_UNQUOTE(JSON_EXTRACT(bs.dados_extras, '$.api_senha_id')) = ?) AS cache
+          WHERE bs.chassi = ?) AS cache
        FROM pedidos_senha p
+       LEFT JOIN fornecedores f ON f.id = p.fornecedor_id
        WHERE p.id = ?`,
-      [String(contexto.apiSenhaId), contexto.pedidoId]
+      [
+        cenario.chassi,
+        cenario.pedidoId
+      ]
     );
     const [[comunicacoes]] = await connection.query(
       `SELECT
@@ -198,7 +279,7 @@ async function iniciar() {
          SUM(finalidade = 'CONSULTA_FORNECEDOR') AS consultas_fornecedor
        FROM comunicacoes_outbox
        WHERE pedido_id = ?`,
-      [contexto.pedidoId]
+      [cenario.pedidoId]
     );
     res.json({ ok: true, estado: { ...estado, ...comunicacoes } });
   });
@@ -226,11 +307,18 @@ async function encerrar(codigo = 0) {
       await connection.rollback();
       const [[residuos]] = await connection.query(
         `SELECT
-           (SELECT COUNT(*) FROM pedidos_senha WHERE protocolo = ?) AS pedidos,
+           (SELECT COUNT(*) FROM pedidos_senha WHERE protocolo IN (?, ?)) AS pedidos,
            (SELECT COUNT(*) FROM clientes WHERE nome = ?) AS clientes,
+           (SELECT COUNT(*) FROM fornecedores WHERE nome = ?) AS fornecedores,
            (SELECT COUNT(*) FROM banco_senhas
              WHERE JSON_UNQUOTE(JSON_EXTRACT(dados_extras, '$.api_senha_id')) = ?) AS cache`,
-        [contexto?.protocolo, contexto?.nomeCliente, String(contexto?.apiSenhaId)]
+        [
+          contexto?.encontrado?.protocolo,
+          contexto?.naoEncontrado?.protocolo,
+          contexto?.nomeCliente,
+          contexto?.nomeFornecedor,
+          String(contexto?.encontrado?.apiSenhaId)
+        ]
       );
       if (Object.values(residuos).some(Number)) {
         codigoFinal = 1;

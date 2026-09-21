@@ -21,6 +21,8 @@ A suíte cobre inicialmente:
 - confirmação de pagamento GM pelo navegador contra API e MySQL transacionais,
   comprovando resultado da API simulada, cache, custo zero, nenhum fornecedor,
   entrega pendente e rollback sem resíduos;
+- resposta 404 percorrida nas mesmas camadas reais, com fornecedor fictício
+  selecionado, custo persistido e consulta única na outbox;
 - estorno seguido de cancelamento com desistência sem mutação financeira,
   confirmação explícita da devolução, estado intermediário e uma única
   requisição de estorno;
