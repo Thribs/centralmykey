@@ -108,16 +108,30 @@ export default function Relatorios() {
         <form onSubmit={aplicar}>
           <label>
             <CalendarDays size={15} />
-            <input type="date" value={inicio} onChange={e => setInicio(e.target.value)} />
+            <input
+              aria-label="Data inicial"
+              type="date"
+              value={inicio}
+              onChange={e => setInicio(e.target.value)}
+            />
           </label>
           <span>até</span>
           <label>
             <CalendarDays size={15} />
-            <input type="date" value={fim} onChange={e => setFim(e.target.value)} />
+            <input
+              aria-label="Data final"
+              type="date"
+              value={fim}
+              onChange={e => setFim(e.target.value)}
+            />
           </label>
           <label>
             <CircleDollarSign size={15} />
-            <select value={moeda} onChange={e => setMoeda(e.target.value)}>
+            <select
+              aria-label="Moeda do relatório"
+              value={moeda}
+              onChange={e => setMoeda(e.target.value)}
+            >
               <option value="BRL">BRL</option>
               <option value="USD">USD</option>
               <option value="PYG">PYG</option>

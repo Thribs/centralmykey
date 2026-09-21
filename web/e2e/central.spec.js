@@ -61,6 +61,19 @@ async function autenticarIntegrado(page, credenciais) {
   return corpo.token;
 }
 
+async function abrirModulo(page, nome, largura) {
+  if (largura <= 860) {
+    await page.getByRole('button', { name: 'Abrir menu' }).click();
+  }
+  await page.getByRole('button', { name: nome, exact: true }).click();
+}
+
+async function esperarSemRolagemHorizontal(page) {
+  await expect.poll(async () => page.evaluate(() =>
+    document.documentElement.scrollWidth <= window.innerWidth
+  )).toBe(true);
+}
+
 test('busca global abre o pedido com filtro aplicado', async ({ page }) => {
   const protocolo = 'CMK-E2E-0001';
   let filtroRecebido = '';
@@ -911,6 +924,7 @@ test('financeiro fecha e paga fornecedor uma única vez na transação', async (
   const contexto = contextoCompleto.fechamento_fornecedor;
 
   await autenticarIntegrado(page, contextoCompleto.autenticacao.administrador);
+  await page.setViewportSize({ width: 390, height: 844 });
   const dialogos = [
     ['confirm'],
     ['confirm'],
@@ -925,13 +939,12 @@ test('financeiro fecha e paga fornecedor uma única vez na transação', async (
   });
 
   await page.goto('/');
-  await page.getByRole('button', { name: 'Financeiro', exact: true }).click();
+  await abrirModulo(page, 'Financeiro', 390);
   await expect(page.getByRole('main').getByRole('heading', { name: 'Financeiro' }))
     .toBeVisible();
   await page.getByRole('main')
     .getByRole('button', { name: 'Fornecedores', exact: true }).click();
-  await page.locator('.finance-filters select').nth(1)
-    .selectOption(String(contexto.fornecedor_id));
+  await page.getByLabel('Fornecedor').selectOption(String(contexto.fornecedor_id));
   await page.getByRole('button', { name: 'Gerar última semana' }).click();
 
   let linha = page.locator('tr', { hasText: contexto.fornecedor });
@@ -941,6 +954,8 @@ test('financeiro fecha e paga fornecedor uma única vez na transação', async (
   const detalhe = page.getByRole('dialog', { name: /Fechamento #/ });
   await expect(detalhe.getByText(contexto.protocolo, { exact: true })).toBeVisible();
   await expect(detalhe.getByText('1', { exact: true })).toBeVisible();
+  const caixaDetalhe = await detalhe.boundingBox();
+  expect(caixaDetalhe.width).toBeLessThanOrEqual(390);
   await detalhe.getByRole('button', { name: 'Fechar detalhes' }).click();
 
   linha = page.locator('tr', { hasText: contexto.fornecedor });
@@ -961,6 +976,58 @@ test('financeiro fecha e paga fornecedor uma única vez na transação', async (
   expect(Number(verificacao.estado.itens)).toBe(1);
   expect(Number(verificacao.estado.lancamentos)).toBe(1);
   expect(Number(verificacao.estado.pagamentos)).toBe(1);
+  await esperarSemRolagemHorizontal(page);
+});
+
+test('financeiro e administração permanecem acessíveis em três larguras', async ({ page }) => {
+  test.setTimeout(90000);
+  const respostaContexto = await page.request.get(`${API}/api/e2e/contexto`);
+  expect(respostaContexto.ok()).toBe(true);
+  const contexto = await respostaContexto.json();
+  await autenticarIntegrado(page, contexto.autenticacao.administrador);
+
+  const tamanhos = [
+    { width: 390, height: 844 },
+    { width: 768, height: 1024 },
+    { width: 1440, height: 1000 }
+  ];
+
+  for (const tamanho of tamanhos) {
+    await page.setViewportSize(tamanho);
+    await page.goto('/');
+
+    await abrirModulo(page, 'Financeiro', tamanho.width);
+    const financeiro = page.getByRole('main');
+    await expect(financeiro.getByRole('heading', { name: 'Financeiro' }))
+      .toBeVisible();
+    await expect(financeiro.getByLabel('Moeda')).toBeVisible();
+    await financeiro.getByRole('button', { name: 'Lançamentos', exact: true }).click();
+    await expect(financeiro.getByPlaceholder(
+      'Descrição, cliente, fornecedor ou protocolo'
+    )).toBeVisible();
+    await financeiro.getByRole('button', { name: 'Fornecedores', exact: true }).click();
+    await expect(financeiro.getByLabel('Fornecedor')).toBeVisible();
+    await expect(financeiro.getByRole('button', { name: 'Gerar última semana' }))
+      .toBeVisible();
+    await esperarSemRolagemHorizontal(page);
+
+    await abrirModulo(page, 'Relatórios', tamanho.width);
+    const relatorios = page.getByRole('main');
+    await expect(relatorios.getByRole('heading', { name: 'Relatórios' }))
+      .toBeVisible();
+    await expect(relatorios.getByLabel('Data inicial')).toBeVisible();
+    await expect(relatorios.getByLabel('Data final')).toBeVisible();
+    await expect(relatorios.getByLabel('Moeda do relatório')).toBeVisible();
+    await expect(relatorios.getByRole('button', { name: 'Gerar' })).toBeVisible();
+    await esperarSemRolagemHorizontal(page);
+
+    for (const modulo of ['Usuários', 'Configurações', 'Auditoria', 'Monitoramento']) {
+      await abrirModulo(page, modulo, tamanho.width);
+      await expect(page.getByRole('main').getByRole('heading', { name: modulo }))
+        .toBeVisible();
+      await esperarSemRolagemHorizontal(page);
+    }
+  }
 });
 
 test('administrador cria usuário e define permissões pelas rotas reais', async ({ page }) => {

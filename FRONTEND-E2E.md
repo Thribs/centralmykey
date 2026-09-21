@@ -31,7 +31,10 @@ A suíte cobre inicialmente:
 - resultado de fornecedor registrado e confirmado pelas rotas reais, com
   consulta cancelada, cache alimentado e entrega preparada;
 - fechamento semanal gerado pela tela financeira contra API e MySQL reais,
-  com conferência dos itens, aprovação, despesa e pagamento únicos;
+  com conferência dos itens, aprovação, despesa e pagamento únicos no celular;
+- Financeiro, Relatórios, Usuários, Configurações, Auditoria e Monitoramento
+  percorridos contra as rotas reais em 390 × 844, 768 × 1024 e 1440 × 1000,
+  sem rolagem horizontal da página;
 - administrador criando, autorizando e bloqueando usuário pela interface, e
   visualizador sem controles de mutação nem possibilidade de forçar a criação
   pela API; todo o cenário usa JWT real e rollback;
@@ -57,7 +60,7 @@ A suíte cobre inicialmente:
 - retentativa direta após falha confirmada e confirmação obrigatória antes de
   repetir um envio incerto;
 - bloqueio de cliente somente depois da confirmação;
-- menu móvel e ausência de rolagem horizontal em 390 × 844 pixels.
+- menu móvel e ausência de rolagem horizontal em 390 × 844 pixels;
 - criação, pagamento, resultado, correção e validação GM dentro do viewport em
   390 × 844, 768 × 1024 e 1440 × 900, com ações finais alcançáveis;
 - nomes acessíveis e `aria-modal` nos modais críticos do pedido GM.

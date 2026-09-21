@@ -434,7 +434,11 @@ export default function Financeiro() {
         </div>
 
         <div className="finance-filters">
-          <select value={moeda} onChange={evento => setMoeda(evento.target.value)}>
+          <select
+            aria-label="Moeda"
+            value={moeda}
+            onChange={evento => setMoeda(evento.target.value)}
+          >
             <option value="BRL">BRL</option>
             <option value="USD">USD</option>
             <option value="PYG">PYG</option>
@@ -460,6 +464,7 @@ export default function Financeiro() {
           {aba === 'fornecedores' && (
             <>
               <select
+                aria-label="Fornecedor"
                 value={fornecedorId}
                 onChange={evento => setFornecedorId(evento.target.value)}
               >
@@ -474,7 +479,11 @@ export default function Financeiro() {
             </>
           )}
 
-          <select value={status} onChange={evento => setStatus(evento.target.value)}>
+          <select
+            aria-label="Status"
+            value={status}
+            onChange={evento => setStatus(evento.target.value)}
+          >
             <option value="">Todos os status</option>
             {aba === 'faturas' ? (
               <>
