@@ -32,15 +32,19 @@ de cada consulta.
 
 ## Sicoob
 
-A branch de desenvolvimento contém a correlação local entre `txid` e pedido, o
-parser do webhook Pix, deduplicação pelo `endToEndId`, validação exata de valor e
-registro de `txid` desconhecido sem gerar efeito financeiro. A rota
-administrativa lista somente metadados da referência.
+A branch de desenvolvimento contém o cliente OAuth2/mTLS para criar cobranças,
+a correlação local entre `txid` e pedido, o parser do webhook Pix, deduplicação
+pelo `endToEndId`, validação exata de valor e registro de `txid` desconhecido sem
+gerar efeito financeiro. A rota autenticada de cobrança está implementada, mas
+permanece bloqueada até a entrada segura do webhook. A rota administrativa
+lista somente metadados da referência.
 
 O endpoint público permanece desativado. O contrato oficial do Sicoob exige
 mTLS na entrega do webhook, e o proxy atual deste VPS não valida certificado de
 cliente. A ativação depende da cadeia de certificados, configuração do Nginx,
-credenciais de homologação e criação remota da cobrança por `PUT /cob/{txid}`.
+credenciais e certificados de homologação. A criação remota por
+`PUT /cob/{txid}` está implementada com transporte simulado nos testes, mas
+ainda não foi homologada contra o Sicoob.
 
 ## PlugPay, WBuy e Bling
 

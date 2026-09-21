@@ -5,6 +5,7 @@
 O núcleo local está implementado sem tráfego externo e sem alteração da
 produção:
 
+- o cliente usa OAuth2, mTLS e `PUT /cob/{txid}` para registrar a cobrança;
 - uma referência Pix associa um `txid` único ao pedido e ao valor esperado;
 - o webhook padrão `{ "pix": [...] }` é validado antes do processamento;
 - o `endToEndId` identifica o evento e o pagamento para reentrega idempotente;
@@ -14,8 +15,9 @@ produção:
 - a administração consulta metadados, sem receber o payload do webhook.
 
 A preparação local não afirma que uma cobrança existe no Sicoob. A referência
-só muda de `PREPARADA` para `REGISTRADA` quando o futuro cliente da API confirmar
-o `PUT /cob/{txid}`.
+só muda de `PREPARADA` para `REGISTRADA` quando o cliente da API confirma o
+`PUT /cob/{txid}`. Em falha incerta, a mesma referência é preservada para uma
+nova chamada idempotente.
 
 ## Barreira para ativação
 
@@ -27,7 +29,7 @@ cliente. Portanto, esta branch não registra uma rota pública de webhook.
 Antes da ativação serão necessários:
 
 1. credenciais e certificados do ambiente de homologação;
-2. cliente OAuth2/mTLS para criar e consultar cobranças;
+2. homologação do cliente OAuth2/mTLS que cria cobranças;
 3. validação de certificado de cliente no Nginx apenas no endpoint Sicoob;
 4. encaminhamento à aplicação somente após validação positiva no proxy;
 5. teste de homologação de cobrança, pagamento, reentrega e evento inválido;

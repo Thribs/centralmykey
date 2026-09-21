@@ -13,7 +13,9 @@ const CHAVES_TESTE = [
   'WHATSAPP_ACCESS_TOKEN', 'WHATSAPP_PHONE_NUMBER_ID', 'WHATSAPP_API_VERSION',
   'META_VERIFY_TOKEN', 'META_APP_SECRET',
   'WHATSAPP_MODELO_CONSULTA_FORNECEDOR',
-  'WHATSAPP_MODELO_ENTREGA_RESULTADO', 'COMUNICACOES_OUTBOX_HABILITADO'
+  'WHATSAPP_MODELO_ENTREGA_RESULTADO', 'COMUNICACOES_OUTBOX_HABILITADO',
+  'SICOOB_CLIENT_ID', 'SICOOB_CLIENT_SECRET', 'SICOOB_CERT_PATH',
+  'SICOOB_KEY_PATH', 'SICOOB_CA_PATH', 'SICOOB_CHAVE_PIX', 'SICOOB_AMBIENTE'
 ];
 
 function poolFalso(valores) {
@@ -75,7 +77,8 @@ async function executar() {
     const itemSicoob = resumo.find(item => item.codigo === 'SICOOB');
     const itemBling = resumo.find(item => item.codigo === 'BLING');
     assert.strictEqual(itemWhatsapp.status, 'CONFIGURADO');
-    assert.strictEqual(itemSicoob.status, 'CREDENCIAIS_SEM_CONECTOR');
+    assert.strictEqual(itemSicoob.status, 'PARCIAL');
+    assert.strictEqual(itemSicoob.componentes.webhook_publico_mtls, false);
     assert.strictEqual(itemBling.status, 'PENDENTE');
     assert.ok(resumo.every(item => !JSON.stringify(item).includes('ficticio')),
       'O resumo nunca pode expor valores de configuração');

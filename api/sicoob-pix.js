@@ -2,6 +2,7 @@
 
 const crypto = require('crypto');
 const { processarEventoPagamentoPedido } = require('./processar-evento-pagamento');
+const { criarCobranca } = require('./cliente-sicoob-pix');
 
 const TXID = /^[A-Za-z0-9]{26,35}$/;
 const E2E = /^[A-Za-z0-9]{20,100}$/;
@@ -57,7 +58,7 @@ function interpretarWebhook(payloadBruto) {
   return corpo.pix.map(normalizarPix);
 }
 
-async function prepararReferenciaPedido(connection, pedidoId, txid = gerarTxid()) {
+async function prepararReferenciaPedido(connection, pedidoId, txid = gerarTxid(), dados = {}) {
   if (!TXID.test(txid)) throw falha('txid Pix inválido', 'TXID_INVALIDO');
   const [pedidos] = await connection.query(
     `SELECT id, valor_venda, moeda, status
@@ -73,7 +74,8 @@ async function prepararReferenciaPedido(connection, pedidoId, txid = gerarTxid()
     throw falha('Pedido incompatível com Pix', 'PEDIDO_INCOMPATIVEL_PIX', 422);
   }
   const [existentes] = await connection.query(
-    `SELECT id, referencia_provedor, valor, moeda, status
+    `SELECT id, referencia_provedor, valor, moeda, status,
+            expiracao_segundos, solicitacao_pagador
        FROM integracao_referencias_pagamento
       WHERE provedor='SICOOB' AND entidade='PEDIDO' AND entidade_id=?
         AND status IN ('PREPARADA','REGISTRADA')
@@ -84,16 +86,23 @@ async function prepararReferenciaPedido(connection, pedidoId, txid = gerarTxid()
     const existente = existentes[0];
     return { id: existente.id, txid: existente.referencia_provedor,
       pedido_id: pedido.id, valor: Number(existente.valor), moeda: existente.moeda,
-      status: existente.status, idempotente: true };
+      status: existente.status,
+      expiracao_segundos: Number(existente.expiracao_segundos || 3600),
+      solicitacao_pagador: existente.solicitacao_pagador,
+      idempotente: true };
   }
   const [resultado] = await connection.query(
     `INSERT INTO integracao_referencias_pagamento
-       (provedor, entidade, entidade_id, referencia_provedor, valor, moeda, status)
-     VALUES ('SICOOB', 'PEDIDO', ?, ?, ?, 'BRL', 'PREPARADA')`,
-    [pedido.id, txid, pedido.valor_venda]
+       (provedor, entidade, entidade_id, referencia_provedor, valor, moeda,
+        expiracao_segundos, solicitacao_pagador, status)
+     VALUES ('SICOOB', 'PEDIDO', ?, ?, ?, 'BRL', ?, ?, 'PREPARADA')`,
+    [pedido.id, txid, pedido.valor_venda,
+      dados.expiracaoSegundos || 3600, dados.solicitacaoPagador || null]
   );
   return { id: resultado.insertId, txid, pedido_id: pedido.id,
-    valor: Number(pedido.valor_venda), moeda: 'BRL', status: 'PREPARADA' };
+    valor: Number(pedido.valor_venda), moeda: 'BRL', status: 'PREPARADA',
+    expiracao_segundos: dados.expiracaoSegundos || 3600,
+    solicitacao_pagador: dados.solicitacaoPagador || null };
 }
 
 async function processarWebhookSicoob(pool, payloadBruto, opcoes = {}) {
@@ -142,9 +151,94 @@ async function processarWebhookSicoob(pool, payloadBruto, opcoes = {}) {
   return { ok: resultados.every(item => item.ok), total: resultados.length, resultados };
 }
 
+async function criarCobrancaPedidoSicoob(pool, pedidoId, config, opcoes = {}) {
+  const expiracaoSegundos = Number(opcoes.expiracaoSegundos || 3600);
+  const solicitacaoPagador = String(opcoes.solicitacaoPagador ||
+    `Central MyKey - pedido ${pedidoId}`).trim().slice(0, 140);
+  if (!Number.isInteger(expiracaoSegundos) || expiracaoSegundos < 60 ||
+      expiracaoSegundos > 86400) {
+    throw falha('Expiração Pix inválida', 'EXPIRACAO_PIX_INVALIDA');
+  }
+  const connection = await pool.getConnection();
+  let referencia;
+  try {
+    await connection.beginTransaction();
+    referencia = await prepararReferenciaPedido(connection, pedidoId, gerarTxid(), {
+      expiracaoSegundos, solicitacaoPagador
+    });
+    await connection.commit();
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
+  try {
+    const cobranca = await criarCobranca(config, {
+      txid: referencia.txid, valor: referencia.valor,
+      expiracaoSegundos: referencia.expiracao_segundos,
+      solicitacaoPagador: referencia.solicitacao_pagador
+    }, opcoes.transporte);
+    const finalizacao = await pool.getConnection();
+    let registradaAgora = false;
+    try {
+      await finalizacao.beginTransaction();
+      const [atualizacao] = await finalizacao.query(
+        `UPDATE integracao_referencias_pagamento
+            SET status='REGISTRADA', location=?, pix_copia_cola=?, registrada_em=NOW(),
+                erro_codigo=NULL, erro_detalhe=NULL
+          WHERE id=? AND status<>'REGISTRADA'`,
+        [cobranca.location, cobranca.pixCopiaECola || null, referencia.id]
+      );
+      registradaAgora = Number(atualizacao.affectedRows) === 1;
+      if (registradaAgora) {
+        await finalizacao.query(
+          `INSERT INTO pedido_historico
+             (pedido_id, usuario_id, tipo, descricao, dados)
+           VALUES (?, ?, 'COBRANCA_SICOOB_REGISTRADA', ?, ?)`,
+          [pedidoId, opcoes.usuarioId || null, 'Cobrança Pix Sicoob registrada',
+            JSON.stringify({ txid: referencia.txid, valor: referencia.valor,
+              moeda: referencia.moeda })]
+        );
+        await finalizacao.query(
+          `INSERT INTO auditoria
+             (usuario_id, modulo, acao, entidade, entidade_id, descricao,
+              dados_antes, dados_depois, ip)
+           VALUES (?, 'INTEGRACOES', 'CRIAR_COBRANCA_SICOOB',
+                   'pedidos_senha', ?, ?, NULL, ?, ?)`,
+          [opcoes.usuarioId || null, String(pedidoId),
+            `Cobrança Sicoob do pedido ${pedidoId} registrada`,
+            JSON.stringify({ txid: referencia.txid, valor: referencia.valor,
+              moeda: referencia.moeda }), opcoes.ip || null]
+        );
+      }
+      await finalizacao.commit();
+    } catch (error) {
+      await finalizacao.rollback();
+      throw error;
+    } finally {
+      finalizacao.release();
+    }
+    return { ok: true, pedido_id: referencia.pedido_id, txid: referencia.txid,
+      valor: referencia.valor, moeda: referencia.moeda, status: 'REGISTRADA',
+      location: cobranca.location, pix_copia_cola: cobranca.pixCopiaECola || null,
+      idempotente: Boolean(referencia.idempotente),
+      registrada_agora: registradaAgora };
+  } catch (error) {
+    await pool.query(
+      `UPDATE integracao_referencias_pagamento
+          SET erro_codigo=?, erro_detalhe=? WHERE id=?`,
+      [error.codigo || 'SICOOB_INDISPONIVEL',
+        String(error.message || 'Falha Sicoob').slice(0, 500), referencia.id]
+    );
+    throw error;
+  }
+}
+
 module.exports = {
   gerarTxid,
   interpretarWebhook,
   prepararReferenciaPedido,
-  processarWebhookSicoob
+  processarWebhookSicoob,
+  criarCobrancaPedidoSicoob
 };

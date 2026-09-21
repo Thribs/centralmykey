@@ -1,8 +1,36 @@
 'use strict';
 
-module.exports = function registrarRotasIntegracoes(app, pool) {
+const { obterConfiguracaoSicoob } = require('./configuracoes-integracoes');
+const { criarCobrancaPedidoSicoob } = require('./sicoob-pix');
+
+module.exports = function registrarRotasIntegracoes(app, pool, opcoes = {}) {
   const autenticarToken = app.locals.autenticarToken;
   const exigirPermissao = app.locals.exigirPermissao;
+
+  app.post('/api/pedidos/:id/pagamentos/sicoob', autenticarToken,
+    exigirPermissao('FINANCEIRO', 'editar'), async (req, res) => {
+      const pedidoId = Number(req.params.id);
+      if (!Number.isInteger(pedidoId) || pedidoId <= 0) {
+        return res.status(400).json({ ok: false, error: 'Pedido inválido' });
+      }
+      try {
+        const config = opcoes.configuracaoSicoob || await obterConfiguracaoSicoob(pool);
+        const resultado = await criarCobrancaPedidoSicoob(pool, pedidoId, config, {
+          expiracaoSegundos: req.body?.expiracao_segundos,
+          solicitacaoPagador: req.body?.solicitacao_pagador,
+          transporte: opcoes.transporteSicoob,
+          usuarioId: req.usuario?.id || null,
+          ip: req.ip || null
+        });
+        return res.status(201).json(resultado);
+      } catch (error) {
+        const status = Number(error.status) || 500;
+        if (status >= 500) console.error('Erro ao criar cobrança Sicoob:', error.codigo || error.message);
+        return res.status(status).json({ ok: false,
+          error: status >= 500 ? 'Integração Sicoob indisponível' : error.message,
+          codigo: error.codigo || 'ERRO_SICOOB' });
+      }
+    });
 
   app.get('/api/integracoes/eventos', autenticarToken,
     exigirPermissao('CONFIGURACOES', 'visualizar'), async (req, res) => {
@@ -54,7 +82,8 @@ module.exports = function registrarRotasIntegracoes(app, pool) {
         params.push(limite);
         const [dados] = await pool.query(
           `SELECT id, provedor, entidade, entidade_id, referencia_provedor,
-                  valor, moeda, status, identificador_pagamento, erro_codigo,
+                  valor, moeda, status, identificador_pagamento, location,
+                  pix_copia_cola, erro_codigo,
                   erro_detalhe, criada_em, registrada_em, paga_em, atualizada_em
              FROM integracao_referencias_pagamento ${filtro}
             ORDER BY id DESC LIMIT ?`,

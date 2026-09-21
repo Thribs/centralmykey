@@ -5,7 +5,7 @@ const path = require('path');
 const dotenv = require('dotenv');
 const mysql = require('mysql2/promise');
 const express = require('express');
-const { interpretarWebhook, prepararReferenciaPedido, processarWebhookSicoob } = require('./sicoob-pix');
+const { interpretarWebhook, processarWebhookSicoob } = require('./sicoob-pix');
 const { criarTabelaOutboxTemporaria } = require('./teste-suporte-outbox');
 
 dotenv.config({ path: process.env.CENTRALMYKEY_ENV_PATH || path.join(__dirname, '.env'), quiet: true });
@@ -49,20 +49,23 @@ async function criarTabelasTemporarias(connection) {
     id BIGINT AUTO_INCREMENT PRIMARY KEY, provedor VARCHAR(40) NOT NULL,
     entidade VARCHAR(40) NOT NULL, entidade_id BIGINT NOT NULL,
     referencia_provedor VARCHAR(120) NOT NULL, valor DECIMAL(12,2) NOT NULL,
-    moeda CHAR(3) NOT NULL DEFAULT 'BRL',
+    moeda CHAR(3) NOT NULL DEFAULT 'BRL', expiracao_segundos INT UNSIGNED,
+    solicitacao_pagador VARCHAR(140),
     status ENUM('PREPARADA','REGISTRADA','PAGA','CANCELADA','EXPIRADA','FALHOU') DEFAULT 'PREPARADA',
-    identificador_pagamento VARCHAR(160), erro_codigo VARCHAR(80), erro_detalhe VARCHAR(500),
+    identificador_pagamento VARCHAR(160), location VARCHAR(500), pix_copia_cola TEXT,
+    erro_codigo VARCHAR(80), erro_detalhe VARCHAR(500),
     criada_em DATETIME DEFAULT CURRENT_TIMESTAMP, registrada_em DATETIME, paga_em DATETIME,
     atualizada_em DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     UNIQUE KEY uk_ref (provedor, referencia_provedor)) ENGINE=InnoDB`);
   await criarTabelaOutboxTemporaria(connection);
 }
 
-async function iniciarApi(connection) {
+async function iniciarApi(connection, opcoes = {}) {
   const app = express();
+  app.use(express.json());
   app.locals.autenticarToken = (req, res, next) => next();
   app.locals.exigirPermissao = () => (req, res, next) => next();
-  require('./rotas-integracoes')(app, poolTransacional(connection));
+  require('./rotas-integracoes')(app, poolTransacional(connection), opcoes);
   const servidor = await new Promise((resolve, reject) => {
     const instancia = app.listen(0, '127.0.0.1', () => resolve(instancia));
     instancia.once('error', reject);
@@ -75,11 +78,12 @@ async function executar() {
   const fetchOriginal = global.fetch;
   const sufixo = `${process.pid}${String(Date.now()).slice(-7)}`;
   const protocolo = `SIC${sufixo}`.slice(0, 30);
-  const txid = `CMK${sufixo}ABCDEFGHIJKLMNO`.slice(0, 26);
+  let txid;
   const txidDesconhecido = `UNK${sufixo}QRSTUVWXYZABCDE`.slice(0, 26);
   const e2e = `E${sufixo}ABCDEFGHIJKLMNOPQRSTUV`.slice(0, 32);
   let pedidoId;
   let servidor;
+  let api;
   let erro;
   try {
     assert.throws(() => interpretarWebhook('{'), e => e.codigo === 'JSON_INVALIDO');
@@ -102,12 +106,50 @@ async function executar() {
       [protocolo, cliente.id, servico.id, chassi, valor]
     );
     pedidoId = pedido.insertId;
-    const referencia = await prepararReferenciaPedido(connection, pedidoId, txid);
-    assert.strictEqual(referencia.status, 'PREPARADA');
-    const referenciaRepetida = await prepararReferenciaPedido(connection, pedidoId,
-      `ALT${sufixo}ABCDEFGHIJKLMNOP`.slice(0, 26));
-    assert.strictEqual(referenciaRepetida.idempotente, true);
-    assert.strictEqual(referenciaRepetida.txid, txid);
+    const chamadasSicoob = [];
+    api = await iniciarApi(connection, {
+      configuracaoSicoob: {
+        habilitado: true, clientId: 'cliente-teste', clientSecret: 'segredo-teste',
+        certPath: '/certificado/ficticio', keyPath: '/chave/ficticia', chavePix: 'pix@teste.invalid',
+        tokenUrl: 'https://api-homol.sicoob.com.br/cooperado/pix/token',
+        apiUrl: 'https://api-homol.sicoob.com.br/cooperado/pix/api/v2', scope: 'cob.write'
+      },
+      transporteSicoob: async requisicao => {
+        chamadasSicoob.push(requisicao);
+        if (requisicao.url.endsWith('/token')) {
+          return { status: 200, body: JSON.stringify({ access_token: 'token-ficticio' }) };
+        }
+        const txidRemoto = requisicao.url.split('/').pop();
+        txid = txid || txidRemoto;
+        assert.strictEqual(txidRemoto, txid);
+        return { status: 201, body: JSON.stringify({ txid: txidRemoto,
+          location: `pix.sicoob.test/${txidRemoto}`,
+          pixCopiaECola: `PIX-FICTICIO-${txidRemoto}` }) };
+      }
+    });
+    servidor = api.servidor;
+    const respostaCobranca = await fetch(`${api.url}/api/pedidos/${pedidoId}/pagamentos/sicoob`, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ expiracao_segundos: 1800 })
+    });
+    const cobranca = await respostaCobranca.json();
+    assert.strictEqual(respostaCobranca.status, 201);
+    assert.strictEqual(cobranca.status, 'REGISTRADA');
+    assert.strictEqual(cobranca.txid, txid);
+    assert.strictEqual(chamadasSicoob.length, 2);
+    assert.ok(chamadasSicoob[0].body.includes('grant_type=client_credentials'));
+    assert.strictEqual(JSON.parse(chamadasSicoob[1].body).valor.original, valor.toFixed(2));
+    const respostaCobrancaRepetida = await fetch(
+      `${api.url}/api/pedidos/${pedidoId}/pagamentos/sicoob`, {
+        method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}'
+      }
+    );
+    const cobrancaRepetida = await respostaCobrancaRepetida.json();
+    assert.strictEqual(respostaCobrancaRepetida.status, 201);
+    assert.strictEqual(cobrancaRepetida.idempotente, true);
+    assert.strictEqual(cobrancaRepetida.registrada_agora, false);
+    assert.strictEqual(chamadasSicoob.length, 4);
+    assert.strictEqual(JSON.parse(chamadasSicoob[3].body).calendario.expiracao, 1800);
 
     const pool = poolTransacional(connection);
     const desconhecido = JSON.stringify({ pix: [{ txid: txidDesconhecido,
@@ -134,19 +176,20 @@ async function executar() {
               (SELECT COUNT(*) FROM pagamentos pg JOIN lancamentos_financeiros lf
                 ON lf.id=pg.lancamento_id WHERE lf.pedido_senha_id=p.id) AS pagamentos,
               (SELECT COUNT(*) FROM integracao_eventos
-                WHERE erro_codigo='TXID_NAO_VINCULADO') AS desconhecidos
+                WHERE erro_codigo='TXID_NAO_VINCULADO') AS desconhecidos,
+              (SELECT COUNT(*) FROM pedido_historico
+                WHERE pedido_id=p.id AND tipo='COBRANCA_SICOOB_REGISTRADA') AS historicos_cobranca
          FROM pedidos_senha p JOIN integracao_referencias_pagamento r
            ON r.entidade_id=p.id WHERE p.id=?`,
       [pedidoId]
     );
     assert.deepStrictEqual(
       [estado.pedido_status, estado.referencia_status, estado.identificador_pagamento,
-        Number(estado.pagamentos), Number(estado.desconhecidos)],
-      ['CONCLUIDO', 'PAGA', e2e, 1, 1]
+        Number(estado.pagamentos), Number(estado.desconhecidos),
+        Number(estado.historicos_cobranca)],
+      ['CONCLUIDO', 'PAGA', e2e, 1, 1, 1]
     );
     global.fetch = fetchOriginal;
-    const api = await iniciarApi(connection);
-    servidor = api.servidor;
     const resposta = await fetch(`${api.url}/api/integracoes/referencias-pagamento?provedor=SICOOB`);
     const listagem = await resposta.json();
     assert.strictEqual(resposta.status, 200);

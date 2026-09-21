@@ -17,6 +17,11 @@ const CHAVES = {
   joelPiresUsuario: ['ID_USUARIO_API_JOELPIRES'],
   sicoobClientId: ['SICOOB_CLIENT_ID'],
   sicoobClientSecret: ['SICOOB_CLIENT_SECRET'],
+  sicoobCertPath: ['SICOOB_CERT_PATH'],
+  sicoobKeyPath: ['SICOOB_KEY_PATH'],
+  sicoobCaPath: ['SICOOB_CA_PATH'],
+  sicoobChavePix: ['SICOOB_CHAVE_PIX'],
+  sicoobAmbiente: ['SICOOB_AMBIENTE'],
   plugPayToken: ['PLUGPAY_TOKEN', 'PLUGPAY_API_KEY'],
   wbuyToken: ['WBUY_TOKEN', 'WBUY_API_KEY'],
   blingClientId: ['BLING_CLIENT_ID'],
@@ -105,9 +110,13 @@ function resumirIntegracoes(config) {
       codigo: 'SICOOB',
       nome: 'Sicoob',
       ...estadoConector({
-        implementado: false,
-        requisitos: [Boolean(config.sicoobClientId), Boolean(config.sicoobClientSecret)]
-      })
+        implementado: true,
+        requisitos: [Boolean(config.sicoobClientId), Boolean(config.sicoobClientSecret),
+          Boolean(config.sicoobCertPath), Boolean(config.sicoobKeyPath),
+          Boolean(config.sicoobChavePix)],
+        habilitado: false
+      }),
+      componentes: { cobranca: true, conciliacao: true, webhook_publico_mtls: false }
     },
     {
       codigo: 'PLUGPAY',
@@ -148,9 +157,29 @@ async function obterConfiguracaoWhatsapp(pool) {
   };
 }
 
+async function obterConfiguracaoSicoob(pool) {
+  const config = await carregarConfiguracoesIntegracoes(pool);
+  const producao = String(config.sicoobAmbiente).toLowerCase() === 'producao';
+  return {
+    clientId: config.sicoobClientId, clientSecret: config.sicoobClientSecret,
+    certPath: config.sicoobCertPath, keyPath: config.sicoobKeyPath,
+    caPath: config.sicoobCaPath, chavePix: config.sicoobChavePix,
+    // A criação só pode ser ativada junto com o webhook autenticado por mTLS.
+    habilitado: false,
+    tokenUrl: producao
+      ? 'https://apis.sisbr.com.br/cooperado/pix/token'
+      : 'https://api-homol.sicoob.com.br/cooperado/pix/token',
+    apiUrl: producao
+      ? 'https://apis.sisbr.com.br/cooperado/pix/api/v2'
+      : 'https://api-homol.sicoob.com.br/cooperado/pix/api/v2',
+    scope: 'cob.write cob.read pix.read'
+  };
+}
+
 module.exports = {
   carregarConfiguracoesIntegracoes,
   obterConfiguracaoWhatsapp,
+  obterConfiguracaoSicoob,
   resumirIntegracoes,
   verdadeiro
 };

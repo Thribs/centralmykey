@@ -6,9 +6,13 @@ CREATE TABLE IF NOT EXISTS integracao_referencias_pagamento (
   referencia_provedor VARCHAR(120) NOT NULL,
   valor DECIMAL(12,2) NOT NULL,
   moeda CHAR(3) NOT NULL DEFAULT 'BRL',
+  expiracao_segundos INT UNSIGNED DEFAULT NULL,
+  solicitacao_pagador VARCHAR(140) DEFAULT NULL,
   status ENUM('PREPARADA','REGISTRADA','PAGA','CANCELADA','EXPIRADA','FALHOU')
     NOT NULL DEFAULT 'PREPARADA',
   identificador_pagamento VARCHAR(160) DEFAULT NULL,
+  location VARCHAR(500) DEFAULT NULL,
+  pix_copia_cola TEXT DEFAULT NULL,
   erro_codigo VARCHAR(80) DEFAULT NULL,
   erro_detalhe VARCHAR(500) DEFAULT NULL,
   criada_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
