@@ -116,7 +116,7 @@ Os testes integrados criaram registros somente dentro das transações e executa
 | Financeiro | COMPROVADO | Resumo, lançamentos, faturas, pagamentos, estornos e fechamentos de fornecedores; interface com filtro monetário | `teste-financeiro-resumo.js` reconcilia moedas, realizados, pendências, vencidos, filtros e recebido hoje; testes de pagamento, estorno e fechamento cobrem mutações com rollback | Conciliação bancária externa permanece no requisito específico do Sicoob | Manter reconciliação interna ao homologar conectores bancários | Evento externo incorreto pode divergir da posição interna se o conector for ativado sem homologação |
 | Auditoria | PARCIAL | Rota paginada, filtros, interface restrita e registros nas ações críticas | `teste-auditoria.js` cobre permissão, paginação e não exposição de dados sensíveis | Cobertura ainda precisa acompanhar cada novo módulo | Exigir evento de auditoria nos próximos conectores | Ação nova pode ficar sem trilha |
 | Backup | PARCIAL | Pacote verificável da API, web e banco; restauração com hashes e cópia de segurança | `teste-backup.js` cobre restauração, corrupção e limpeza em ambiente fictício | Falta ensaio periódico em MySQL descartável equivalente à produção | Automatizar agenda/retenção e ensaio operacional | Backup pode envelhecer sem monitoramento |
-| Monitoramento | PARCIAL | `/health`, `/health/db`, systemd e logs do worker | Smoke de serviço e `/health` | Sem métricas, alertas, fila antiga, falha de integração ou SLO | Implantar observabilidade e alertas mínimos | Falha silenciosa prolongada |
+| Monitoramento | PARCIAL | `/health`, `/health/ready`, `/health/db` e `/api/monitoramento/resumo`; tela administrativa agrega pedidos, outbox, integrações e notificações por severidade | `teste-health.js` cobre processo/banco; `teste-monitoramento.js` cobre permissão, atrasos, falhas, minimização e rollback | Falta encaminhar alertas críticos para um canal externo e definir SLO operacional | Ligar severidade crítica ao canal homologado e estabelecer SLO | Equipe ainda depende de abrir a Central para perceber uma falha crítica |
 
 ### 7. Frontend
 
@@ -184,6 +184,7 @@ Na branch `feature/pagamento-manual-idempotente`, ainda não publicada:
 - o ciclo administrativo de usuários agora registra criação, edição, status e matriz de permissões na auditoria; a substituição da matriz valida módulos inexistentes e duplicados antes de gravar;
 - o relatório operacional agora separa moedas, valida datas e períodos e limita o padrão até o dia atual; um dataset transacional reconcilia vendas, custos, resultado, clientes, status, fornecedor, origem e evolução diária;
 - o painel financeiro agora filtra BRL, USD e PYG em faturas, lançamentos e fechamentos; faturas explicitamente vencidas entram no valor em aberto e pagamentos ligados a lançamentos cancelados não entram no recebido do dia;
+- administradores agora possuem uma tela de monitoramento atualizada a cada minuto com severidade, pedidos atrasados, reprocessamento GM, outbox, eventos de integração e alertas internos, sem exposição de payloads ou destinatários;
 - a confirmação manual foi tornada idempotente por pedido, meio e referência/comprovante;
 - foi adicionado teste funcional da rota HTTP com MySQL e rollback;
 - foi criada uma outbox transacional para consultas a fornecedores;

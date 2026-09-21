@@ -806,6 +806,13 @@ export async function buscarRelatorioOperacional(token, filtros = {}) {
   return lerResposta(resposta);
 }
 
+export async function buscarMonitoramentoOperacional(token) {
+  const resposta = await requisitar(`${API_URL}/api/monitoramento/resumo`, {
+    headers: cabecalhoAutenticado(token)
+  });
+  return lerResposta(resposta);
+}
+
 
 export async function listarUsuarios(token) {
   const resposta = await requisitar(`${API_URL}/api/usuarios`, {

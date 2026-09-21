@@ -8,6 +8,7 @@ import Relatorios from './Relatorios';
 import { Usuarios, Integracoes, Configuracoes } from './Administracao';
 import OpenAILab from './OpenAILab';
 import Auditoria from './Auditoria';
+import Monitoramento from './Monitoramento';
 import {
   buscarResumoNotificacoes,
   listarNotificacoes,
@@ -15,6 +16,7 @@ import {
   marcarTodasNotificacoesLidas
 } from './api';
 import {
+  Activity,
   Bell,
   BookKey,
   ChevronRight,
@@ -98,6 +100,13 @@ const MODULOS = [
     somenteAdministrador: true,
     nome: 'Auditoria',
     icone: ScrollText
+  },
+  {
+    codigo: 'MONITORAMENTO',
+    permissaoCodigo: 'CONFIGURACOES',
+    somenteAdministrador: true,
+    nome: 'Monitoramento',
+    icone: Activity
   }
 ];
 
@@ -518,6 +527,8 @@ export default function Painel({
             <Configuracoes />
           ) : atual?.codigo === 'AUDITORIA' ? (
             <Auditoria />
+          ) : atual?.codigo === 'MONITORAMENTO' ? (
+            <Monitoramento />
           ) : (
             <section className="module-placeholder">
               <div className="placeholder-icon">
