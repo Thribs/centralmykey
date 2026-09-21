@@ -162,13 +162,24 @@ async function prepararFixture() {
        id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
        fornecedor_id BIGINT NOT NULL,
        codigo_servico VARCHAR(60) NOT NULL,
+       descricao VARCHAR(180) NULL,
+       marca VARCHAR(80) NULL,
+       modelo VARCHAR(120) NULL,
+       ano_inicio SMALLINT NULL,
+       ano_fim SMALLINT NULL,
        custo DECIMAL(12,2) NOT NULL,
-       ativo TINYINT(1) NOT NULL
+       moeda VARCHAR(3) NOT NULL DEFAULT 'BRL',
+       prazo_estimado_minutos INT NULL,
+       ativo TINYINT(1) NOT NULL DEFAULT 1,
+       criado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+       atualizado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+         ON UPDATE CURRENT_TIMESTAMP
      ) ENGINE=InnoDB`
   );
 
   const [[servico]] = await connection.query(
-    "SELECT id, preco_base FROM servicos WHERE codigo='GM_SENHA' AND ativo=1 LIMIT 1"
+    `SELECT id, codigo, nome, marca, preco_base
+       FROM servicos WHERE codigo='GM_SENHA' AND ativo=1 LIMIT 1`
   );
   const [perfis] = await connection.query(
     'SELECT id, nome FROM perfis WHERE ativo=1 ORDER BY id'
@@ -201,6 +212,9 @@ async function prepararFixture() {
   const telefone = `5594${String(Date.now()).slice(-8)}`;
   const nomeCliente = `CLIENTE E2E INTEGRADO ${marcador}`;
   const nomeFornecedor = `FORNECEDOR E2E INTEGRADO ${marcador}`;
+  const nomeClienteCadastro = `CLIENTE VIP E2E ${marcador}`;
+  const telefoneClienteCadastro = `55119${String(Date.now()).slice(-8)}`;
+  const nomeFornecedorCadastro = `FORNECEDOR CADASTRO E2E ${marcador}`;
   const loginOperador = `e2e-admin-${marcador}`;
   const senhaOperador = `Admin-${marcador}-9`;
   const loginVisualizador = `e2e-view-${marcador}`;
@@ -601,6 +615,15 @@ async function prepararFixture() {
       valorInicial: valorConfiguracaoInicial,
       valorFinal: valorConfiguracaoFinal
     },
+    cadastros: {
+      clienteNome: nomeClienteCadastro,
+      clienteTelefone: telefoneClienteCadastro,
+      clienteEmail: `cliente-${marcador}@teste.invalid`,
+      fornecedorNome: nomeFornecedorCadastro,
+      fornecedorEmail: `fornecedor-${marcador}@teste.invalid`,
+      servicoCodigo: servico.codigo,
+      servicoNome: servico.nome
+    },
     nomeCliente,
     nomeFornecedor,
     usuario
@@ -761,9 +784,69 @@ async function iniciar() {
       valor_inicial: contexto.configuracao.valorInicial,
       valor_final: contexto.configuracao.valorFinal
     },
+    cadastros: {
+      cliente_nome: contexto.cadastros.clienteNome,
+      cliente_telefone: contexto.cadastros.clienteTelefone,
+      cliente_email: contexto.cadastros.clienteEmail,
+      fornecedor_nome: contexto.cadastros.fornecedorNome,
+      fornecedor_email: contexto.cadastros.fornecedorEmail,
+      servico_codigo: contexto.cadastros.servicoCodigo,
+      servico_nome: contexto.cadastros.servicoNome
+    },
     cliente: contexto.nomeCliente
   }));
   app.get('/api/e2e/verificacao', async (req, res) => {
+    if (req.query.cenario === 'cadastros') {
+      const [[cliente]] = await connection.query(
+        `SELECT
+           c.id, c.ativo, c.tipo_cobranca, c.dia_fechamento,
+           c.prazo_pagamento_dias, c.credito_status,
+           v.status AS vip_status, v.valor_mensalidade,
+           (SELECT COUNT(*) FROM auditoria a
+             WHERE a.modulo = 'CLIENTES' AND a.entidade = 'clientes'
+               AND a.entidade_id = CAST(c.id AS CHAR)) AS auditorias
+         FROM clientes c
+         LEFT JOIN cliente_vip v ON v.cliente_id = c.id
+         WHERE c.nome = ? LIMIT 1`,
+        [contexto.cadastros.clienteNome]
+      );
+      const [[fornecedor]] = await connection.query(
+        `SELECT
+           f.id, f.ativo, f.tipo, f.horario_inicio, f.horario_fim,
+           (SELECT COUNT(*) FROM fornecedor_servicos fs
+             WHERE fs.fornecedor_id = f.id
+               AND fs.codigo_servico = ? AND fs.ativo = 1
+               AND fs.custo = 17.50 AND fs.moeda = 'BRL') AS servicos,
+           (SELECT COUNT(*) FROM auditoria a
+             WHERE a.modulo = 'FORNECEDORES'
+               AND a.entidade = 'fornecedores'
+               AND a.entidade_id = CAST(f.id AS CHAR)) AS auditorias
+         FROM fornecedores f WHERE f.nome = ? LIMIT 1`,
+        [contexto.cadastros.servicoCodigo, contexto.cadastros.fornecedorNome]
+      );
+      let auditoriasServicos = 0;
+      if (fornecedor?.id) {
+        const [[auditoriaServico]] = await connection.query(
+          `SELECT COUNT(*) AS total
+             FROM auditoria a
+             INNER JOIN fornecedor_servicos fs
+               ON a.entidade = 'fornecedor_servicos'
+              AND a.entidade_id = CAST(fs.id AS CHAR)
+            WHERE fs.fornecedor_id = ?`,
+          [fornecedor.id]
+        );
+        auditoriasServicos = Number(auditoriaServico.total || 0);
+      }
+      if (cliente?.id) contexto.cadastros.clienteId = cliente.id;
+      if (fornecedor?.id) contexto.cadastros.fornecedorId = fornecedor.id;
+      return res.json({
+        ok: true,
+        cliente: cliente || null,
+        fornecedor: fornecedor
+          ? { ...fornecedor, auditorias_servicos: auditoriasServicos }
+          : null
+      });
+    }
     if (req.query.cenario === 'configuracao') {
       const [[estado]] = await connection.query(
         `SELECT
@@ -936,6 +1019,8 @@ async function iniciar() {
   });
 
   require('./rotas-pedidos')(app, pool);
+  require('./rotas-clientes')(app, pool);
+  require('./rotas-cadastros')(app, pool);
   require('./rotas-atendimento')(app, pool);
   require('./rotas-financeiro')(app, pool);
   require('./rotas-relatorios')(app, pool);
@@ -943,6 +1028,7 @@ async function iniciar() {
   require('./rotas-fechamentos-fornecedores')(app, pool);
   require('./rotas-auditoria')(app, pool);
   require('./rotas-health')(app, pool);
+  require('./rotas-operacionais')(app, pool);
 
   servidor = await new Promise((resolve, reject) => {
     const instancia = app.listen(PORTA, '127.0.0.1', () => resolve(instancia));
@@ -964,8 +1050,8 @@ async function encerrar(codigo = 0) {
       const [[residuos]] = await connection.query(
         `SELECT
            (SELECT COUNT(*) FROM pedidos_senha WHERE protocolo IN (?, ?, ?, ?, ?, ?, ?)) AS pedidos,
-           (SELECT COUNT(*) FROM clientes WHERE nome = ?) AS clientes,
-           (SELECT COUNT(*) FROM fornecedores WHERE nome = ?) AS fornecedores,
+           (SELECT COUNT(*) FROM clientes WHERE nome IN (?, ?)) AS clientes,
+           (SELECT COUNT(*) FROM fornecedores WHERE nome IN (?, ?)) AS fornecedores,
            (SELECT COUNT(*) FROM usuarios WHERE login IN (?, ?, ?, ?, ?)) AS usuarios,
            (SELECT COUNT(*) FROM usuario_permissoes
              WHERE usuario_id IN (?, ?, ?, ?)) AS permissoes,
@@ -991,7 +1077,9 @@ async function encerrar(codigo = 0) {
           contexto?.estorno?.protocolo,
           contexto?.fechamentoFornecedor?.protocolo,
           contexto?.nomeCliente,
+          contexto?.cadastros?.clienteNome,
           contexto?.nomeFornecedor,
+          contexto?.cadastros?.fornecedorNome,
           contexto?.autenticacao?.administrador?.login,
           contexto?.autenticacao?.visualizador?.login,
           contexto?.administracao?.loginNovoUsuario,

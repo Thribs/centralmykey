@@ -1030,6 +1030,142 @@ test('financeiro e administração permanecem acessíveis em três larguras', as
   }
 });
 
+test('clientes VIP e fornecedores são cadastrados pelas rotas reais', async ({ page }) => {
+  test.setTimeout(60000);
+  const respostaContexto = await page.request.get(`${API}/api/e2e/contexto`);
+  expect(respostaContexto.ok()).toBe(true);
+  const contextoCompleto = await respostaContexto.json();
+  const contexto = contextoCompleto.cadastros;
+  await autenticarIntegrado(page, contextoCompleto.autenticacao.administrador);
+  await page.setViewportSize({ width: 390, height: 844 });
+
+  await page.goto('/');
+  await abrirModulo(page, 'Clientes', 390);
+  await page.getByRole('button', { name: 'Novo cliente' }).click();
+  const cliente = page.getByRole('dialog', { name: 'Cadastrar cliente' });
+  await cliente.getByLabel('Nome').fill(contexto.cliente_nome);
+  await cliente.getByLabel('Telefone').fill(contexto.cliente_telefone);
+  await cliente.getByLabel('E-mail').fill(contexto.cliente_email);
+  await cliente.getByLabel('Cidade').fill('Cidade fictícia');
+  await cliente.getByLabel('Tipo de cobrança').selectOption('FATURAMENTO_SEMANAL');
+  await cliente.getByLabel('Dia da semana do fechamento').selectOption('5');
+  await cliente.getByLabel('Prazo de pagamento').fill('7');
+  await cliente.getByLabel('Limite de crédito').fill('500');
+  await cliente.getByRole('checkbox', { name: 'Cadastrar como cliente VIP' }).check();
+  await cliente.getByLabel('Mensalidade VIP').fill('90');
+  await cliente.getByLabel('Próximo vencimento VIP').fill('2026-12-31');
+  await cliente.getByRole('button', { name: 'Salvar' }).click();
+  await expect(cliente).toBeHidden({ timeout: 10000 });
+
+  let linha = page.locator('tr', { hasText: contexto.cliente_nome });
+  await expect(linha).toContainText('Semanal');
+  await expect(linha).toContainText('VIP: ATIVO');
+  page.once('dialog', dialogo => dialogo.accept());
+  await linha.getByRole('button', { name: `Bloquear ${contexto.cliente_nome}` }).click();
+  await page.getByLabel('Status do cadastro').selectOption('0');
+  linha = page.locator('tr', { hasText: contexto.cliente_nome });
+  await expect(linha).toContainText('Bloqueado');
+
+  await abrirModulo(page, 'Fornecedores', 390);
+  await page.getByRole('button', { name: 'Novo fornecedor' }).click();
+  const fornecedor = page.getByRole('dialog', { name: 'Cadastrar fornecedor' });
+  await fornecedor.getByLabel('Nome').fill(contexto.fornecedor_nome);
+  await fornecedor.getByLabel('Pessoa de contato').fill('Contato fictício');
+  await fornecedor.getByLabel('Tipo').selectOption('PESSOA');
+  await fornecedor.getByLabel('Telefone').fill('5500000000000');
+  await fornecedor.getByLabel('WhatsApp').fill('5500000000000');
+  await fornecedor.getByLabel('E-mail').fill(contexto.fornecedor_email);
+  await fornecedor.getByLabel('Início do atendimento').fill('08:00');
+  await fornecedor.getByLabel('Fim do atendimento').fill('18:00');
+  await fornecedor.getByRole('button', { name: 'Salvar' }).click();
+  await expect(fornecedor).toBeHidden({ timeout: 10000 });
+
+  linha = page.locator('tr', { hasText: contexto.fornecedor_nome });
+  await linha.getByRole('button', {
+    name: `Serviços e custos de ${contexto.fornecedor_nome}`
+  }).click();
+  const servicos = page.getByRole('dialog', { name: contexto.fornecedor_nome });
+  await servicos.getByLabel('Serviço').selectOption(contexto.servico_codigo);
+  await servicos.getByLabel('Custo').fill('17.50');
+  await servicos.getByLabel('Prazo estimado (minutos)').fill('30');
+  await servicos.getByRole('button', { name: 'Adicionar regra' }).click();
+  await expect(servicos.locator('tr', { hasText: contexto.servico_codigo }))
+    .toContainText('BRL 17.50');
+  await servicos.getByRole('button', { name: 'Fechar' }).click();
+
+  linha = page.locator('tr', { hasText: contexto.fornecedor_nome });
+  page.once('dialog', dialogo => dialogo.accept());
+  await linha.getByRole('button', { name: `Bloquear ${contexto.fornecedor_nome}` })
+    .click();
+  await page.getByLabel('Status do cadastro').selectOption('0');
+  linha = page.locator('tr', { hasText: contexto.fornecedor_nome });
+  await expect(linha).toContainText('Bloqueado');
+  await esperarSemRolagemHorizontal(page);
+
+  const respostaVerificacao = await page.request.get(
+    `${API}/api/e2e/verificacao?cenario=cadastros`
+  );
+  expect(respostaVerificacao.ok()).toBe(true);
+  const verificacao = await respostaVerificacao.json();
+  expect(Number(verificacao.cliente.ativo)).toBe(0);
+  expect(verificacao.cliente.tipo_cobranca).toBe('FATURAMENTO_SEMANAL');
+  expect(Number(verificacao.cliente.dia_fechamento)).toBe(5);
+  expect(Number(verificacao.cliente.prazo_pagamento_dias)).toBe(7);
+  expect(verificacao.cliente.vip_status).toBe('ATIVO');
+  expect(Number(verificacao.cliente.valor_mensalidade)).toBeCloseTo(90);
+  expect(Number(verificacao.cliente.auditorias)).toBeGreaterThanOrEqual(2);
+  expect(Number(verificacao.fornecedor.ativo)).toBe(0);
+  expect(verificacao.fornecedor.tipo).toBe('PESSOA');
+  expect(Number(verificacao.fornecedor.servicos)).toBe(1);
+  expect(Number(verificacao.fornecedor.auditorias)).toBeGreaterThanOrEqual(2);
+  expect(Number(verificacao.fornecedor.auditorias_servicos)).toBe(1);
+});
+
+test('relatório no navegador reconcilia a resposta real da API', async ({ page }) => {
+  const respostaContexto = await page.request.get(`${API}/api/e2e/contexto`);
+  expect(respostaContexto.ok()).toBe(true);
+  const contexto = await respostaContexto.json();
+  const token = await autenticarIntegrado(page, contexto.autenticacao.administrador);
+  await page.setViewportSize({ width: 768, height: 1024 });
+  await page.goto('/');
+  await abrirModulo(page, 'Relatórios', 768);
+
+  const relatorios = page.getByRole('main');
+  const inicio = await relatorios.getByLabel('Data inicial').inputValue();
+  const fim = await relatorios.getByLabel('Data final').inputValue();
+  const resposta = await page.request.get(
+    `${API}/api/relatorios/operacional?inicio=${inicio}&fim=${fim}&moeda=BRL`,
+    { headers: { Authorization: `Bearer ${token}` } }
+  );
+  expect(resposta.ok()).toBe(true);
+  const esperado = await resposta.json();
+  await relatorios.getByRole('button', { name: 'Gerar' }).click();
+
+  const metricas = relatorios.locator('.report-metrics');
+  const valor = numero => new Intl.NumberFormat('pt-BR', {
+    style: 'currency', currency: 'BRL'
+  }).format(Number(numero || 0));
+  await expect(metricas.locator('article', { hasText: 'Total de pedidos' })
+    .locator('strong')).toHaveText(String(Number(esperado.resumo.total_pedidos || 0)));
+  await expect(metricas.locator('article', { hasText: 'Concluídos' })
+    .locator('strong')).toHaveText(String(Number(esperado.resumo.concluidos || 0)));
+  await expect(metricas.locator('article', { hasText: 'Valor de vendas' })
+    .locator('strong')).toHaveText(valor(esperado.resumo.valor_vendas));
+  await expect(metricas.locator('article', { hasText: 'Resultado bruto' })
+    .locator('strong')).toHaveText(valor(esperado.resumo.resultado_bruto));
+  await expect(metricas.locator('article', { hasText: 'Clientes atendidos' })
+    .locator('strong')).toHaveText(String(Number(
+      esperado.resumo.clientes_atendidos || 0
+    )));
+  if (esperado.por_status.length) {
+    const primeiro = esperado.por_status[0];
+    await expect(relatorios.locator('.report-card', { hasText: 'Por status' })
+      .locator('tr', { hasText: primeiro.status }))
+      .toContainText(String(primeiro.quantidade));
+  }
+  await esperarSemRolagemHorizontal(page);
+});
+
 test('administrador cria usuário e define permissões pelas rotas reais', async ({ page }) => {
   test.setTimeout(60000);
   const respostaContexto = await page.request.get(`${API}/api/e2e/contexto`);

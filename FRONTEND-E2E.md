@@ -35,6 +35,11 @@ A suíte cobre inicialmente:
 - Financeiro, Relatórios, Usuários, Configurações, Auditoria e Monitoramento
   percorridos contra as rotas reais em 390 × 844, 768 × 1024 e 1440 × 1000,
   sem rolagem horizontal da página;
+- cliente com faturamento semanal e plano VIP criado e bloqueado pela interface,
+  fornecedor criado, vinculado a serviço/custo e bloqueado, com auditoria,
+  persistência MySQL e rollback comprovados;
+- indicadores e agrupamento por status do relatório reconciliados no navegador
+  com a resposta autenticada da API real para o mesmo período e moeda;
 - administrador criando, autorizando e bloqueando usuário pela interface, e
   visualizador sem controles de mutação nem possibilidade de forçar a criação
   pela API; todo o cenário usa JWT real e rollback;

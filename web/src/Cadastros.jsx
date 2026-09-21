@@ -126,11 +126,16 @@ function ModalCadastro({
 
   return (
     <div className="registry-overlay">
-      <section className="registry-modal" role="dialog" aria-modal="true">
+      <section
+        className="registry-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={`titulo-cadastro-${tipo}`}
+      >
         <header>
           <div>
             <span>CADASTROS MYKEY</span>
-            <h2>
+            <h2 id={`titulo-cadastro-${tipo}`}>
               {registro ? 'Editar' : 'Cadastrar'}{' '}
               {cliente ? 'cliente' : 'fornecedor'}
             </h2>
@@ -531,11 +536,14 @@ function ModalServicosFornecedor({ token, fornecedor, aoFechar }) {
         className="registry-modal registry-services-modal"
         role="dialog"
         aria-modal="true"
+        aria-labelledby={`titulo-servicos-fornecedor-${fornecedor.id}`}
       >
         <header>
           <div>
             <span>SERVIÇOS E CUSTOS</span>
-            <h2>{fornecedor.nome}</h2>
+            <h2 id={`titulo-servicos-fornecedor-${fornecedor.id}`}>
+              {fornecedor.nome}
+            </h2>
           </div>
           <button type="button" onClick={aoFechar} aria-label="Fechar">
             <X size={20} />
@@ -926,7 +934,11 @@ function TelaCadastro({ tipo, buscaInicial = '' }) {
               }
             />
           </div>
-          <select value={status} onChange={evento => setStatus(evento.target.value)}>
+          <select
+            aria-label="Status do cadastro"
+            value={status}
+            onChange={evento => setStatus(evento.target.value)}
+          >
             <option value="">Todos os status</option>
             <option value="1">Ativos</option>
             <option value="0">Bloqueados</option>
