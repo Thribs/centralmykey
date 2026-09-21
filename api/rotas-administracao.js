@@ -13,6 +13,22 @@ module.exports = function(app, pool) {
     return resultado || null;
   };
 
+  const registrarAuditoriaUsuario = async (
+    connection,
+    req,
+    { acao, usuarioId, descricao, antes, depois }
+  ) => {
+    await connection.query(`
+      INSERT INTO auditoria
+        (usuario_id, modulo, acao, entidade, entidade_id, descricao,
+         dados_antes, dados_depois, ip)
+      VALUES (?, 'USUARIOS', ?, 'usuarios', ?, ?, ?, ?, ?)
+    `, [req.usuario?.id || null, acao, String(usuarioId), descricao,
+      antes ? JSON.stringify(antes) : null,
+      depois ? JSON.stringify(depois) : null,
+      req.ip || null]);
+  };
+
   const chaveSensivel = chave =>
     /(TOKEN|SECRET|PASSWORD|SENHA|API_KEY|ACCESS_KEY|PRIVATE_KEY)/i
       .test(chave);
@@ -74,8 +90,10 @@ module.exports = function(app, pool) {
         });
       }
 
+      const connection = await pool.getConnection();
       try {
-        const [perfil] = await pool.query(`
+        await connection.beginTransaction();
+        const [perfil] = await connection.query(`
           SELECT id
           FROM perfis
           WHERE id = ? AND ativo = 1
@@ -83,13 +101,33 @@ module.exports = function(app, pool) {
         `, [perfilId]);
 
         if (!perfil.length) {
+          await connection.rollback();
           return res.status(400).json({
             ok: false,
             error: 'Perfil inválido'
           });
         }
 
-        const [resultado] = await pool.query(`
+        const [atuais] = await connection.query(`
+          SELECT id, nome, email, telefone, login, perfil_id, status,
+                 senha_provisoria
+            FROM usuarios
+           WHERE id = ? LIMIT 1 FOR UPDATE
+        `, [id]);
+        if (!atuais.length) {
+          await connection.rollback();
+          return res.status(404).json({ ok: false, error: 'Usuário não encontrado' });
+        }
+
+        const depois = {
+          ...atuais[0],
+          nome,
+          email: texto(req.body.email)?.toLowerCase() || null,
+          telefone: texto(req.body.telefone),
+          login,
+          perfil_id: perfilId
+        };
+        await connection.query(`
           UPDATE usuarios
           SET
             nome = ?,
@@ -98,27 +136,23 @@ module.exports = function(app, pool) {
             login = ?,
             perfil_id = ?
           WHERE id = ?
-        `, [
-          nome,
-          texto(req.body.email)?.toLowerCase() || null,
-          texto(req.body.telefone),
-          login,
-          perfilId,
-          id
-        ]);
-
-        if (!resultado.affectedRows) {
-          return res.status(404).json({
-            ok: false,
-            error: 'Usuário não encontrado'
-          });
-        }
+        `, [depois.nome, depois.email, depois.telefone, depois.login,
+          depois.perfil_id, id]);
+        await registrarAuditoriaUsuario(connection, req, {
+          acao: 'EDITAR',
+          usuarioId: id,
+          descricao: 'Cadastro do usuário atualizado',
+          antes: atuais[0],
+          depois
+        });
+        await connection.commit();
 
         return res.json({
           ok: true,
           mensagem: 'Usuário atualizado com sucesso'
         });
       } catch (error) {
+        await connection.rollback();
         if (error.code === 'ER_DUP_ENTRY') {
           return res.status(409).json({
             ok: false,
@@ -131,6 +165,8 @@ module.exports = function(app, pool) {
           ok: false,
           error: 'Erro ao atualizar usuário'
         });
+      } finally {
+        connection.release();
       }
     }
   );
@@ -161,29 +197,44 @@ module.exports = function(app, pool) {
         });
       }
 
+      const connection = await pool.getConnection();
       try {
-        const [resultado] = await pool.query(
+        await connection.beginTransaction();
+        const [atuais] = await connection.query(
+          `SELECT id, nome, login, status FROM usuarios
+            WHERE id = ? LIMIT 1 FOR UPDATE`,
+          [id]
+        );
+        if (!atuais.length) {
+          await connection.rollback();
+          return res.status(404).json({ ok: false, error: 'Usuário não encontrado' });
+        }
+        await connection.query(
           'UPDATE usuarios SET status = ? WHERE id = ?',
           [status, id]
         );
-
-        if (!resultado.affectedRows) {
-          return res.status(404).json({
-            ok: false,
-            error: 'Usuário não encontrado'
-          });
-        }
+        await registrarAuditoriaUsuario(connection, req, {
+          acao: 'ALTERAR_STATUS',
+          usuarioId: id,
+          descricao: `Status do usuário alterado para ${status}`,
+          antes: atuais[0],
+          depois: { ...atuais[0], status }
+        });
+        await connection.commit();
 
         return res.json({
           ok: true,
           mensagem: 'Status do usuário atualizado'
         });
       } catch (error) {
+        await connection.rollback();
         console.error('Erro ao alterar usuário:', error);
         return res.status(500).json({
           ok: false,
           error: 'Erro ao alterar status do usuário'
         });
+      } finally {
+        connection.release();
       }
     }
   );
@@ -267,13 +318,25 @@ module.exports = function(app, pool) {
         });
       }
 
+      const moduloIds = permissoes.map(item => Number(item.modulo_id));
+      if (
+        moduloIds.some(moduloId => !Number.isInteger(moduloId) || moduloId <= 0) ||
+        new Set(moduloIds).size !== moduloIds.length
+      ) {
+        return res.status(400).json({
+          ok: false,
+          error: 'Módulos de permissão inválidos ou duplicados'
+        });
+      }
+
       const connection = await pool.getConnection();
 
       try {
         await connection.beginTransaction();
 
         const [usuario] = await connection.query(
-          'SELECT id FROM usuarios WHERE id = ? LIMIT 1 FOR UPDATE',
+          `SELECT id, nome, login, perfil_id, status
+             FROM usuarios WHERE id = ? LIMIT 1 FOR UPDATE`,
           [id]
         );
 
@@ -285,6 +348,28 @@ module.exports = function(app, pool) {
           });
         }
 
+        if (moduloIds.length) {
+          const marcadores = moduloIds.map(() => '?').join(',');
+          const [modulos] = await connection.query(
+            `SELECT id FROM modulos WHERE ativo = 1 AND id IN (${marcadores})`,
+            moduloIds
+          );
+          if (modulos.length !== moduloIds.length) {
+            await connection.rollback();
+            return res.status(400).json({
+              ok: false,
+              error: 'Um ou mais módulos são inválidos ou inativos'
+            });
+          }
+        }
+
+        const [permissoesAntes] = await connection.query(`
+          SELECT modulo_id, visualizar, criar, editar, excluir, aprovar
+            FROM usuario_permissoes
+           WHERE usuario_id = ?
+           ORDER BY modulo_id
+        `, [id]);
+
         await connection.query(
           'DELETE FROM usuario_permissoes WHERE usuario_id = ?',
           [id]
@@ -292,8 +377,6 @@ module.exports = function(app, pool) {
 
         for (const item of permissoes) {
           const moduloId = Number(item.modulo_id);
-
-          if (!Number.isInteger(moduloId) || moduloId <= 0) continue;
 
           await connection.query(`
             INSERT INTO usuario_permissoes (
@@ -316,6 +399,22 @@ module.exports = function(app, pool) {
             item.aprovar ? 1 : 0
           ]);
         }
+
+        const permissoesDepois = permissoes.map(item => ({
+          modulo_id: Number(item.modulo_id),
+          visualizar: item.visualizar ? 1 : 0,
+          criar: item.criar ? 1 : 0,
+          editar: item.editar ? 1 : 0,
+          excluir: item.excluir ? 1 : 0,
+          aprovar: item.aprovar ? 1 : 0
+        })).sort((a, b) => a.modulo_id - b.modulo_id);
+        await registrarAuditoriaUsuario(connection, req, {
+          acao: 'ALTERAR_PERMISSOES',
+          usuarioId: id,
+          descricao: 'Permissões individuais do usuário atualizadas',
+          antes: { usuario: usuario[0], permissoes: permissoesAntes },
+          depois: { usuario: usuario[0], permissoes: permissoesDepois }
+        });
 
         await connection.commit();
 

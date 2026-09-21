@@ -660,6 +660,7 @@ module.exports = function (app, pool) {
     autenticarToken,
     exigirPermissao('USUARIOS', 'criar'),
     async (req, res) => {
+      let connection;
       try {
         const {
           nome,
@@ -713,7 +714,9 @@ module.exports = function (app, pool) {
 
         const senhaHash = await bcrypt.hash(String(senha), 12);
 
-        const [resultado] = await pool.query(
+        connection = await pool.getConnection();
+        await connection.beginTransaction();
+        const [resultado] = await connection.query(
           `INSERT INTO usuarios (
             nome,
             email,
@@ -738,27 +741,35 @@ module.exports = function (app, pool) {
             Number(perfil_id)
           ]
         );
+        const usuarioCriado = {
+          id: resultado.insertId,
+          nome: String(nome).trim(),
+          email: email ? String(email).trim().toLowerCase() : null,
+          telefone: telefone ? String(telefone).trim() : null,
+          login: loginNormalizado,
+          perfil_id: Number(perfil_id),
+          perfil: perfis[0].nome,
+          status: 'ATIVO',
+          senha_provisoria: 1
+        };
+        await connection.query(`
+          INSERT INTO auditoria
+            (usuario_id, modulo, acao, entidade, entidade_id, descricao,
+             dados_antes, dados_depois, ip)
+          VALUES (?, 'USUARIOS', 'CRIAR', 'usuarios', ?,
+                  'Usuário cadastrado', NULL, ?, ?)
+        `, [req.usuario?.id || null, String(resultado.insertId),
+          JSON.stringify(usuarioCriado), req.ip || null]);
+        await connection.commit();
 
         return res.status(201).json({
           ok: true,
           message: 'Usuário cadastrado com sucesso',
-          usuario: {
-            id: resultado.insertId,
-            nome: String(nome).trim(),
-            email: email
-              ? String(email).trim().toLowerCase()
-              : null,
-            telefone: telefone
-              ? String(telefone).trim()
-              : null,
-            login: loginNormalizado,
-            perfil_id: Number(perfil_id),
-            perfil: perfis[0].nome,
-            status: 'ATIVO'
-          }
+          usuario: usuarioCriado
         });
 
       } catch (error) {
+        if (connection) await connection.rollback();
         if (error && error.code === 'ER_DUP_ENTRY') {
           return res.status(409).json({
             ok: false,
@@ -772,6 +783,8 @@ module.exports = function (app, pool) {
           ok: false,
           error: 'Erro ao cadastrar usuário'
         });
+      } finally {
+        if (connection) connection.release();
       }
     }
   );
