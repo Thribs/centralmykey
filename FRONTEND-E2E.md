@@ -1,9 +1,11 @@
 # Testes funcionais do frontend
 
 O frontend usa Playwright com Chromium para percorrer comportamentos reais no
-navegador. A API é interceptada dentro do contexto do teste e responde somente
-com dados fictícios; nenhuma requisição chega à API publicada, à API Joel Pires
-ou ao banco de dados.
+navegador. A maioria dos cenários intercepta a API no contexto do teste e usa
+somente dados fictícios. Um cenário integrado sobe uma API local descartável,
+usa as rotas reais de pedido e pagamento e mantém todas as gravações MySQL em
+uma transação externa revertida ao encerrar. Nenhuma requisição chega à API
+publicada nem à API Joel Pires.
 
 A suíte cobre inicialmente:
 
@@ -16,6 +18,9 @@ A suíte cobre inicialmente:
 - confirmação manual de pagamento com identificação do pagador, bloqueio do
   formulário durante o processamento, uma única mutação e atualização do
   pedido concluído;
+- confirmação de pagamento GM pelo navegador contra API e MySQL transacionais,
+  comprovando resultado da API simulada, cache, custo zero, nenhum fornecedor,
+  entrega pendente e rollback sem resíduos;
 - estorno seguido de cancelamento com desistência sem mutação financeira,
   confirmação explícita da devolução, estado intermediário e uma única
   requisição de estorno;

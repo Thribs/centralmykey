@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 
-const API = 'https://api-e2e.invalid';
+const API = 'http://127.0.0.1:4175';
 const sessao = {
   ok: true,
   usuario: {
@@ -403,6 +403,61 @@ test('pagamento manual bloqueia repetição enquanto processa e atualiza o pedid
   await expect(detalhe.getByRole('button', { name: 'Confirmar pagamento' }))
     .toBeHidden();
   expect(requisicoesPagamento).toBe(1);
+});
+
+test('navegador confirma pagamento GM contra API e MySQL transacionais', async ({ page }) => {
+  const respostaContexto = await page.request.get(`${API}/api/e2e/contexto`);
+  expect(respostaContexto.ok()).toBe(true);
+  const contexto = await respostaContexto.json();
+  const referencia = `PIX-${contexto.protocolo}`;
+
+  await page.addInitScript(() => {
+    localStorage.setItem('central_mykey_token', 'token-e2e-integrado');
+    localStorage.setItem('central_mykey_troca_senha', '0');
+  });
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Pedidos e senhas', exact: true }).click();
+  const busca = page.getByPlaceholder('Protocolo, cliente, chassi ou serviço');
+  await busca.fill(contexto.protocolo);
+  const linha = page.locator('tr', { hasText: contexto.protocolo });
+  await expect(linha).toBeVisible();
+  await linha.click();
+
+  const detalhe = page.getByRole('dialog');
+  await expect(detalhe.getByText('Aguardando pagamento', { exact: true }))
+    .toBeVisible();
+  await detalhe.getByRole('button', { name: 'Confirmar pagamento' }).click();
+  const formulario = page.locator('form.payment-modal');
+  await formulario.getByLabel('Referência do pagamento').fill(referencia);
+  await formulario.getByRole('button', { name: 'Confirmar pagamento' }).click();
+
+  await expect(page.getByRole('status')).toContainText(
+    'Confirmando o pagamento e consultando a senha'
+  );
+  await expect(formulario).toBeHidden({ timeout: 10000 });
+  await expect(detalhe.getByText('Concluído', { exact: true })).toBeVisible();
+  await expect(detalhe.getByText('MEC-E2E-INTEGRADO', { exact: true }))
+    .toBeVisible();
+  await expect(detalhe.getByText('Base própria / não definido', { exact: true }))
+    .toBeVisible();
+  await expect(detalhe.getByText('Aguardando envio', { exact: true })).toBeVisible();
+  await expect(detalhe.getByText(
+    'Nenhum envio ao fornecedor foi registrado.'
+  )).toBeVisible();
+
+  const respostaVerificacao = await page.request.get(
+    `${API}/api/e2e/verificacao`
+  );
+  expect(respostaVerificacao.ok()).toBe(true);
+  const verificacao = await respostaVerificacao.json();
+  expect(verificacao.estado.status).toBe('CONCLUIDO');
+  expect(Number(verificacao.estado.custo)).toBe(0);
+  expect(verificacao.estado.fornecedor_id).toBeNull();
+  expect(Number(verificacao.estado.pagamentos)).toBe(1);
+  expect(Number(verificacao.estado.resultados)).toBe(1);
+  expect(Number(verificacao.estado.cache)).toBe(1);
+  expect(Number(verificacao.estado.entregas)).toBe(1);
+  expect(Number(verificacao.estado.consultas_fornecedor)).toBe(0);
 });
 
 test('estorno e cancelamento só são registrados após confirmar a devolução', async ({ page }) => {

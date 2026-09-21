@@ -127,7 +127,7 @@ Os testes integrados criaram registros somente dentro das transações e executa
 | Estados intermediários | PARCIAL | UI mostra estados de pedidos/atendimentos/comunicações, bloqueia interação durante ações e explica indisponibilidade, custo zero e ausência de fornecedor | Playwright percorre os estados críticos do GM, inclusive resultado correto/incorreto, reprocessamento, falha confirmada, envio incerto e entrega pendente | Estados longos de atendimento e fechamento financeiro ainda não foram percorridos no navegador | Ampliar E2E conforme os módulos seguintes forem fechados | Estado de outro módulo ainda pode regredir sem detecção visual |
 | Responsividade | PARCIAL | `App.css` tem media queries entre 520px e 1120px; menu móvel funciona sem rolagem horizontal em 390 × 844 | Playwright percorre painel e menu em viewport móvel | Ainda falta matriz de celular, tablet e desktop para os formulários críticos e regressão visual | Ampliar viewports e fluxos de criação/pagamento/resultado | Formulário ainda não exercitado pode ficar inacessível em tela pequena |
 | Confirmação de ações destrutivas | PARCIAL | Cancelamento de pedido exige motivo e confirmação; estorno exige meio, referência e confirmação da devolução; bloqueios, finalização de atendimento e outras ações financeiras também pedem confirmação | Playwright comprova desistência sem mutação e confirmação única no cancelamento, estorno e bloqueio de cliente; estorno valida o corpo completo e a atualização para cancelado | Falta prova de navegador para fechamento de fornecedor e transições finais do atendimento | Ampliar a mesma política E2E para fechamento financeiro e atendimento | Ações ainda não cobertas podem ter confirmação ou repetição regressadas sem detecção |
-| Correspondência frontend/backend | PARCIAL | `Painel.jsx` liga módulos reais a componentes; interfaces usam as rotas reais de busca, pagamento, resultado, validação e entrega | Testes HTTP com rollback cobrem o backend; Playwright comprova contratos simulados de busca, pagamento, resultado, validação e estorno | Falta E2E do navegador contra uma API transacional descartável; integrações externas dependem de homologação | Conectar o Playwright a uma API isolada com transação externa | As duas camadas são provadas separadamente, sem detectar divergência de implantação entre artefatos |
+| Correspondência frontend/backend | PARCIAL | `Painel.jsx` liga módulos reais a componentes; Playwright sobe API local com as rotas reais e pool preso a uma transação externa | O cenário integrado percorre pedido antecipado, pagamento, API Joel Pires simulada, conclusão, cache e entrega; verifica MySQL e rollback sem resíduos | Os demais destinos GM e módulos administrativos ainda combinam testes HTTP e navegador separados | Expandir o harness integrado para 404/fornecedor, dados inválidos, indisponibilidade e estorno | Divergência entre camadas ainda pode escapar nos fluxos não integrados |
 
 ## Divergências entre regra documentada e código atual
 
@@ -159,7 +159,7 @@ Os testes integrados criaram registros somente dentro das transações e executa
 
 ## Próximos 10 marcos em ordem de dependência
 
-1. **Executar o navegador contra API e MySQL descartáveis**, mantendo uma transação externa com rollback para provar os contratos das duas camadas juntas.
+1. **Expandir o navegador transacional para os demais destinos GM**, cobrindo 404/fornecedor, dados inválidos/correção, indisponibilidade/reprocessamento, resultado e estorno nas duas camadas juntas.
 2. **Completar a matriz responsiva e acessível dos formulários críticos**, em celular, tablet e desktop, preservando os mesmos contratos funcionais.
 3. **Homologar os dois modelos WhatsApp e destinatários controlados**, realizar envio de consulta e entrega e registrar os comprovantes retornados pela Meta.
 4. **Definir e implementar o retorno estruturado do fornecedor**, associando a resposta ao pedido e deduplicando-a pelo identificador externo.
@@ -172,7 +172,7 @@ Os testes integrados criaram registros somente dentro das transações e executa
 
 ## Próximo marco recomendado
 
-O próximo marco deve ser **executar o navegador contra uma API e um banco descartáveis**, mantendo rollback externo. Os testes atuais provam backend e frontend separadamente; ligar as duas camadas no fluxo GM elimina a principal lacuna interna antes da homologação dos serviços externos.
+O próximo marco deve ser **expandir o navegador transacional para os demais destinos GM**. O caminho “API encontrou” já prova frontend, rotas reais e MySQL na mesma execução com rollback; agora o mesmo rigor deve cobrir 404/fornecedor, dados inválidos, indisponibilidade, resultado manual e estorno antes da homologação dos serviços externos.
 
 ## Progresso posterior à auditoria da v0.5.0
 
@@ -198,6 +198,7 @@ Na branch `feature/pagamento-manual-idempotente`, ainda não publicada:
 - a indisponibilidade da API Joel Pires agora é explicada no detalhe com custo zero, ausência de fornecedor e retentativa automática; o E2E comprova uma tentativa manual, conclusão posterior e entrega pendente sem consulta ao fornecedor;
 - resultado incorreto agora possui teste HTTP com MySQL/rollback e E2E de navegador; ambos comprovam motivo, efeito único, resultado bloqueado, seleção do próximo fornecedor, custo atualizado e nova comunicação pendente;
 - falha e envio incerto de comunicação agora possuem E2E de navegador: falha confirmada é reagendada diretamente, enquanto envio incerto permite desistir sem requisição e só repete após confirmação explícita;
+- o Playwright agora sobe uma API local descartável com rotas reais e uma única conexão MySQL em transação externa; o navegador confirma um pagamento GM, recebe uma senha da API Joel Pires simulada, comprova conclusão, cache, custo zero, ausência de fornecedor e entrega pendente, e o encerramento confirma zero resíduos;
 - a confirmação manual foi tornada idempotente por pedido, meio e referência/comprovante;
 - foi adicionado teste funcional da rota HTTP com MySQL e rollback;
 - foi criada uma outbox transacional para consultas a fornecedores;
