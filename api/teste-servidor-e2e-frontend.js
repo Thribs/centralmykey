@@ -57,6 +57,59 @@ function poolTransacional(conexao) {
   };
 }
 
+function ultimaSemanaConcluida() {
+  const hoje = new Date();
+  hoje.setHours(12, 0, 0, 0);
+  const deslocamento = hoje.getDay() === 0 ? -6 : 1 - hoje.getDay();
+  const inicio = new Date(hoje);
+  inicio.setDate(hoje.getDate() + deslocamento - 7);
+  const fim = new Date(inicio);
+  fim.setDate(inicio.getDate() + 6);
+  const iso = valor => [
+    valor.getFullYear(),
+    String(valor.getMonth() + 1).padStart(2, '0'),
+    String(valor.getDate()).padStart(2, '0')
+  ].join('-');
+  return { inicio: iso(inicio), fim: iso(fim) };
+}
+
+async function criarTabelasFechamentoTemporarias(conexao) {
+  await conexao.query(
+    `CREATE TEMPORARY TABLE fechamentos_fornecedores (
+       id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+       fornecedor_id BIGINT NOT NULL,
+       periodo_inicio DATE NOT NULL,
+       periodo_fim DATE NOT NULL,
+       moeda VARCHAR(3) NOT NULL DEFAULT 'BRL',
+       quantidade_itens INT NOT NULL DEFAULT 0,
+       valor_total DECIMAL(12,2) NOT NULL DEFAULT 0,
+       status ENUM('RASCUNHO','FECHADO','PAGO','CANCELADO')
+         NOT NULL DEFAULT 'RASCUNHO',
+       lancamento_financeiro_id BIGINT NULL,
+       gerado_por BIGINT NULL,
+       fechado_por BIGINT NULL,
+       pago_por BIGINT NULL,
+       fechado_em DATETIME NULL,
+       pago_em DATETIME NULL,
+       criado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+       atualizado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+         ON UPDATE CURRENT_TIMESTAMP,
+       UNIQUE KEY uk_periodo
+         (fornecedor_id, periodo_inicio, periodo_fim, moeda)
+     ) ENGINE=InnoDB`
+  );
+  await conexao.query(
+    `CREATE TEMPORARY TABLE fechamento_fornecedor_itens (
+       id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+       fechamento_id BIGINT NOT NULL,
+       pedido_senha_id BIGINT NOT NULL,
+       resultado_id BIGINT NOT NULL UNIQUE,
+       custo DECIMAL(12,2) NOT NULL,
+       criado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+     ) ENGINE=InnoDB`
+  );
+}
+
 async function prepararFixture() {
   connection = await mysql.createConnection({
     host: process.env.DB_HOST,
@@ -69,6 +122,7 @@ async function prepararFixture() {
   await criarTabelaOutboxTemporaria(connection);
   await criarTabelaPartesPedidoTemporaria(connection);
   await criarTabelaEstornosTemporaria(connection);
+  await criarTabelasFechamentoTemporarias(connection);
   await connection.query(
     `CREATE TEMPORARY TABLE fornecedor_servicos (
        id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
@@ -103,6 +157,8 @@ async function prepararFixture() {
   const chassiResultado = `9BGE2E6A0${String(Date.now() + 5).slice(-8)}`;
   const protocoloEstorno = `ES${process.pid}${String(Date.now()).slice(-7)}`;
   const chassiEstorno = `9BGE2E7A0${String(Date.now() + 6).slice(-8)}`;
+  const protocoloFechamento = `FF${process.pid}${String(Date.now()).slice(-7)}`;
+  const chassiFechamento = `9BGE2E8A0${String(Date.now() + 7).slice(-8)}`;
   const telefone = `5594${String(Date.now()).slice(-8)}`;
   const nomeCliente = `CLIENTE E2E INTEGRADO ${marcador}`;
   const nomeFornecedor = `FORNECEDOR E2E INTEGRADO ${marcador}`;
@@ -208,6 +264,30 @@ async function prepararFixture() {
       chassiEstorno,
       Number(servico.preco_base)
     ]
+  );
+  const periodoFechamento = ultimaSemanaConcluida();
+  const [pedidoFechamento] = await connection.query(
+    `INSERT INTO pedidos_senha
+       (protocolo, cliente_id, servico_id, chassi, marca, modelo, ano,
+        status, valor_venda, custo, moeda, fornecedor_id, origem_id)
+     VALUES (?, ?, ?, ?, 'GM', 'FECHAMENTO E2E', 2026,
+             'CONCLUIDO', ?, 0.01, 'BRL', ?, 2)`,
+    [
+      protocoloFechamento,
+      cliente.insertId,
+      servico.id,
+      chassiFechamento,
+      Number(servico.preco_base),
+      fornecedor.insertId
+    ]
+  );
+  await connection.query(
+    `INSERT INTO pedido_resultados
+       (pedido_id, origem_id, fornecedor_id, codigo_mecanico,
+        resultado, custo, status, criado_em)
+     VALUES (?, 2, ?, 'MEC-FECHAMENTO-E2E', JSON_OBJECT(), 0.01,
+             'CONFIRMADO', ?)`,
+    [pedidoFechamento.insertId, fornecedor.insertId, `${periodoFechamento.inicio} 12:00:00`]
   );
   const [lancamentoEstorno] = await connection.query(
     `INSERT INTO lancamentos_financeiros
@@ -324,6 +404,16 @@ async function prepararFixture() {
       pedidoId: pedidoEstorno.insertId,
       protocolo: protocoloEstorno,
       chassi: chassiEstorno
+    },
+    fechamentoFornecedor: {
+      pedidoId: pedidoFechamento.insertId,
+      protocolo: protocoloFechamento,
+      chassi: chassiFechamento,
+      fornecedorId: fornecedor.insertId,
+      fornecedor: nomeFornecedor,
+      periodoInicio: periodoFechamento.inicio,
+      periodoFim: periodoFechamento.fim,
+      referencia: `PIX-FECHAMENTO-${protocoloFechamento}`
     },
     nomeCliente,
     nomeFornecedor,
@@ -467,9 +557,47 @@ async function iniciar() {
       pedido_id: contexto.estorno.pedidoId,
       protocolo: contexto.estorno.protocolo
     },
+    fechamento_fornecedor: {
+      pedido_id: contexto.fechamentoFornecedor.pedidoId,
+      protocolo: contexto.fechamentoFornecedor.protocolo,
+      fornecedor_id: contexto.fechamentoFornecedor.fornecedorId,
+      fornecedor: contexto.fechamentoFornecedor.fornecedor,
+      periodo_inicio: contexto.fechamentoFornecedor.periodoInicio,
+      periodo_fim: contexto.fechamentoFornecedor.periodoFim,
+      referencia: contexto.fechamentoFornecedor.referencia
+    },
     cliente: contexto.nomeCliente
   }));
   app.get('/api/e2e/verificacao', async (req, res) => {
+    if (req.query.cenario === 'fechamento_fornecedor') {
+      const [[estado]] = await connection.query(
+        `SELECT
+           ff.status,
+           ff.quantidade_itens,
+           ff.valor_total,
+           ff.lancamento_financeiro_id,
+           (SELECT COUNT(*) FROM fechamento_fornecedor_itens ffi
+             WHERE ffi.fechamento_id = ff.id) AS itens,
+           (SELECT COUNT(*) FROM lancamentos_financeiros lf
+             WHERE lf.id = ff.lancamento_financeiro_id
+               AND lf.tipo = 'DESPESA' AND lf.status = 'PAGO'
+               AND lf.fornecedor_id = ff.fornecedor_id) AS lancamentos,
+           (SELECT COUNT(*) FROM pagamentos pg
+             WHERE pg.lancamento_id = ff.lancamento_financeiro_id
+               AND pg.referencia_externa = ?) AS pagamentos
+         FROM fechamentos_fornecedores ff
+         WHERE ff.fornecedor_id = ? AND ff.periodo_inicio = ?
+           AND ff.periodo_fim = ? AND ff.moeda = 'BRL'
+         LIMIT 1`,
+        [
+          contexto.fechamentoFornecedor.referencia,
+          contexto.fechamentoFornecedor.fornecedorId,
+          contexto.fechamentoFornecedor.periodoInicio,
+          contexto.fechamentoFornecedor.periodoFim
+        ]
+      );
+      return res.json({ ok: true, estado: estado || null });
+    }
     const naoEncontrado = req.query.cenario === 'nao_encontrado';
     const dadosInvalidos = req.query.cenario === 'dados_invalidos';
     const indisponivel = req.query.cenario === 'indisponivel';
@@ -534,7 +662,9 @@ async function iniciar() {
   const pool = poolTransacional(connection);
   require('./rotas-pedidos')(app, pool);
   require('./rotas-financeiro')(app, pool);
+  require('./rotas-relatorios')(app, pool);
   require('./rotas-estornos')(app, pool);
+  require('./rotas-fechamentos-fornecedores')(app, pool);
 
   servidor = await new Promise((resolve, reject) => {
     const instancia = app.listen(PORTA, '127.0.0.1', () => resolve(instancia));
@@ -555,7 +685,7 @@ async function encerrar(codigo = 0) {
       await connection.rollback();
       const [[residuos]] = await connection.query(
         `SELECT
-           (SELECT COUNT(*) FROM pedidos_senha WHERE protocolo IN (?, ?, ?, ?, ?, ?)) AS pedidos,
+           (SELECT COUNT(*) FROM pedidos_senha WHERE protocolo IN (?, ?, ?, ?, ?, ?, ?)) AS pedidos,
            (SELECT COUNT(*) FROM clientes WHERE nome = ?) AS clientes,
            (SELECT COUNT(*) FROM fornecedores WHERE nome = ?) AS fornecedores,
            (SELECT COUNT(*) FROM banco_senhas
@@ -568,6 +698,7 @@ async function encerrar(codigo = 0) {
           contexto?.indisponivel?.protocolo,
           contexto?.resultadoFornecedor?.protocolo,
           contexto?.estorno?.protocolo,
+          contexto?.fechamentoFornecedor?.protocolo,
           contexto?.nomeCliente,
           contexto?.nomeFornecedor,
           String(contexto?.encontrado?.apiSenhaId),

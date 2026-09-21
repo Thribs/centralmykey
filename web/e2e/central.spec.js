@@ -905,6 +905,67 @@ test('navegador registra resultado real e prepara entrega na transação', async
   expect(Number(verificacao.estado.consultas_canceladas)).toBe(1);
 });
 
+test('financeiro fecha e paga fornecedor uma única vez na transação', async ({ page }) => {
+  const respostaContexto = await page.request.get(`${API}/api/e2e/contexto`);
+  expect(respostaContexto.ok()).toBe(true);
+  const contextoCompleto = await respostaContexto.json();
+  const contexto = contextoCompleto.fechamento_fornecedor;
+
+  await page.addInitScript(() => {
+    localStorage.setItem('central_mykey_token', 'token-e2e-integrado');
+    localStorage.setItem('central_mykey_troca_senha', '0');
+  });
+  const dialogos = [
+    ['confirm'],
+    ['confirm'],
+    ['prompt', contexto.referencia],
+    ['confirm']
+  ];
+  page.on('dialog', async dialogo => {
+    const [tipo, valor] = dialogos.shift();
+    expect(dialogo.type()).toBe(tipo);
+    if (tipo === 'prompt') await dialogo.accept(valor);
+    else await dialogo.accept();
+  });
+
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Financeiro', exact: true }).click();
+  await expect(page.getByRole('main').getByRole('heading', { name: 'Financeiro' }))
+    .toBeVisible();
+  await page.getByRole('button', { name: 'Fornecedores', exact: true }).click();
+  await page.locator('.finance-filters select').nth(1)
+    .selectOption(String(contexto.fornecedor_id));
+  await page.getByRole('button', { name: 'Gerar última semana' }).click();
+
+  let linha = page.locator('tr', { hasText: contexto.fornecedor });
+  await expect(linha).toContainText('RASCUNHO');
+  await expect(linha).toContainText('R$\u00a00,01');
+  await linha.click();
+  const detalhe = page.getByRole('dialog', { name: /Fechamento #/ });
+  await expect(detalhe.getByText(contexto.protocolo, { exact: true })).toBeVisible();
+  await expect(detalhe.getByText('1', { exact: true })).toBeVisible();
+  await detalhe.getByRole('button', { name: 'Fechar detalhes' }).click();
+
+  linha = page.locator('tr', { hasText: contexto.fornecedor });
+  await linha.getByRole('button', { name: 'Aprovar' }).click();
+  await expect(linha).toContainText('FECHADO');
+  await linha.getByRole('button', { name: 'Registrar pagamento' }).click();
+  await expect(linha).toContainText('PAGO');
+  expect(dialogos).toHaveLength(0);
+
+  const respostaVerificacao = await page.request.get(
+    `${API}/api/e2e/verificacao?cenario=fechamento_fornecedor`
+  );
+  expect(respostaVerificacao.ok()).toBe(true);
+  const verificacao = await respostaVerificacao.json();
+  expect(verificacao.estado.status).toBe('PAGO');
+  expect(Number(verificacao.estado.quantidade_itens)).toBe(1);
+  expect(Number(verificacao.estado.valor_total)).toBeCloseTo(0.01);
+  expect(Number(verificacao.estado.itens)).toBe(1);
+  expect(Number(verificacao.estado.lancamentos)).toBe(1);
+  expect(Number(verificacao.estado.pagamentos)).toBe(1);
+});
+
 test('navegador estorna pagamento real e cancela na transação', async ({ page }) => {
   const respostaContexto = await page.request.get(`${API}/api/e2e/contexto`);
   expect(respostaContexto.ok()).toBe(true);

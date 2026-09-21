@@ -85,13 +85,18 @@ function DetalheFatura({ dados, aoFechar }) {
 
   return (
     <div className="finance-overlay">
-      <aside className="finance-detail">
+      <aside
+        className="finance-detail"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={`titulo-fatura-${fatura.id}`}
+      >
         <header>
           <div>
             <span>DETALHES DA FATURA</span>
-            <h2>Fatura #{fatura.id}</h2>
+            <h2 id={`titulo-fatura-${fatura.id}`}>Fatura #{fatura.id}</h2>
           </div>
-          <button type="button" onClick={aoFechar}>
+          <button type="button" onClick={aoFechar} aria-label="Fechar detalhes">
             <X size={20} />
           </button>
         </header>
@@ -139,13 +144,22 @@ function DetalheFechamentoFornecedor({ dados, aoFechar }) {
   const itens = dados.itens || [];
   return (
     <div className="finance-overlay">
-      <aside className="finance-detail">
+      <aside
+        className="finance-detail"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={`titulo-fechamento-${fechamento.id}`}
+      >
         <header>
           <div>
             <span>FECHAMENTO DO FORNECEDOR</span>
-            <h2>Fechamento #{fechamento.id}</h2>
+            <h2 id={`titulo-fechamento-${fechamento.id}`}>
+              Fechamento #{fechamento.id}
+            </h2>
           </div>
-          <button type="button" onClick={aoFechar}><X size={20} /></button>
+          <button type="button" onClick={aoFechar} aria-label="Fechar detalhes">
+            <X size={20} />
+          </button>
         </header>
         <div className="finance-detail-body">
           <section className="finance-detail-card">
