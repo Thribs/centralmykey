@@ -15,6 +15,10 @@ const {
 const {
   obterConfiguracaoWhatsapp
 } = require('./configuracoes-integracoes');
+const {
+  registrarContextoRequisicao,
+  registrarTratamentoFinal
+} = require('./middleware-erros');
 
 const app = express();
 
@@ -26,6 +30,7 @@ function inteiroConfiguradoIntervalo(valor, padrao) {
 }
 
 app.use(cors());
+registrarContextoRequisicao(app);
 app.use(express.json({
   verify: (req, res, buffer) => {
     req.rawBody = buffer;
@@ -241,6 +246,7 @@ async function executarComunicacoesOutbox() {
 }
 
 require('./rotas-openai')(app, pool);
+registrarTratamentoFinal(app);
 
 app.listen(port, '127.0.0.1', () => {
   console.log(`Central MyKey API ativa na porta ${port}`);

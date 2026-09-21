@@ -4,7 +4,7 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "test": "node teste-http.js",
+    "test": "node teste-http.js && node teste-api.js",
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint .",

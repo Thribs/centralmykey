@@ -1,18 +1,22 @@
-import { requisitar } from './http';
+import { requisitar } from './http.js';
 
 export const API_URL =
-  import.meta.env.VITE_API_URL ||
+  import.meta.env?.VITE_API_URL ||
   'https://api-central.aiepires.com.br';
 
-async function lerResposta(resposta) {
+export async function lerResposta(resposta) {
   const dados = await resposta.json().catch(() => ({}));
 
   if (!resposta.ok) {
-    const erro = new Error(
-      dados.error || 'Não foi possível concluir a solicitação'
-    );
+    const requestId = dados.request_id ||
+      resposta.headers?.get?.('x-request-id') || null;
+    const mensagem = dados.error || 'Não foi possível concluir a solicitação';
+    const erro = new Error(requestId
+      ? `${mensagem} (referência: ${requestId})`
+      : mensagem);
     erro.status = resposta.status;
     erro.codigo = dados.codigo || null;
+    erro.requestId = requestId;
     throw erro;
   }
 
