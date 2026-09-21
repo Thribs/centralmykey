@@ -33,7 +33,7 @@ module.exports = function registrarRotasIntegracoes(app, pool, opcoes = {}) {
     });
 
   app.get('/api/integracoes/eventos', autenticarToken,
-    exigirPermissao('CONFIGURACOES', 'visualizar'), async (req, res) => {
+    exigirPermissao('INTEGRACOES', 'visualizar'), async (req, res) => {
       const provedor = String(req.query.provedor || '').trim().toUpperCase();
       const status = String(req.query.status || '').trim().toUpperCase();
       const limite = Math.min(Math.max(Number(req.query.limite) || 50, 1), 200);
@@ -69,7 +69,7 @@ module.exports = function registrarRotasIntegracoes(app, pool, opcoes = {}) {
     });
 
   app.get('/api/integracoes/referencias-pagamento', autenticarToken,
-    exigirPermissao('CONFIGURACOES', 'visualizar'), async (req, res) => {
+    exigirPermissao('INTEGRACOES', 'visualizar'), async (req, res) => {
       const provedor = String(req.query.provedor || '').trim().toUpperCase();
       const limite = Math.min(Math.max(Number(req.query.limite) || 50, 1), 200);
       if (provedor && !['SICOOB', 'PLUGPAY', 'WBUY'].includes(provedor)) {

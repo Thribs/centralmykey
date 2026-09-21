@@ -635,7 +635,7 @@ export default function Painel({
             <Usuarios permissoes={permissoes} />
           ) : atual?.codigo === 'INTEGRACOES' ? (
             <>
-              <Integracoes />
+              <Integracoes permissoes={permissoes} />
               <OpenAILab />
             </>
           ) : atual?.codigo === 'CONFIGURACOES' ? (

@@ -567,7 +567,7 @@ module.exports = function(app, pool) {
   app.get(
     '/api/integracoes/resumo',
     autenticarToken,
-    exigirPermissao('CONFIGURACOES', 'visualizar'),
+    exigirPermissao('INTEGRACOES', 'visualizar'),
     async (req, res) => {
       try {
         const configuracoes = await carregarConfiguracoesIntegracoes(pool);

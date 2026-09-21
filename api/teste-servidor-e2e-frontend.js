@@ -158,6 +158,24 @@ async function prepararFixture() {
   await criarTabelaEventosIntegracaoTemporaria(connection);
   await criarTabelasFechamentoTemporarias(connection);
   await connection.query(
+    `CREATE TEMPORARY TABLE integracao_produto_mapeamentos (
+       id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+       provedor ENUM('WBUY','BLING') NOT NULL,
+       produto_externo_id VARCHAR(160) NULL,
+       sku VARCHAR(120) NULL,
+       nome_externo VARCHAR(255) NULL,
+       servico_id BIGINT NOT NULL,
+       ativo TINYINT(1) NOT NULL DEFAULT 1,
+       criado_por BIGINT NULL,
+       atualizado_por BIGINT NULL,
+       criado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+       atualizado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+         ON UPDATE CURRENT_TIMESTAMP,
+       UNIQUE KEY uk_integracao_produto (provedor, produto_externo_id),
+       UNIQUE KEY uk_integracao_sku (provedor, sku)
+     ) ENGINE=InnoDB`
+  );
+  await connection.query(
     `CREATE TEMPORARY TABLE fornecedor_servicos (
        id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
        fornecedor_id BIGINT NOT NULL,
@@ -230,6 +248,9 @@ async function prepararFixture() {
   const chaveConfiguracao = `E2E_CONFIG_${process.pid}_${String(Date.now()).slice(-6)}`;
   const valorConfiguracaoInicial = `INICIAL-${marcador}`;
   const valorConfiguracaoFinal = `ATUALIZADO-${marcador}`;
+  const nomeModeloWhatsapp = `modelo_e2e_${process.pid}_${String(Date.now()).slice(-6)}`;
+  const produtoExternoIntegracao = `produto-e2e-${marcador}`;
+  const skuIntegracao = `SKU-E2E-${marcador}`.toUpperCase();
   const apiSenhaId = 970000000 + (process.pid % 100000);
   const apiSenhaIdCorrigida = 971000000 + (process.pid % 100000);
   const apiSenhaIdReprocessada = 972000000 + (process.pid % 100000);
@@ -286,6 +307,16 @@ async function prepararFixture() {
        (usuario_id, modulo_id, visualizar, criar, editar, excluir, aprovar)
      VALUES (?, ?, 1, 0, 0, 0, 0)`,
     [visualizador.insertId, moduloConfiguracoes.id]
+  );
+  const moduloIntegracoes = modulos.find(item => item.codigo === 'INTEGRACOES');
+  if (!moduloIntegracoes) {
+    throw new Error('Módulo INTEGRACOES ativo é obrigatório para o E2E');
+  }
+  await connection.query(
+    `INSERT INTO usuario_permissoes
+       (usuario_id, modulo_id, visualizar, criar, editar, excluir, aprovar)
+     VALUES (?, ?, 1, 0, 0, 0, 0)`,
+    [visualizador.insertId, moduloIntegracoes.id]
   );
   const moduloAtendimento = modulos.find(item => item.codigo === 'ATENDIMENTO');
   if (!moduloAtendimento) {
@@ -624,6 +655,14 @@ async function prepararFixture() {
       servicoCodigo: servico.codigo,
       servicoNome: servico.nome
     },
+    integracoes: {
+      nomeModeloWhatsapp,
+      produtoExternoId: produtoExternoIntegracao,
+      sku: skuIntegracao,
+      nomeExterno: `Produto fictício E2E ${marcador}`,
+      servicoId: servico.id,
+      servicoCodigo: servico.codigo
+    },
     nomeCliente,
     nomeFornecedor,
     usuario
@@ -793,9 +832,40 @@ async function iniciar() {
       servico_codigo: contexto.cadastros.servicoCodigo,
       servico_nome: contexto.cadastros.servicoNome
     },
+    integracoes: {
+      modelo_nome: contexto.integracoes.nomeModeloWhatsapp,
+      produto_externo_id: contexto.integracoes.produtoExternoId,
+      sku: contexto.integracoes.sku,
+      nome_externo: contexto.integracoes.nomeExterno,
+      servico_id: contexto.integracoes.servicoId,
+      servico_codigo: contexto.integracoes.servicoCodigo
+    },
     cliente: contexto.nomeCliente
   }));
   app.get('/api/e2e/verificacao', async (req, res) => {
+    if (req.query.cenario === 'integracoes') {
+      const [[mapeamento]] = await connection.query(
+        `SELECT m.id, m.provedor, m.produto_externo_id, m.sku, m.servico_id,
+                m.ativo,
+                (SELECT COUNT(*) FROM auditoria a
+                  WHERE a.entidade = 'integracao_produto_mapeamentos'
+                    AND a.entidade_id = CAST(m.id AS CHAR)) AS auditorias
+           FROM integracao_produto_mapeamentos m
+          WHERE m.provedor = 'WBUY' AND m.produto_externo_id = ? LIMIT 1`,
+        [contexto.integracoes.produtoExternoId]
+      );
+      const [[modelo]] = await connection.query(
+        `SELECT w.id, w.nome, w.status, w.ativo,
+                (SELECT COUNT(*) FROM auditoria a
+                  WHERE a.entidade = 'whatsapp_modelos'
+                    AND a.entidade_id = CAST(w.id AS CHAR)) AS auditorias
+           FROM whatsapp_modelos w WHERE w.nome = ? LIMIT 1`,
+        [contexto.integracoes.nomeModeloWhatsapp]
+      );
+      if (mapeamento?.id) contexto.integracoes.mapeamentoId = mapeamento.id;
+      if (modelo?.id) contexto.integracoes.modeloId = modelo.id;
+      return res.json({ ok: true, mapeamento: mapeamento || null, modelo: modelo || null });
+    }
     if (req.query.cenario === 'cadastros') {
       const [[cliente]] = await connection.query(
         `SELECT
@@ -1028,6 +1098,9 @@ async function iniciar() {
   require('./rotas-fechamentos-fornecedores')(app, pool);
   require('./rotas-auditoria')(app, pool);
   require('./rotas-health')(app, pool);
+  require('./rotas-integracoes')(app, pool);
+  require('./rotas-mapeamentos-integracoes')(app, pool);
+  require('./rotas-whatsapp-admin')(app, pool);
   require('./rotas-operacionais')(app, pool);
 
   servidor = await new Promise((resolve, reject) => {
@@ -1065,6 +1138,10 @@ async function encerrar(codigo = 0) {
            (SELECT COUNT(*) FROM configuracoes WHERE chave = ?) AS configuracoes,
            (SELECT COUNT(*) FROM auditoria
              WHERE entidade = 'configuracoes' AND entidade_id = ?) AS auditorias_configuracao,
+           (SELECT COUNT(*) FROM integracao_produto_mapeamentos
+             WHERE produto_externo_id = ?) AS mapeamentos_integracao,
+           (SELECT COUNT(*) FROM whatsapp_modelos
+             WHERE nome = ?) AS modelos_whatsapp,
            (SELECT COUNT(*) FROM banco_senhas
              WHERE JSON_UNQUOTE(JSON_EXTRACT(dados_extras, '$.api_senha_id'))
                IN (?, ?, ?) OR chassi = ?) AS cache`,
@@ -1098,6 +1175,8 @@ async function encerrar(codigo = 0) {
           contexto?.atendimento?.id || 0,
           contexto?.configuracao?.chave,
           contexto?.configuracao?.chave,
+          contexto?.integracoes?.produtoExternoId,
+          contexto?.integracoes?.nomeModeloWhatsapp,
           String(contexto?.encontrado?.apiSenhaId),
           String(contexto?.dadosInvalidos?.apiSenhaId),
           String(contexto?.indisponivel?.apiSenhaId),

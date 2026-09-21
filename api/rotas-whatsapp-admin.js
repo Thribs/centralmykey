@@ -23,7 +23,7 @@ module.exports = function (app, pool) {
   app.get(
     '/api/whatsapp/modelos',
     autenticarToken,
-    exigirPermissao('CONFIGURACOES', 'visualizar'),
+    exigirPermissao('INTEGRACOES', 'visualizar'),
     async (req, res) => {
       try {
         const [modelos] = await pool.query(
@@ -64,7 +64,7 @@ module.exports = function (app, pool) {
   app.post(
     '/api/whatsapp/modelos',
     autenticarToken,
-    exigirPermissao('CONFIGURACOES', 'editar'),
+    exigirPermissao('INTEGRACOES', 'editar'),
     async (req, res) => {
       const nome = String(req.body?.nome || '').trim();
       const idioma = String(req.body?.idioma || 'pt_BR').trim();
@@ -178,7 +178,7 @@ module.exports = function (app, pool) {
   app.patch(
     '/api/whatsapp/modelos/:id/status',
     autenticarToken,
-    exigirPermissao('CONFIGURACOES', 'editar'),
+    exigirPermissao('INTEGRACOES', 'editar'),
     async (req, res) => {
       const modeloId = Number(req.params.id);
       const status = String(req.body?.status || '').toUpperCase();

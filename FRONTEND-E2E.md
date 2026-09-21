@@ -40,6 +40,9 @@ A suíte cobre inicialmente:
   persistência MySQL e rollback comprovados;
 - indicadores e agrupamento por status do relatório reconciliados no navegador
   com a resposta autenticada da API real para o mesmo período e moeda;
+- administração de integrações criando e desativando mapeamento WBuy e
+  cadastrando, aprovando e ativando modelo WhatsApp fictício, com permissões,
+  auditoria e rollback, sem chamadas a provedores externos;
 - administrador criando, autorizando e bloqueando usuário pela interface, e
   visualizador sem controles de mutação nem possibilidade de forçar a criação
   pela API; todo o cenário usa JWT real e rollback;

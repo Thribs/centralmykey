@@ -99,8 +99,8 @@ Os testes integrados criaram registros somente dentro das transações e executa
 | Requisito | Situação | Evidência concreta no código | Teste existente | Lacuna | Próximo passo | Risco operacional |
 |---|---|---|---|---|---|---|
 | WhatsApp | PARCIAL | Transporte, webhook assinado, mensagens, mídia, outbox e configuração unificada em `api/rotas-whatsapp.js` e `api/configuracoes-integracoes.js` | Testes funcionais de envio, status e configuração com mocks; testes de banco usam rollback | Homologação com conta/modelos Meta e contatos reais ainda não executada | Configurar credenciais/modelos e homologar com destinatários controlados | Código pronto, mas mensagens reais continuam desabilitadas até homologação |
-| WBuy | PARCIAL | Mapeamento persistente e auditado de produtos/SKUs para serviços; credenciais REST modeladas conforme ajuda oficial; tela administrativa | `teste-mapeamentos-integracoes.js` usa HTTP e banco com rollback | Falta normalizador do payload, autenticação do webhook e criação dos pedidos | Validar payload `order`/`order_status` da conta antes de abrir endpoint | Payload não autenticado ou interpretado por suposição pode criar pedidos falsos/incorretos |
-| Bling na transição | PARCIAL | Compartilha o mapeamento produto/SKU → serviço e a tela administrativa | Mesmo teste comprova vínculos BLING/WBUY na estrutura comum, embora o cenário funcional use WBUY | Sem OAuth, importação/exportação ou máquina de coexistência | Implementar OAuth e leitura controlada antes de sincronizar estados | Dupla escrituração e perda de histórico continuam possíveis até definir autoridade por entidade |
+| WBuy | PARCIAL | Mapeamento persistente e auditado de produtos/SKUs para serviços; credenciais REST modeladas conforme ajuda oficial; tela administrativa | Teste HTTP cobre idempotência; Playwright cria/desativa mapeamento pela rota real, comprova auditoria, permissão e rollback sem chamar WBuy | Falta normalizador do payload, autenticação do webhook, criação dos pedidos e aplicação da migração na produção | Validar payload `order`/`order_status` da conta antes de abrir endpoint | Payload não autenticado ou interpretado por suposição pode criar pedidos falsos/incorretos |
+| Bling na transição | PARCIAL | Compartilha o mapeamento produto/SKU → serviço e a tela administrativa | Teste HTTP comprova vínculos BLING/WBUY; navegador comprova a estrutura comum com WBuy | Sem OAuth, importação/exportação ou máquina de coexistência | Implementar OAuth e leitura controlada antes de sincronizar estados | Dupla escrituração e perda de histórico continuam possíveis até definir autoridade por entidade |
 | API Joel Pires | PARCIAL | Cliente, cache, classificação e testes do fluxo GM | Mocks unitários/funcionais | Outras montadoras não têm verticais comprovadas; staging real não faz parte da suíte | Contratos por produto e smoke opcional controlado | Mudança externa quebra produtos não testados |
 | Notificações internas | COMPROVADO | Entidades, rotas, contador, caixa no frontend e resolução por chave | `teste-notificacoes-internas.js` cobre acesso, leitura, reativação e resolução com rollback | Nenhuma lacuna funcional conhecida no escopo interno | Ampliar eventos conforme novos conectores | Evento novo sem notificação pode ficar silencioso |
 
@@ -124,10 +124,10 @@ Os testes integrados criaram registros somente dentro das transações e executa
 |---|---|---|---|---|---|---|
 | Carregamento e timeout | COMPROVADO | Cliente comum `web/src/http.js` aplica timeout e mensagens específicas; pagamento mantém 105s | `web/teste-http.js`, lint e build | Nenhuma lacuna conhecida no cliente HTTP atual | Manter testes ao adicionar chamadas | Operação longa nova exige timeout explícito |
 | Mensagens de erro | COMPROVADO | Todas as respostas possuem `X-Request-ID`; erros JSON preservam códigos específicos ou recebem código estável pelo status; JSON inválido e limite têm classificação própria; frontend exibe a referência sem detalhes internos | `teste-erros-http.js` cobre o contrato da API; `teste-api.js` cobre o cliente; Playwright comprova exibição e recuperação da fila no navegador | Nenhuma lacuna funcional conhecida no contrato atual | Ampliar cenários E2E junto de cada fluxo novo | Código genérico ainda exige consulta da referência quando a rota não possui classificação mais específica |
-| Estados intermediários | PARCIAL | UI mostra estados de pedidos, atendimentos, comunicações, cadastros e monitoramento e bloqueia interação durante ações | Playwright percorre estados críticos do GM, fornecedor, atendimento, cadastros e carregamento administrativo contra API/MySQL reais; relatório é reconciliado com a API | Administração de integrações ainda não foi percorrida nas mesmas camadas | Integrar mapeamentos e estados dos conectores no navegador | Estado de integração ainda pode regredir sem detecção visual |
-| Responsividade | PARCIAL | `App.css` tem media queries entre 520px e 1120px; modais críticos possuem limites, rolagem e nomes acessíveis | Playwright percorre GM, Financeiro, Relatórios e módulos administrativos em três larguras; cadastros e ações completas também são comprovados no celular | Integrações e telas secundárias ainda não possuem a mesma matriz | Ampliar a matriz junto da integração desses módulos | Tela não coberta ainda pode ocultar controles em viewport menor |
-| Confirmação de ações destrutivas | PARCIAL | Cancelamento, estorno, fechamento, bloqueio, finalização e alteração de configuração exigem confirmação | Playwright comprova confirmação nos fluxos críticos, inclusive configuração auditada | Demais ações administrativas ainda não têm prova uniforme no navegador | Ampliar a mesma política nos módulos restantes | Ação não coberta pode ter confirmação ou repetição regressada sem detecção |
-| Correspondência frontend/backend | PARCIAL | `Painel.jsx` liga módulos reais a componentes; Playwright sobe API local com JWT/middleware reais e pool preso a uma transação externa | Ciclo GM, financeiro, cadastros, relatório, usuários/permissões, atendimento, configuração, auditoria e monitoramento são integrados com MySQL e rollback | Integrações e demais produtos ainda combinam testes HTTP e navegador separados | Expandir o harness por módulo conforme a prioridade operacional | Divergência entre camadas ainda pode escapar nos módulos não integrados |
+| Estados intermediários | PARCIAL | UI mostra estados de pedidos, atendimentos, comunicações, cadastros, integrações e monitoramento e bloqueia interação durante ações | Playwright percorre estados críticos do GM, fornecedor, atendimento, cadastros e integrações contra API/MySQL reais; relatório é reconciliado com a API | Demais verticais de produto ainda não possuem estados próprios comprovados | Ampliar E2E ao especificar cada vertical | Estado de produto novo pode regredir sem detecção visual |
+| Responsividade | PARCIAL | `App.css` tem media queries entre 520px e 1120px; modais críticos possuem limites, rolagem e nomes acessíveis | Playwright percorre GM, Financeiro, Relatórios e módulos administrativos em três larguras; cadastros no celular e integrações no tablet têm ações completas | Telas secundárias e novas verticais ainda não possuem a mesma matriz | Ampliar a matriz junto de cada novo fluxo | Tela não coberta ainda pode ocultar controles em viewport menor |
+| Confirmação de ações destrutivas | PARCIAL | Cancelamento, estorno, fechamento, bloqueio, finalização, configuração e estados de conectores exigem confirmação | Playwright comprova confirmação nos fluxos críticos, inclusive desativação de mapeamento e aprovação/ativação de modelo | Demais ações administrativas ainda não têm prova uniforme no navegador | Ampliar a mesma política nos módulos restantes | Ação não coberta pode ter confirmação ou repetição regressada sem detecção |
+| Correspondência frontend/backend | PARCIAL | `Painel.jsx` liga módulos reais a componentes; Playwright sobe API local com JWT/middleware reais e pool preso a uma transação externa | Ciclo GM, financeiro, cadastros, relatório, integrações, usuários/permissões, atendimento, configuração, auditoria e monitoramento são integrados com MySQL e rollback | Demais produtos ainda não possuem verticais completas para integrar | Expandir o harness junto da especificação de cada produto | Divergência entre camadas ainda pode escapar nos módulos futuros |
 
 ## Divergências entre regra documentada e código atual
 
@@ -139,6 +139,7 @@ Os testes integrados criaram registros somente dentro das transações e executa
 6. A restauração valida artefatos e executa dump fictício no cliente MySQL, mas a credencial disponível não permite o ensaio integral em schema descartável.
 7. O monitoramento interno existe, mas ainda não encaminha alertas críticos para um canal externo nem possui SLO operacional definido.
 8. Kia/Hyundai, Fiat, Nissan, Jeep/Chrysler, Peugeot/Citroën, rádio e programação online não possuem contrato comercial completo — preço, entrada, fonte, fornecedor, pagamento, entrega e teste — e não devem ser inferidos do fluxo GM.
+9. A migração de mapeamentos WBuy/Bling está versionada, mas a tabela ainda não existe na produção v0.4.1; a tela não pode ser publicada isoladamente.
 
 ## O que está realmente pronto
 
@@ -154,25 +155,25 @@ Os testes integrados criaram registros somente dentro das transações e executa
 - Retorno de fornecedor: o registro interno funciona, porém a resposta automática pelo canal ainda não foi especificada nem homologada.
 - Sicoob: base técnica simulada pronta, sem mTLS e homologação externa; PlugPay, WBuy e Bling continuam sem integração funcional completa.
 - Monitoramento, backup e auditoria: funcionais internamente, com canal externo de alerta, timer publicado e restauração integral ainda pendentes.
-- Frontend: GM, financeiro, cadastros, relatório, usuários/permissões, atendimento, configuração, auditoria e monitoramento possuem navegador contra autenticação, rotas e MySQL reais; integrações e demais produtos ainda não têm a mesma prova completa.
+- Frontend: GM, financeiro, cadastros, relatório, integrações, usuários/permissões, atendimento, configuração, auditoria e monitoramento possuem navegador contra autenticação, rotas e MySQL reais; as demais verticais ainda não têm produto completo para receber a mesma prova.
 - Demais verticais: faltam requisitos comerciais e implementação ponta a ponta; não estão prontas para operação.
 
 ## Próximos 10 marcos em ordem de dependência
 
-1. **Integrar a administração de conectores no navegador**, comprovando mapeamentos, permissões, auditoria e responsividade antes de ativar canais externos.
-2. **Preparar a publicação interna com migrações, backup e rollback**, sem ativar transportes externos antes da homologação.
-3. **Homologar os dois modelos WhatsApp e destinatários controlados**, realizar envio de consulta e entrega e registrar os comprovantes retornados pela Meta.
-4. **Definir e implementar o retorno estruturado do fornecedor**, associando a resposta ao pedido e deduplicando-a pelo identificador externo.
-5. **Ligar alertas críticos a um canal externo e definir SLO**, cobrindo parada de worker, fila envelhecida, API indisponível e falha de integração.
-6. **Homologar Sicoob com mTLS**, cobrança e eventos reais controlados antes de expor qualquer webhook público.
-7. **Obter o contrato do PlugPay e implementar cobrança/conciliação**, preservando a mesma base idempotente de eventos.
-8. **Definir os papéis de WBuy e Bling durante a transição**, então implementar sincronização, reconciliação e auditoria conforme os contratos aprovados.
-9. **Instalar a agenda de backup na publicação aprovada e provar restauração integral**, usando instância ou schema descartável com credencial própria.
-10. **Especificar e construir cada nova vertical ponta a ponta**, começando pela prioridade comercial informada por Joel e exigindo preço, entrada, fonte, fornecedor, pagamento, entrega, UI e teste funcional.
+1. **Preparar a publicação interna com migrações, backup e rollback**, sem ativar transportes externos antes da homologação.
+2. **Homologar os dois modelos WhatsApp e destinatários controlados**, realizar envio de consulta e entrega e registrar os comprovantes retornados pela Meta.
+3. **Definir e implementar o retorno estruturado do fornecedor**, associando a resposta ao pedido e deduplicando-a pelo identificador externo.
+4. **Ligar alertas críticos a um canal externo e definir SLO**, cobrindo parada de worker, fila envelhecida, API indisponível e falha de integração.
+5. **Homologar Sicoob com mTLS**, cobrança e eventos reais controlados antes de expor qualquer webhook público.
+6. **Obter o contrato do PlugPay e implementar cobrança/conciliação**, preservando a mesma base idempotente de eventos.
+7. **Definir os papéis de WBuy e Bling durante a transição**, então implementar sincronização, reconciliação e auditoria conforme os contratos aprovados.
+8. **Instalar a agenda de backup na publicação aprovada e provar restauração integral**, usando instância ou schema descartável com credencial própria.
+9. **Especificar e construir cada nova vertical ponta a ponta**, começando pela prioridade comercial informada por Joel e exigindo preço, entrada, fonte, fornecedor, pagamento, entrega, UI e teste funcional.
+10. **Executar aceite operacional por perfil e turno**, comprovando os fluxos homologados com operadores autorizados antes de declarar o programa completo.
 
 ## Próximo marco recomendado
 
-O próximo marco deve ser **integrar a administração de conectores no navegador**. Clientes, VIP, fornecedor/serviço e relatório agora também têm prova entre interface, JWT, rotas e MySQL transacional.
+O próximo marco deve ser **preparar a publicação interna com migrações, backup e rollback**. A administração de conectores agora possui prova entre interface, JWT, permissões, rotas, auditoria e MySQL transacional sem tráfego externo.
 
 ## Progresso posterior à auditoria da v0.5.0
 
@@ -210,6 +211,7 @@ Na branch `feature/pagamento-manual-idempotente`, ainda não publicada:
 - configuração, auditoria e monitoramento agora compartilham uma prova integrada em tablet: alteração confirmada e transacional, trilha sem valores, bloqueio visual/HTTP para visualizador e carregamento do resumo operacional; as tabelas operacionais continuam pendentes de migração na produção v0.4.1;
 - Financeiro, Relatórios, Usuários, Configurações, Auditoria e Monitoramento agora são percorridos em celular, tablet e desktop contra as rotas reais, sem rolagem horizontal da página; o fechamento completo também prova no celular a conferência, aprovação e pagamento com rollback;
 - Clientes e Fornecedores agora possuem E2E móvel pelas rotas reais: cria cliente semanal/VIP, cria fornecedor, vincula serviço/custo, bloqueia ambos, confere auditoria e reverte tudo; o relatório também reconcilia no navegador métricas e status com a resposta autenticada da API;
+- Integrações agora possuem E2E em tablet: cria/desativa mapeamento WBuy e cadastra/aprova/ativa modelo WhatsApp fictício, comprova auditoria e rollback sem tráfego externo; as rotas e a interface passaram a usar a permissão `INTEGRACOES`, e o visualizador não recebe mutações nem consegue forçá-las por HTTP;
 - criação, pagamento, resultado, correção e validação GM agora são percorridos em celular, tablet e desktop; os testes verificam que cada modal cabe no viewport, não cria rolagem horizontal e mantém a ação final alcançável, e os modais de criação/pagamento receberam nomes acessíveis;
 - a confirmação manual foi tornada idempotente por pedido, meio e referência/comprovante;
 - foi adicionado teste funcional da rota HTTP com MySQL e rollback;

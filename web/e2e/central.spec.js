@@ -1166,6 +1166,67 @@ test('relatório no navegador reconcilia a resposta real da API', async ({ page 
   await esperarSemRolagemHorizontal(page);
 });
 
+test('integrações administram modelos e mapeamentos sem chamar serviços externos', async ({ page }) => {
+  test.setTimeout(60000);
+  const respostaContexto = await page.request.get(`${API}/api/e2e/contexto`);
+  expect(respostaContexto.ok()).toBe(true);
+  const contextoCompleto = await respostaContexto.json();
+  const contexto = contextoCompleto.integracoes;
+  await autenticarIntegrado(page, contextoCompleto.autenticacao.administrador);
+  await page.setViewportSize({ width: 768, height: 1024 });
+
+  await page.goto('/');
+  await abrirModulo(page, 'Integrações', 768);
+  await expect(page.getByRole('main').getByRole('heading', {
+    name: 'Integrações', exact: true
+  }))
+    .toBeVisible();
+  await expect(page.locator('.integration-grid article', { hasText: 'API Joel Pires' }))
+    .toBeVisible();
+
+  await page.getByLabel('Provedor').selectOption('WBUY');
+  await page.getByPlaceholder('ID externo').fill(contexto.produto_externo_id);
+  await page.getByPlaceholder('SKU').fill(contexto.sku);
+  await page.getByPlaceholder('Nome do produto').fill(contexto.nome_externo);
+  await page.getByLabel('Serviço MyKey').selectOption(String(contexto.servico_id));
+  await page.getByRole('button', { name: 'Mapear' }).click();
+  let linhaMapeamento = page.locator('tr', { hasText: contexto.produto_externo_id });
+  await expect(linhaMapeamento).toContainText(contexto.servico_codigo);
+  await expect(linhaMapeamento).toContainText('ATIVO');
+  page.once('dialog', dialogo => dialogo.accept());
+  await linhaMapeamento.getByRole('button', { name: 'Desativar' }).click();
+  linhaMapeamento = page.locator('tr', { hasText: contexto.produto_externo_id });
+  await expect(linhaMapeamento).toContainText('INATIVO');
+
+  await page.getByLabel('Nome do modelo').fill(contexto.modelo_nome);
+  await page.getByLabel('Idioma do modelo').selectOption('pt_BR');
+  await page.getByLabel('Categoria do modelo').selectOption('UTILIDADE');
+  await page.getByRole('button', { name: 'Cadastrar', exact: true }).click();
+  let linhaModelo = page.locator('tr', { hasText: contexto.modelo_nome });
+  await expect(linhaModelo).toContainText('PENDENTE');
+  page.once('dialog', dialogo => dialogo.accept());
+  await linhaModelo.getByLabel(`Status do modelo ${contexto.modelo_nome}`)
+    .selectOption('APROVADO');
+  linhaModelo = page.locator('tr', { hasText: contexto.modelo_nome });
+  await expect(linhaModelo).toContainText('APROVADO');
+  page.once('dialog', dialogo => dialogo.accept());
+  await linhaModelo.getByRole('button', { name: 'Ativar', exact: true }).click();
+  await expect(linhaModelo).toContainText('Sim');
+  await esperarSemRolagemHorizontal(page);
+
+  const respostaVerificacao = await page.request.get(
+    `${API}/api/e2e/verificacao?cenario=integracoes`
+  );
+  expect(respostaVerificacao.ok()).toBe(true);
+  const verificacao = await respostaVerificacao.json();
+  expect(verificacao.mapeamento.provedor).toBe('WBUY');
+  expect(Number(verificacao.mapeamento.ativo)).toBe(0);
+  expect(Number(verificacao.mapeamento.auditorias)).toBe(2);
+  expect(verificacao.modelo.status).toBe('APROVADO');
+  expect(Number(verificacao.modelo.ativo)).toBe(1);
+  expect(Number(verificacao.modelo.auditorias)).toBe(3);
+});
+
 test('administrador cria usuário e define permissões pelas rotas reais', async ({ page }) => {
   test.setTimeout(60000);
   const respostaContexto = await page.request.get(`${API}/api/e2e/contexto`);
@@ -1435,6 +1496,10 @@ test('visualizador não vê ações de usuário e recebe 403 ao forçar criaçã
   });
   await expect(cartao).toBeVisible();
   await expect(cartao.getByRole('button', { name: 'Editar' })).toHaveCount(0);
+  const verificacaoConfiguracaoAntes = await page.request.get(
+    `${API}/api/e2e/verificacao?cenario=configuracao`
+  );
+  const estadoConfiguracaoAntes = await verificacaoConfiguracaoAntes.json();
   const alteracaoNegada = await page.request.put(
     `${API}/api/configuracoes/${configuracao.chave}`,
     {
@@ -1447,8 +1512,52 @@ test('visualizador não vê ações de usuário e recebe 403 ao forçar criaçã
     `${API}/api/e2e/verificacao?cenario=configuracao`
   );
   const estadoConfiguracao = await verificacaoConfiguracao.json();
-  expect(Number(estadoConfiguracao.estado.valor_atualizado)).toBe(1);
-  expect(Number(estadoConfiguracao.estado.auditorias)).toBe(1);
+  expect(Number(estadoConfiguracao.estado.valor_atualizado)).toBe(
+    Number(estadoConfiguracaoAntes.estado.valor_atualizado)
+  );
+  expect(Number(estadoConfiguracao.estado.auditorias)).toBe(
+    Number(estadoConfiguracaoAntes.estado.auditorias)
+  );
+
+  await page.getByRole('button', { name: 'Integrações', exact: true }).click();
+  await expect(page.getByPlaceholder('ID externo')).toHaveCount(0);
+  await expect(page.getByLabel('Nome do modelo')).toHaveCount(0);
+  await expect(page.getByLabel(/Status do modelo/)).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Ativar', exact: true }))
+    .toHaveCount(0);
+  const integracoes = contextoCompleto.integracoes;
+  const verificacaoIntegracoesAntes = await page.request.get(
+    `${API}/api/e2e/verificacao?cenario=integracoes`
+  );
+  const estadoIntegracoesAntes = await verificacaoIntegracoesAntes.json();
+  const mapeamentoNegado = await page.request.post(
+    `${API}/api/integracoes/mapeamentos-produtos`,
+    {
+      headers: { Authorization: `Bearer ${token}` },
+      data: {
+        provedor: 'BLING',
+        produto_externo_id: `${integracoes.produto_externo_id}-negado`,
+        sku: `${integracoes.sku}-NEGADO`,
+        servico_id: integracoes.servico_id
+      }
+    }
+  );
+  expect(mapeamentoNegado.status()).toBe(403);
+  const modeloNegado = await page.request.post(`${API}/api/whatsapp/modelos`, {
+    headers: { Authorization: `Bearer ${token}` },
+    data: {
+      nome: `${integracoes.modelo_nome}_negado`,
+      idioma: 'pt_BR',
+      categoria: 'UTILIDADE'
+    }
+  });
+  expect(modeloNegado.status()).toBe(403);
+  const verificacaoIntegracoes = await page.request.get(
+    `${API}/api/e2e/verificacao?cenario=integracoes`
+  );
+  const estadoIntegracoes = await verificacaoIntegracoes.json();
+  expect(estadoIntegracoes.mapeamento).toEqual(estadoIntegracoesAntes.mapeamento);
+  expect(estadoIntegracoes.modelo).toEqual(estadoIntegracoesAntes.modelo);
 });
 
 test('navegador estorna pagamento real e cancela na transação', async ({ page }) => {

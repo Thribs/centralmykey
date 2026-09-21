@@ -476,7 +476,7 @@ export function Usuarios({ permissoes: permissoesSessao = [] }) {
   );
 }
 
-export function Integracoes() {
+export function Integracoes({ permissoes: permissoesSessao = [] }) {
   const token = useMemo(() => tokenLocal(), []);
   const [integracoes, setIntegracoes] = useState([]);
   const [modelos, setModelos] = useState([]);
@@ -494,6 +494,10 @@ export function Integracoes() {
   const [novoMapeamento, setNovoMapeamento] = useState({
     provedor: 'WBUY', produto_externo_id: '', sku: '', nome_externo: '', servico_id: ''
   });
+  const permissaoIntegracoes = permissoesSessao.find(
+    item => item.codigo === 'INTEGRACOES'
+  ) || {};
+  const podeEditar = Number(permissaoIntegracoes.editar) === 1;
 
   const carregar = useCallback(async () => {
     setErro('');
@@ -539,6 +543,7 @@ export function Integracoes() {
   }
 
   async function alterar(modelo, status, ativo = false) {
+    if (!window.confirm(`Confirma a alteração do modelo ${modelo.nome}?`)) return;
     try {
       await alterarModeloWhatsapp(token, modelo.id, { status, ativo });
       await carregar();
@@ -566,6 +571,9 @@ export function Integracoes() {
   }
 
   async function alternarMapeamento(item) {
+    if (!window.confirm(
+      `Confirma ${item.ativo ? 'desativar' : 'ativar'} este mapeamento?`
+    )) return;
     try {
       await alterarStatusMapeamentoIntegracao(token, item.id, !item.ativo);
       await carregar();
@@ -615,8 +623,8 @@ export function Integracoes() {
             <span>Mapeados: <strong>{mapeamentos.length}</strong></span>
           </div>
         </header>
-        <form className="integration-form" onSubmit={salvarMapeamento}>
-          <select value={novoMapeamento.provedor}
+        {podeEditar && <form className="integration-form" onSubmit={salvarMapeamento}>
+          <select aria-label="Provedor" value={novoMapeamento.provedor}
             onChange={e => setNovoMapeamento({ ...novoMapeamento, provedor: e.target.value })}>
             <option value="WBUY">WBuy</option><option value="BLING">Bling</option>
           </select>
@@ -629,7 +637,7 @@ export function Integracoes() {
           <input value={novoMapeamento.nome_externo}
             onChange={e => setNovoMapeamento({ ...novoMapeamento, nome_externo: e.target.value })}
             placeholder="Nome do produto" />
-          <select value={novoMapeamento.servico_id}
+          <select aria-label="Serviço MyKey" value={novoMapeamento.servico_id}
             onChange={e => setNovoMapeamento({ ...novoMapeamento, servico_id: e.target.value })}
             required>
             <option value="">Serviço MyKey</option>
@@ -641,7 +649,7 @@ export function Integracoes() {
             (!novoMapeamento.produto_externo_id.trim() && !novoMapeamento.sku.trim())}>
             <Plus size={15} /> Mapear
           </button>
-        </form>
+        </form>}
         <div className="admin-table-wrap">
           <table className="admin-table">
             <thead><tr><th>Origem</th><th>Produto/SKU</th><th>Serviço MyKey</th><th>Status</th><th>Ação</th></tr></thead>
@@ -656,9 +664,9 @@ export function Integracoes() {
                 </small></td>
                 <td>{item.servico_codigo} · {item.servico_nome}</td>
                 <td>{item.ativo ? 'ATIVO' : 'INATIVO'}</td>
-                <td><button type="button" onClick={() => alternarMapeamento(item)}>
+                <td>{podeEditar ? <button type="button" onClick={() => alternarMapeamento(item)}>
                   {item.ativo ? 'Desativar' : 'Ativar'}
-                </button></td>
+                </button> : '—'}</td>
               </tr>)}
             </tbody>
           </table>
@@ -710,19 +718,22 @@ export function Integracoes() {
           </div>
         </header>
 
-        <form className="integration-form" onSubmit={cadastrar}>
+        {podeEditar && <form className="integration-form" onSubmit={cadastrar}>
           <input
+            aria-label="Nome do modelo"
             value={novo.nome}
             onChange={e => setNovo({ ...novo, nome: e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, '_') })}
             placeholder="nome_do_modelo"
             required
           />
-          <select value={novo.idioma} onChange={e => setNovo({ ...novo, idioma: e.target.value })}>
+          <select aria-label="Idioma do modelo" value={novo.idioma}
+            onChange={e => setNovo({ ...novo, idioma: e.target.value })}>
             <option value="pt_BR">Português Brasil</option>
             <option value="es">Espanhol</option>
             <option value="en_US">Inglês</option>
           </select>
-          <select value={novo.categoria} onChange={e => setNovo({ ...novo, categoria: e.target.value })}>
+          <select aria-label="Categoria do modelo" value={novo.categoria}
+            onChange={e => setNovo({ ...novo, categoria: e.target.value })}>
             <option value="UTILIDADE">Utilidade</option>
             <option value="MARKETING">Marketing</option>
             <option value="AUTENTICACAO">Autenticação</option>
@@ -730,7 +741,7 @@ export function Integracoes() {
           <button type="submit" disabled={salvando}>
             <Plus size={16} /> Cadastrar
           </button>
-        </form>
+        </form>}
 
         <div className="admin-table-wrap">
           <table className="admin-table">
@@ -746,8 +757,9 @@ export function Integracoes() {
                   <td>{modelo.categoria}</td>
                   <td><span className={`admin-status status-${modelo.status}`}>{modelo.status}</span></td>
                   <td>{modelo.ativo ? 'Sim' : 'Não'}</td>
-                  <td>
+                  <td>{podeEditar ? <>
                     <select
+                      aria-label={`Status do modelo ${modelo.nome}`}
                       value={modelo.status}
                       onChange={e => alterar(modelo, e.target.value, modelo.ativo)}
                     >
@@ -762,7 +774,7 @@ export function Integracoes() {
                         {modelo.ativo ? 'Desativar' : 'Ativar'}
                       </button>
                     )}
-                  </td>
+                  </> : '—'}</td>
                 </tr>
               ))}
             </tbody>

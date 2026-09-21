@@ -25,7 +25,7 @@ module.exports = function registrarRotasMapeamentosIntegracoes(app, pool) {
   const exigirPermissao = app.locals.exigirPermissao;
 
   app.get('/api/integracoes/mapeamentos-produtos', autenticarToken,
-    exigirPermissao('CONFIGURACOES', 'visualizar'), async (req, res) => {
+    exigirPermissao('INTEGRACOES', 'visualizar'), async (req, res) => {
       const provedor = String(req.query.provedor || '').trim().toUpperCase();
       if (provedor && !PROVEDORES.includes(provedor)) {
         return res.status(400).json({ ok: false, error: 'Provedor inválido' });
@@ -52,7 +52,7 @@ module.exports = function registrarRotasMapeamentosIntegracoes(app, pool) {
     });
 
   app.post('/api/integracoes/mapeamentos-produtos', autenticarToken,
-    exigirPermissao('CONFIGURACOES', 'editar'), async (req, res) => {
+    exigirPermissao('INTEGRACOES', 'editar'), async (req, res) => {
       const provedor = String(req.body?.provedor || '').trim().toUpperCase();
       const produtoExternoId = texto(req.body?.produto_externo_id, 160);
       const sku = texto(req.body?.sku, 120)?.toUpperCase() || null;
@@ -137,7 +137,7 @@ module.exports = function registrarRotasMapeamentosIntegracoes(app, pool) {
     });
 
   app.patch('/api/integracoes/mapeamentos-produtos/:id/status', autenticarToken,
-    exigirPermissao('CONFIGURACOES', 'editar'), async (req, res) => {
+    exigirPermissao('INTEGRACOES', 'editar'), async (req, res) => {
       const id = Number(req.params.id);
       const ativo = req.body?.ativo;
       if (!Number.isInteger(id) || id <= 0 || typeof ativo !== 'boolean') {
