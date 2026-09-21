@@ -519,8 +519,14 @@ export function Integracoes() {
           <article key={item.codigo}>
             <span><Settings size={19} /></span>
             <div><small>{item.codigo}</small><strong>{item.nome}</strong></div>
-            <i className={item.configurado ? 'connected' : 'pending'}>
-              {item.configurado ? 'Configurado' : 'Pendente'}
+            <i className={item.status === 'CONFIGURADO' ? 'connected' : 'pending'}>
+              {{
+                CONFIGURADO: 'Configurado',
+                CONFIGURADO_DESABILITADO: 'Configurado · desabilitado',
+                PARCIAL: 'Configuração parcial',
+                CREDENCIAIS_SEM_CONECTOR: 'Credenciais · conector pendente',
+                PENDENTE: 'Pendente'
+              }[item.status] || 'Pendente'}
             </i>
           </article>
         ))}

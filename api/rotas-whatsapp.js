@@ -1,4 +1,5 @@
 const crypto = require('crypto');
+const { obterConfiguracaoWhatsapp } = require('./configuracoes-integracoes');
 
 module.exports = function (app, pool) {
   // ============================================================
@@ -6,9 +7,10 @@ module.exports = function (app, pool) {
   // ============================================================
 
   app.locals.enviarMensagemWhatsapp = async ({ telefone, texto }) => {
-    const token = process.env.WHATSAPP_ACCESS_TOKEN;
-    const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID;
-    const versao = process.env.WHATSAPP_API_VERSION;
+    const configuracao = await obterConfiguracaoWhatsapp(pool);
+    const token = configuracao.accessToken;
+    const phoneNumberId = configuracao.phoneNumberId;
+    const versao = configuracao.apiVersion;
 
     if (!token || !phoneNumberId || !versao) {
       const erro = new Error(
@@ -90,9 +92,10 @@ module.exports = function (app, pool) {
     idioma,
     parametros = []
   }) => {
-    const token = process.env.WHATSAPP_ACCESS_TOKEN;
-    const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID;
-    const versao = process.env.WHATSAPP_API_VERSION;
+    const configuracao = await obterConfiguracaoWhatsapp(pool);
+    const token = configuracao.accessToken;
+    const phoneNumberId = configuracao.phoneNumberId;
+    const versao = configuracao.apiVersion;
 
     if (!token || !phoneNumberId || !versao) {
       const erro = new Error(
@@ -204,11 +207,17 @@ module.exports = function (app, pool) {
   // VERIFICAÇÃO DO WEBHOOK DA META
   // ============================================================
 
-  app.get('/webhooks/whatsapp', (req, res) => {
+  app.get('/webhooks/whatsapp', async (req, res) => {
     const modo = req.query['hub.mode'];
     const tokenRecebido = req.query['hub.verify_token'];
     const desafio = req.query['hub.challenge'];
-    const tokenConfigurado = process.env.META_VERIFY_TOKEN;
+    let tokenConfigurado;
+    try {
+      tokenConfigurado = (await obterConfiguracaoWhatsapp(pool)).verifyToken;
+    } catch (error) {
+      console.error('Falha ao carregar configuração do webhook WhatsApp:', error.message);
+      return res.status(503).json({ ok: false, error: 'Webhook indisponível' });
+    }
 
     if (!tokenConfigurado) {
       console.error('META_VERIFY_TOKEN não configurado');
@@ -241,7 +250,13 @@ module.exports = function (app, pool) {
   // ============================================================
 
   app.post('/webhooks/whatsapp', async (req, res) => {
-    const segredo = process.env.META_APP_SECRET;
+    let segredo;
+    try {
+      segredo = (await obterConfiguracaoWhatsapp(pool)).appSecret;
+    } catch (error) {
+      console.error('Falha ao carregar configuração do webhook WhatsApp:', error.message);
+      return res.sendStatus(503);
+    }
 
     if (!segredo) {
       console.error('META_APP_SECRET não configurado');

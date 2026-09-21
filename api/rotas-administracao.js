@@ -1,3 +1,8 @@
+const {
+  carregarConfiguracoesIntegracoes,
+  resumirIntegracoes
+} = require('./configuracoes-integracoes');
+
 module.exports = function(app, pool) {
   const autenticarToken = app.locals.autenticarToken;
   const exigirPermissao = app.locals.exigirPermissao;
@@ -427,14 +432,8 @@ module.exports = function(app, pool) {
     exigirPermissao('CONFIGURACOES', 'visualizar'),
     async (req, res) => {
       try {
-        const [configuracoes] = await pool.query(`
-          SELECT chave, valor
-          FROM configuracoes
-        `);
-
-        const mapa = Object.fromEntries(
-          configuracoes.map(item => [item.chave, Boolean(item.valor)])
-        );
+        const configuracoes = await carregarConfiguracoesIntegracoes(pool);
+        const grupos = resumirIntegracoes(configuracoes);
 
         const [modelos] = await pool.query(`
           SELECT
@@ -444,41 +443,6 @@ module.exports = function(app, pool) {
             SUM(ativo = 1) AS ativos
           FROM whatsapp_modelos
         `);
-
-        const grupos = [
-          {
-            codigo: 'WHATSAPP',
-            nome: 'WhatsApp Cloud API',
-            configurado: Boolean(
-              mapa.WHATSAPP_ACCESS_TOKEN ||
-              mapa.META_ACCESS_TOKEN
-            )
-          },
-          {
-            codigo: 'SICOOB',
-            nome: 'Sicoob',
-            configurado: Boolean(
-              mapa.SICOOB_CLIENT_ID &&
-              mapa.SICOOB_CLIENT_SECRET
-            )
-          },
-          {
-            codigo: 'PLUGPAY',
-            nome: 'PlugPay',
-            configurado: Boolean(
-              mapa.PLUGPAY_TOKEN ||
-              mapa.PLUGPAY_API_KEY
-            )
-          },
-          {
-            codigo: 'WBUY',
-            nome: 'WBuy',
-            configurado: Boolean(
-              mapa.WBUY_TOKEN ||
-              mapa.WBUY_API_KEY
-            )
-          }
-        ];
 
         return res.json({
           ok: true,

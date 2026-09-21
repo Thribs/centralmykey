@@ -4,7 +4,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "node teste-autorizacao.js && node teste-clientes-vip.js && node teste-backup.js && node teste-health.js && node teste-consulta-banco.js && node teste-consulta-api-joelpires.js && node teste-fluxo-gm-pos-pagamento.js && node teste-selecao-fornecedores-gm.js && node teste-correcao-dados-gm.js && node teste-pagamento-manual-idempotente.js && node teste-criacao-pedido-pospago.js && node teste-reprocessamento-automatico-gm.js && node teste-envio-fornecedor-gm.js && node teste-resultado-fornecedor.js && node teste-entrega-cliente.js && node teste-status-entrega-whatsapp.js && node teste-cancelamento-pedido.js && node teste-fechamento-fornecedor.js && node teste-estorno-cancelamento.js && node teste-notificacoes-internas.js && node teste-auditoria.js"
+    "test": "node teste-autorizacao.js && node teste-configuracoes-integracoes.js && node teste-clientes-vip.js && node teste-backup.js && node teste-health.js && node teste-consulta-banco.js && node teste-consulta-api-joelpires.js && node teste-fluxo-gm-pos-pagamento.js && node teste-selecao-fornecedores-gm.js && node teste-correcao-dados-gm.js && node teste-pagamento-manual-idempotente.js && node teste-criacao-pedido-pospago.js && node teste-reprocessamento-automatico-gm.js && node teste-envio-fornecedor-gm.js && node teste-resultado-fornecedor.js && node teste-entrega-cliente.js && node teste-status-entrega-whatsapp.js && node teste-cancelamento-pedido.js && node teste-fechamento-fornecedor.js && node teste-estorno-cancelamento.js && node teste-notificacoes-internas.js && node teste-auditoria.js"
   },
   "keywords": [],
   "author": "",

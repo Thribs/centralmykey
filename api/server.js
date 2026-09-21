@@ -12,6 +12,9 @@ const {
 const {
   processarComunicacoesOutbox
 } = require('./processar-comunicacoes-outbox');
+const {
+  obterConfiguracaoWhatsapp
+} = require('./configuracoes-integracoes');
 
 const app = express();
 
@@ -209,9 +212,17 @@ async function executarComunicacoesOutbox() {
   comunicacoesOutboxEmAndamento = true;
 
   try {
+    const whatsapp = await obterConfiguracaoWhatsapp(pool);
     const resultado = await processarComunicacoesOutbox(
       pool,
-      app.locals.enviarModeloWhatsapp
+      app.locals.enviarModeloWhatsapp,
+      {
+        habilitado: whatsapp.outboxHabilitada,
+        nomeModeloFornecedor: whatsapp.modeloFornecedor,
+        nomeModeloEntrega: whatsapp.modeloEntrega,
+        idiomaModeloFornecedor: whatsapp.idiomaModeloFornecedor,
+        idiomaModeloEntrega: whatsapp.idiomaModeloEntrega
+      }
     );
     if (
       resultado.executado &&

@@ -1,10 +1,12 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const { obterConfiguracaoWhatsapp } = require('./configuracoes-integracoes');
 
 module.exports = async function processarMidiasWhatsapp(pool) {
-  const token = process.env.WHATSAPP_ACCESS_TOKEN;
-  const versao = process.env.WHATSAPP_API_VERSION;
+  const configuracao = await obterConfiguracaoWhatsapp(pool);
+  const token = configuracao.accessToken;
+  const versao = configuracao.apiVersion;
 
   if (!token || !versao) {
     return {
@@ -18,12 +20,12 @@ module.exports = async function processarMidiasWhatsapp(pool) {
   }
 
   const diretorio = path.resolve(
-    process.env.WHATSAPP_MEDIA_DIR ||
+    configuracao.mediaDir ||
     '/opt/central-mykey-api/storage/whatsapp'
   );
 
   const limiteBytes =
-    Number(process.env.WHATSAPP_MEDIA_MAX_BYTES) ||
+    configuracao.mediaMaxBytes ||
     25 * 1024 * 1024;
 
   await fs.promises.mkdir(diretorio, {

@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const { obterConfiguracaoWhatsapp } = require('./configuracoes-integracoes');
 
 module.exports = function (app, pool) {
   const autenticarToken = app.locals.autenticarToken;
@@ -1663,8 +1664,9 @@ module.exports = function (app, pool) {
           });
         }
 
+        const configuracaoWhatsapp = await obterConfiguracaoWhatsapp(pool);
         const diretorio = path.resolve(
-          process.env.WHATSAPP_MEDIA_DIR ||
+          configuracaoWhatsapp.mediaDir ||
           '/opt/central-mykey-api/storage/whatsapp'
         );
 

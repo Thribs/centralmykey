@@ -1,9 +1,11 @@
 const fs = require('fs');
 const path = require('path');
+const { obterConfiguracaoWhatsapp } = require('./configuracoes-integracoes');
 
 module.exports = async function processarAnexosExpirados(pool) {
+  const configuracao = await obterConfiguracaoWhatsapp(pool);
   const diretorio = path.resolve(
-    process.env.WHATSAPP_MEDIA_DIR ||
+    configuracao.mediaDir ||
     '/opt/central-mykey-api/storage/whatsapp'
   );
 
