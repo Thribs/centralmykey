@@ -697,6 +697,7 @@ export async function listarFaturas(token, filtros = {}) {
   const parametros = new URLSearchParams();
 
   if (filtros.status) parametros.set('status', filtros.status);
+  if (filtros.moeda) parametros.set('moeda', filtros.moeda);
   if (filtros.clienteId) {
     parametros.set('cliente_id', filtros.clienteId);
   }
@@ -720,6 +721,7 @@ export async function buscarFatura(token, faturaId) {
 export async function listarFechamentosFornecedores(token, filtros = {}) {
   const parametros = new URLSearchParams();
   if (filtros.status) parametros.set('status', filtros.status);
+  if (filtros.moeda) parametros.set('moeda', filtros.moeda);
   if (filtros.fornecedorId) {
     parametros.set('fornecedor_id', filtros.fornecedorId);
   }

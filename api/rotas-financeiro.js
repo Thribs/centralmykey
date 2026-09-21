@@ -621,6 +621,9 @@ module.exports = function (app, pool) {
         const statusFiltro = String(req.query.status || '')
           .trim()
           .toUpperCase();
+        const moedaFiltro = String(req.query.moeda || '')
+          .trim()
+          .toUpperCase();
 
         const statusPermitidos = new Set([
           'ABERTA',
@@ -644,6 +647,13 @@ module.exports = function (app, pool) {
           return res.status(400).json({
             ok: false,
             error: 'Status de fatura inválido'
+          });
+        }
+
+        if (moedaFiltro && !['BRL', 'USD', 'PYG'].includes(moedaFiltro)) {
+          return res.status(400).json({
+            ok: false,
+            error: 'Moeda da fatura inválida'
           });
         }
 
@@ -685,6 +695,11 @@ module.exports = function (app, pool) {
         if (clienteId !== null) {
           sql += ' AND f.cliente_id = ?';
           params.push(clienteId);
+        }
+
+        if (moedaFiltro) {
+          sql += ' AND f.moeda = ?';
+          params.push(moedaFiltro);
         }
 
         if (statusFiltro === 'VENCIDA') {

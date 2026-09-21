@@ -81,10 +81,14 @@ module.exports = function (app, pool) {
     exigirPermissao('FINANCEIRO', 'visualizar'),
     async (req, res) => {
       const status = String(req.query.status || '').trim().toUpperCase();
+      const moeda = String(req.query.moeda || '').trim().toUpperCase();
       const fornecedorId = Number(req.query.fornecedor_id) || null;
       const permitidos = ['RASCUNHO', 'FECHADO', 'PAGO', 'CANCELADO'];
       if (status && !permitidos.includes(status)) {
         return res.status(400).json({ ok: false, error: 'Status inválido' });
+      }
+      if (moeda && !['BRL', 'USD', 'PYG'].includes(moeda)) {
+        return res.status(400).json({ ok: false, error: 'Moeda inválida' });
       }
       try {
         const filtros = [];
@@ -96,6 +100,10 @@ module.exports = function (app, pool) {
         if (fornecedorId) {
           filtros.push('ff.fornecedor_id = ?');
           parametros.push(fornecedorId);
+        }
+        if (moeda) {
+          filtros.push('ff.moeda = ?');
+          parametros.push(moeda);
         }
         const where = filtros.length ? `WHERE ${filtros.join(' AND ')}` : '';
         const [dados] = await pool.query(

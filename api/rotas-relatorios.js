@@ -94,7 +94,7 @@ module.exports = function(app, pool) {
             ) AS vencidas,
             SUM(
               CASE
-                WHEN status IN ('ABERTA', 'FECHADA')
+                WHEN status IN ('ABERTA', 'FECHADA', 'VENCIDA')
                   THEN valor_total
                 ELSE 0
               END
@@ -121,6 +121,7 @@ module.exports = function(app, pool) {
             ON lf.id = pg.lancamento_id
           WHERE DATE(pg.data_pagamento) = CURDATE()
             AND lf.tipo = 'RECEITA'
+            AND lf.status IN ('RECEBIDO', 'PAGO')
           GROUP BY pg.moeda
           ORDER BY pg.moeda
         `);
@@ -155,6 +156,17 @@ module.exports = function(app, pool) {
         const status = String(req.query.status || '').toUpperCase();
         const busca = String(req.query.busca || '').trim();
         const moeda = String(req.query.moeda || '').toUpperCase();
+
+        if (tipo && !['RECEITA', 'DESPESA'].includes(tipo)) {
+          return res.status(400).json({ ok: false, error: 'Tipo inválido' });
+        }
+        if (status && !['PREVISTO', 'PENDENTE', 'PAGO', 'RECEBIDO',
+          'VENCIDO', 'CANCELADO'].includes(status)) {
+          return res.status(400).json({ ok: false, error: 'Status inválido' });
+        }
+        if (moeda && !['BRL', 'USD', 'PYG'].includes(moeda)) {
+          return res.status(400).json({ ok: false, error: 'Moeda inválida' });
+        }
 
         const filtros = [];
         const parametros = [];

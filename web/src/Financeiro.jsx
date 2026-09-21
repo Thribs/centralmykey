@@ -63,7 +63,7 @@ function porMoeda(lista, moeda = 'BRL') {
   return lista.find(item => item.moeda === moeda) || {};
 }
 
-function ultimaSemanaConcluida() {
+function ultimaSemanaConcluida(moeda = 'BRL') {
   const hoje = new Date();
   hoje.setHours(12, 0, 0, 0);
   const deslocamento = hoje.getDay() === 0 ? -6 : 1 - hoje.getDay();
@@ -76,7 +76,7 @@ function ultimaSemanaConcluida() {
     String(valor.getMonth() + 1).padStart(2, '0'),
     String(valor.getDate()).padStart(2, '0')
   ].join('-');
-  return { periodo_inicio: iso(inicio), periodo_fim: iso(fim), moeda: 'BRL' };
+  return { periodo_inicio: iso(inicio), periodo_fim: iso(fim), moeda };
 }
 
 function DetalheFatura({ dados, aoFechar }) {
@@ -196,6 +196,7 @@ export default function Financeiro() {
   const [busca, setBusca] = useState('');
   const [tipo, setTipo] = useState('');
   const [status, setStatus] = useState('');
+  const [moeda, setMoeda] = useState('BRL');
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState('');
   const [detalhe, setDetalhe] = useState(null);
@@ -216,16 +217,19 @@ export default function Financeiro() {
         await Promise.all([
           buscarResumoFinanceiro(token),
           listarFaturas(token, {
-            status: aba === 'faturas' ? status : ''
+            status: aba === 'faturas' ? status : '',
+            moeda
           }),
           listarLancamentosFinanceiros(token, {
             busca,
             tipo,
-            status: aba === 'lancamentos' ? status : ''
+            status: aba === 'lancamentos' ? status : '',
+            moeda
           }),
           listarFechamentosFornecedores(token, {
             status: aba === 'fornecedores' ? status : '',
-            fornecedorId: aba === 'fornecedores' ? fornecedorId : ''
+            fornecedorId: aba === 'fornecedores' ? fornecedorId : '',
+            moeda
           }),
           listarFornecedoresFechamento(token)
         ]);
@@ -240,7 +244,7 @@ export default function Financeiro() {
     } finally {
       setCarregando(false);
     }
-  }, [token, busca, tipo, status, aba, fornecedorId]);
+  }, [token, busca, tipo, status, aba, fornecedorId, moeda]);
 
   useEffect(() => {
     carregar();
@@ -270,7 +274,7 @@ export default function Financeiro() {
       setErro('Selecione um fornecedor para gerar o fechamento.');
       return;
     }
-    const periodo = ultimaSemanaConcluida();
+    const periodo = ultimaSemanaConcluida(moeda);
     if (!window.confirm(
       `Gerar o fechamento de ${data(periodo.periodo_inicio)} até ${data(periodo.periodo_fim)}?`
     )) return;
@@ -318,9 +322,9 @@ export default function Financeiro() {
     }
   }
 
-  const brl = porMoeda(resumo.lancamentos || []);
-  const faturasBrl = porMoeda(resumo.faturas || []);
-  const hojeBrl = porMoeda(resumo.pagamentos_hoje || []);
+  const lancamentosMoeda = porMoeda(resumo.lancamentos || [], moeda);
+  const faturasMoeda = porMoeda(resumo.faturas || [], moeda);
+  const hojeMoeda = porMoeda(resumo.pagamentos_hoje || [], moeda);
 
   return (
     <section className="finance-page">
@@ -340,44 +344,44 @@ export default function Financeiro() {
         <article>
           <span><TrendingUp size={18} /></span>
           <div><small>Receitas realizadas</small><strong>
-            {dinheiro(brl.receitas_realizadas)}
+            {dinheiro(lancamentosMoeda.receitas_realizadas, moeda)}
           </strong></div>
         </article>
         <article>
           <span><TrendingDown size={18} /></span>
           <div><small>Despesas realizadas</small><strong>
-            {dinheiro(brl.despesas_realizadas)}
+            {dinheiro(lancamentosMoeda.despesas_realizadas, moeda)}
           </strong></div>
         </article>
         <article>
           <span><Clock3 size={18} /></span>
           <div><small>Contas a receber</small><strong>
-            {dinheiro(brl.contas_receber)}
+            {dinheiro(lancamentosMoeda.contas_receber, moeda)}
           </strong></div>
         </article>
         <article>
           <span><CircleDollarSign size={18} /></span>
           <div><small>Recebido hoje</small><strong>
-            {dinheiro(hojeBrl.valor)}
+            {dinheiro(hojeMoeda.valor, moeda)}
           </strong></div>
         </article>
       </div>
 
       <div className="finance-secondary-metrics">
         <span>
-          Faturas abertas: <strong>{Number(faturasBrl.abertas || 0)}</strong>
+          Faturas abertas: <strong>{Number(faturasMoeda.abertas || 0)}</strong>
         </span>
         <span>
-          Fechadas: <strong>{Number(faturasBrl.fechadas || 0)}</strong>
+          Fechadas: <strong>{Number(faturasMoeda.fechadas || 0)}</strong>
         </span>
         <span>
-          Pagas: <strong>{Number(faturasBrl.pagas || 0)}</strong>
+          Pagas: <strong>{Number(faturasMoeda.pagas || 0)}</strong>
         </span>
         <span>
-          Vencidas: <strong>{Number(faturasBrl.vencidas || 0)}</strong>
+          Vencidas: <strong>{Number(faturasMoeda.vencidas || 0)}</strong>
         </span>
         <span>
-          Valor em aberto: <strong>{dinheiro(faturasBrl.valor_em_aberto)}</strong>
+          Valor em aberto: <strong>{dinheiro(faturasMoeda.valor_em_aberto, moeda)}</strong>
         </span>
       </div>
 
@@ -416,6 +420,11 @@ export default function Financeiro() {
         </div>
 
         <div className="finance-filters">
+          <select value={moeda} onChange={evento => setMoeda(evento.target.value)}>
+            <option value="BRL">BRL</option>
+            <option value="USD">USD</option>
+            <option value="PYG">PYG</option>
+          </select>
           {aba === 'lancamentos' && (
             <>
               <div>
