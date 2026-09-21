@@ -14,7 +14,8 @@ const sessao = {
   },
   permissoes: [
     { codigo: 'DASHBOARD', modulo: 'Dashboard', visualizar: 1 },
-    { codigo: 'PEDIDOS_SENHAS', modulo: 'Pedidos e senhas', visualizar: 1 }
+    { codigo: 'PEDIDOS_SENHAS', modulo: 'Pedidos e senhas', visualizar: 1 },
+    { codigo: 'CLIENTES', modulo: 'Clientes', visualizar: 1 }
   ]
 };
 
@@ -155,4 +156,172 @@ test('menu móvel abre sem rolagem horizontal', async ({ page }) => {
     viewport: window.innerWidth
   }));
   expect(dimensoes.largura).toBeLessThanOrEqual(dimensoes.viewport);
+});
+
+test('cancelamento exige motivo e confirmação antes de uma única mutação', async ({ page }) => {
+  const protocolo = 'CMK-E2E-CANCELAR';
+  const pedidoId = 700002;
+  let cancelado = false;
+  let requisicoesCancelamento = 0;
+  let dadosCancelamento = null;
+  let liberarResposta;
+  const respostaLiberada = new Promise(resolve => {
+    liberarResposta = resolve;
+  });
+  await prepararPagina(page, async (route, url) => {
+    if (url.pathname === '/api/fila-pedidos/resumo') {
+      await json(route, { ok: true, indicadores: {} });
+      return true;
+    }
+    if (url.pathname === '/api/fila-pedidos') {
+      await json(route, {
+        ok: true,
+        total: 1,
+        dados: [{
+          id: pedidoId,
+          protocolo,
+          cliente: 'CLIENTE CANCELAMENTO E2E',
+          servico: 'Senha GM',
+          marca: 'GM',
+          chassi: 'CHASSI-E2E-CANCEL',
+          status: cancelado ? 'CANCELADO' : 'ABERTO',
+          valor_venda: 60,
+          custo: 0,
+          moeda: 'BRL',
+          criado_em: '2026-09-21T12:00:00Z'
+        }]
+      });
+      return true;
+    }
+    if (url.pathname === `/api/pedidos/${pedidoId}`) {
+      await json(route, {
+        ok: true,
+        pedido: {
+          id: pedidoId,
+          protocolo,
+          cliente: 'CLIENTE CANCELAMENTO E2E',
+          servico: 'Senha GM',
+          marca: 'GM',
+          chassi: 'CHASSI-E2E-CANCEL',
+          status: cancelado ? 'CANCELADO' : 'ABERTO',
+          valor_venda: 60,
+          custo: 0,
+          moeda: 'BRL',
+          criado_em: '2026-09-21T12:00:00Z'
+        },
+        partes: {},
+        resultados: [],
+        historico: [],
+        comunicacoes: []
+      });
+      return true;
+    }
+    if (
+      url.pathname === `/api/pedidos/${pedidoId}/cancelar` &&
+      route.request().method() === 'POST'
+    ) {
+      requisicoesCancelamento += 1;
+      dadosCancelamento = route.request().postDataJSON();
+      await respostaLiberada;
+      cancelado = true;
+      await json(route, { ok: true, status: 'CANCELADO' });
+      return true;
+    }
+    return false;
+  });
+
+  const dialogos = [
+    { tipo: 'prompt', aceitar: true, valor: 'Cancelamento E2E controlado' },
+    { tipo: 'confirm', aceitar: false },
+    { tipo: 'prompt', aceitar: true, valor: 'Cancelamento E2E controlado' },
+    { tipo: 'confirm', aceitar: true }
+  ];
+  page.on('dialog', async dialogo => {
+    const esperado = dialogos.shift();
+    expect(dialogo.type()).toBe(esperado.tipo);
+    if (esperado.aceitar) await dialogo.accept(esperado.valor);
+    else await dialogo.dismiss();
+  });
+
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Pedidos e senhas', exact: true }).click();
+  await page.locator('tr', { hasText: protocolo }).click();
+  const detalhe = page.getByRole('dialog');
+  await expect(detalhe).toBeVisible();
+
+  await detalhe.getByRole('button', { name: 'Cancelar pedido' }).click();
+  expect(requisicoesCancelamento).toBe(0);
+  await expect(detalhe.getByRole('button', { name: 'Cancelar pedido' })).toBeVisible();
+
+  await detalhe.getByRole('button', { name: 'Cancelar pedido' }).click();
+  await expect(page.getByRole('status')).toContainText('Cancelando o pedido');
+  expect(requisicoesCancelamento).toBe(1);
+  expect(dadosCancelamento).toEqual({ motivo: 'Cancelamento E2E controlado' });
+  liberarResposta();
+
+  await expect(detalhe.getByText('Cancelado', { exact: true })).toBeVisible();
+  await expect(detalhe.getByRole('button', { name: 'Cancelar pedido' })).toBeHidden();
+  expect(dialogos).toHaveLength(0);
+});
+
+test('bloqueio de cliente só ocorre depois da confirmação', async ({ page }) => {
+  let bloqueado = false;
+  let alteracoes = 0;
+  await prepararPagina(page, async (route, url) => {
+    if (url.pathname === '/api/clientes-resumo') {
+      await json(route, {
+        ok: true,
+        resumo: { total: 1, ativos: bloqueado ? 0 : 1 }
+      });
+      return true;
+    }
+    if (url.pathname === '/api/clientes' && route.request().method() === 'GET') {
+      await json(route, {
+        ok: true,
+        total: 1,
+        dados: [{
+          id: 800001,
+          nome: 'CLIENTE BLOQUEIO E2E',
+          telefone: '5500000000000',
+          cadastro_status: 'COMPLETO',
+          tipo_cobranca: 'ANTECIPADO',
+          credito_status: 'LIBERADO',
+          ativo: bloqueado ? 0 : 1
+        }]
+      });
+      return true;
+    }
+    if (
+      url.pathname === '/api/clientes/800001/status' &&
+      route.request().method() === 'PATCH'
+    ) {
+      alteracoes += 1;
+      expect(route.request().postDataJSON()).toEqual({ ativo: 0 });
+      bloqueado = true;
+      await json(route, { ok: true, cliente_id: 800001, ativo: 0 });
+      return true;
+    }
+    return false;
+  });
+
+  const confirmacoes = [false, true];
+  page.on('dialog', async dialogo => {
+    expect(dialogo.type()).toBe('confirm');
+    const aceitar = confirmacoes.shift();
+    if (aceitar) await dialogo.accept();
+    else await dialogo.dismiss();
+  });
+
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Clientes', exact: true }).click();
+  const bloquear = page.getByRole('button', { name: 'Bloquear CLIENTE BLOQUEIO E2E' });
+  await bloquear.click();
+  expect(alteracoes).toBe(0);
+  await expect(bloquear).toBeVisible();
+
+  await bloquear.click();
+  await expect(page.getByText('CLIENTE BLOQUEIO E2E', { exact: true })).toBeHidden();
+  await expect(page.getByText('Nenhum registro encontrado.')).toBeVisible();
+  expect(alteracoes).toBe(1);
+  expect(confirmacoes).toHaveLength(0);
 });

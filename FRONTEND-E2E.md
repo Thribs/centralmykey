@@ -11,6 +11,9 @@ A suíte cobre inicialmente:
 - busca global de pedido, seleção do resultado e aplicação do filtro no módulo;
 - exibição do código e da referência de uma falha HTTP;
 - recuperação da fila após uma atualização bem-sucedida;
+- cancelamento de pedido com motivo, desistência sem requisição, confirmação,
+  estado intermediário e uma única mutação;
+- bloqueio de cliente somente depois da confirmação;
 - menu móvel e ausência de rolagem horizontal em 390 × 844 pixels.
 
 Instalação do navegador e das bibliotecas necessárias no ambiente de teste:
