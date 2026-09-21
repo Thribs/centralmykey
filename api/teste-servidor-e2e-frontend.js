@@ -12,9 +12,15 @@ const {
   criarTabelaPartesPedidoTemporaria
 } = require('./teste-suporte-partes-pedido');
 const {
+  criarTabelaEstornosTemporaria
+} = require('./teste-suporte-estornos');
+const {
   prepararPartes,
   registrarPartesPedido
 } = require('./identidades-pedido');
+const {
+  agendarConsultaFornecedor
+} = require('./agendar-consulta-fornecedor');
 
 dotenv.config({
   path: process.env.CENTRALMYKEY_ENV_PATH || path.join(__dirname, '.env'),
@@ -62,6 +68,7 @@ async function prepararFixture() {
   await connection.beginTransaction();
   await criarTabelaOutboxTemporaria(connection);
   await criarTabelaPartesPedidoTemporaria(connection);
+  await criarTabelaEstornosTemporaria(connection);
   await connection.query(
     `CREATE TEMPORARY TABLE fornecedor_servicos (
        id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
@@ -92,6 +99,10 @@ async function prepararFixture() {
   const chassiCorrigido = `9BGE2E4A0${String(Date.now() + 3).slice(-8)}`;
   const protocoloIndisponivel = `IN${process.pid}${String(Date.now()).slice(-7)}`;
   const chassiIndisponivel = `9BGE2E5A0${String(Date.now() + 4).slice(-8)}`;
+  const protocoloResultado = `RF${process.pid}${String(Date.now()).slice(-7)}`;
+  const chassiResultado = `9BGE2E6A0${String(Date.now() + 5).slice(-8)}`;
+  const protocoloEstorno = `ES${process.pid}${String(Date.now()).slice(-7)}`;
+  const chassiEstorno = `9BGE2E7A0${String(Date.now() + 6).slice(-8)}`;
   const telefone = `5594${String(Date.now()).slice(-8)}`;
   const nomeCliente = `CLIENTE E2E INTEGRADO ${marcador}`;
   const nomeFornecedor = `FORNECEDOR E2E INTEGRADO ${marcador}`;
@@ -169,6 +180,60 @@ async function prepararFixture() {
      VALUES (?, 'GM_SENHA', 0.01, 1)`,
     [fornecedor.insertId]
   );
+  const [pedidoResultado] = await connection.query(
+    `INSERT INTO pedidos_senha
+       (protocolo, cliente_id, servico_id, chassi, marca, modelo, ano,
+        status, valor_venda, custo, moeda, fornecedor_id, origem_id)
+     VALUES (?, ?, ?, ?, 'GM', 'RESULTADO E2E', 2026,
+             'EM_CONSULTA', ?, 0.01, 'BRL', ?, 2)`,
+    [
+      protocoloResultado,
+      cliente.insertId,
+      servico.id,
+      chassiResultado,
+      Number(servico.preco_base),
+      fornecedor.insertId
+    ]
+  );
+  const [pedidoEstorno] = await connection.query(
+    `INSERT INTO pedidos_senha
+       (protocolo, cliente_id, servico_id, chassi, marca, modelo, ano,
+        status, valor_venda, custo, moeda)
+     VALUES (?, ?, ?, ?, 'GM', 'ESTORNO E2E', 2026,
+             'ABERTO', ?, 0, 'BRL')`,
+    [
+      protocoloEstorno,
+      cliente.insertId,
+      servico.id,
+      chassiEstorno,
+      Number(servico.preco_base)
+    ]
+  );
+  const [lancamentoEstorno] = await connection.query(
+    `INSERT INTO lancamentos_financeiros
+       (tipo, cliente_id, pedido_senha_id, descricao, valor, moeda,
+        data_competencia, status, origem, criado_por)
+     VALUES ('RECEITA', ?, ?, 'PAGAMENTO E2E PARA ESTORNO', ?, 'BRL',
+             CURDATE(), 'RECEBIDO', 'CONFIRMACAO_MANUAL', ?)`,
+    [
+      cliente.insertId,
+      pedidoEstorno.insertId,
+      Number(servico.preco_base),
+      usuario.id
+    ]
+  );
+  await connection.query(
+    `INSERT INTO pagamentos
+       (lancamento_id, valor, moeda, data_pagamento, meio_pagamento,
+        referencia_externa, observacao, registrado_por)
+     VALUES (?, ?, 'BRL', NOW(), 'PIX', ?, 'E2E', ?)`,
+    [
+      lancamentoEstorno.insertId,
+      Number(servico.preco_base),
+      `PIX-ORIGINAL-${protocoloEstorno}`,
+      usuario.id
+    ]
+  );
   const clienteSnapshot = {
     id: cliente.insertId,
     nome: nomeCliente,
@@ -195,6 +260,31 @@ async function prepararFixture() {
     pedidoIndisponivel.insertId,
     prepararPartes(clienteSnapshot)
   );
+  await registrarPartesPedido(
+    connection,
+    pedidoResultado.insertId,
+    prepararPartes(clienteSnapshot)
+  );
+  await registrarPartesPedido(
+    connection,
+    pedidoEstorno.insertId,
+    prepararPartes(clienteSnapshot)
+  );
+  await agendarConsultaFornecedor(connection, {
+    pedido: {
+      id: pedidoResultado.insertId,
+      protocolo: protocoloResultado,
+      chassi: chassiResultado,
+      marca: 'GM',
+      modelo: 'RESULTADO E2E',
+      ano: 2026
+    },
+    fornecedor: {
+      fornecedor_id: fornecedor.insertId,
+      whatsapp: '5511444444404'
+    },
+    usuarioId: usuario.id
+  });
 
   contexto = {
     encontrado: {
@@ -222,6 +312,18 @@ async function prepararFixture() {
       protocolo: protocoloIndisponivel,
       chassi: chassiIndisponivel,
       apiSenhaId: apiSenhaIdReprocessada
+    },
+    resultadoFornecedor: {
+      pedidoId: pedidoResultado.insertId,
+      protocolo: protocoloResultado,
+      chassi: chassiResultado,
+      fornecedorId: fornecedor.insertId,
+      fornecedor: nomeFornecedor
+    },
+    estorno: {
+      pedidoId: pedidoEstorno.insertId,
+      protocolo: protocoloEstorno,
+      chassi: chassiEstorno
     },
     nomeCliente,
     nomeFornecedor,
@@ -355,19 +457,35 @@ async function iniciar() {
       pedido_id: contexto.indisponivel.pedidoId,
       protocolo: contexto.indisponivel.protocolo
     },
+    resultado_fornecedor: {
+      pedido_id: contexto.resultadoFornecedor.pedidoId,
+      protocolo: contexto.resultadoFornecedor.protocolo,
+      fornecedor_id: contexto.resultadoFornecedor.fornecedorId,
+      fornecedor: contexto.resultadoFornecedor.fornecedor
+    },
+    estorno: {
+      pedido_id: contexto.estorno.pedidoId,
+      protocolo: contexto.estorno.protocolo
+    },
     cliente: contexto.nomeCliente
   }));
   app.get('/api/e2e/verificacao', async (req, res) => {
     const naoEncontrado = req.query.cenario === 'nao_encontrado';
     const dadosInvalidos = req.query.cenario === 'dados_invalidos';
     const indisponivel = req.query.cenario === 'indisponivel';
-    const cenario = indisponivel
-      ? contexto.indisponivel
-      : dadosInvalidos
-        ? contexto.dadosInvalidos
-        : naoEncontrado
-          ? contexto.naoEncontrado
-          : contexto.encontrado;
+    const resultadoFornecedor = req.query.cenario === 'resultado_fornecedor';
+    const estorno = req.query.cenario === 'estorno';
+    const cenario = estorno
+      ? contexto.estorno
+      : resultadoFornecedor
+        ? contexto.resultadoFornecedor
+        : indisponivel
+          ? contexto.indisponivel
+          : dadosInvalidos
+            ? contexto.dadosInvalidos
+            : naoEncontrado
+              ? contexto.naoEncontrado
+              : contexto.encontrado;
     const [[estado]] = await connection.query(
       `SELECT
          p.status,
@@ -378,14 +496,19 @@ async function iniciar() {
            INNER JOIN lancamentos_financeiros lf ON lf.id = pg.lancamento_id
           WHERE lf.pedido_senha_id = p.id) AS pagamentos,
          (SELECT COUNT(*) FROM pedido_resultados pr
-          WHERE pr.pedido_id = p.id AND pr.status = 'CONFIRMADO'
-            AND pr.fornecedor_id IS NULL AND pr.custo = 0) AS resultados,
+          WHERE pr.pedido_id = p.id AND pr.status = 'CONFIRMADO') AS resultados,
          (SELECT COUNT(*) FROM pedido_historico ph
           WHERE ph.pedido_id = p.id
             AND ph.tipo = 'DADOS_INVALIDOS_API_JOELPIRES') AS dados_invalidos,
          (SELECT COUNT(*) FROM pedido_historico ph
           WHERE ph.pedido_id = p.id
             AND ph.tipo = 'API_JOELPIRES_INDISPONIVEL') AS indisponibilidades,
+         (SELECT COUNT(*) FROM estornos_pagamentos ep
+          WHERE ep.pedido_senha_id = p.id
+            AND ep.status = 'CONFIRMADO') AS estornos,
+         (SELECT COUNT(*) FROM lancamentos_financeiros lf
+          WHERE lf.pedido_senha_id = p.id AND lf.tipo = 'DESPESA'
+            AND lf.origem = 'ESTORNO_MANUAL' AND lf.status = 'PAGO') AS despesas_estorno,
          (SELECT COUNT(*) FROM banco_senhas bs
           WHERE bs.chassi = ?) AS cache
        FROM pedidos_senha p
@@ -399,7 +522,8 @@ async function iniciar() {
     const [[comunicacoes]] = await connection.query(
       `SELECT
          SUM(finalidade = 'ENTREGA_CLIENTE' AND status = 'PENDENTE') AS entregas,
-         SUM(finalidade = 'CONSULTA_FORNECEDOR') AS consultas_fornecedor
+         SUM(finalidade = 'CONSULTA_FORNECEDOR') AS consultas_fornecedor,
+         SUM(finalidade = 'CONSULTA_FORNECEDOR' AND status = 'CANCELADA') AS consultas_canceladas
        FROM comunicacoes_outbox
        WHERE pedido_id = ?`,
       [cenario.pedidoId]
@@ -410,6 +534,7 @@ async function iniciar() {
   const pool = poolTransacional(connection);
   require('./rotas-pedidos')(app, pool);
   require('./rotas-financeiro')(app, pool);
+  require('./rotas-estornos')(app, pool);
 
   servidor = await new Promise((resolve, reject) => {
     const instancia = app.listen(PORTA, '127.0.0.1', () => resolve(instancia));
@@ -430,22 +555,25 @@ async function encerrar(codigo = 0) {
       await connection.rollback();
       const [[residuos]] = await connection.query(
         `SELECT
-           (SELECT COUNT(*) FROM pedidos_senha WHERE protocolo IN (?, ?, ?, ?)) AS pedidos,
+           (SELECT COUNT(*) FROM pedidos_senha WHERE protocolo IN (?, ?, ?, ?, ?, ?)) AS pedidos,
            (SELECT COUNT(*) FROM clientes WHERE nome = ?) AS clientes,
            (SELECT COUNT(*) FROM fornecedores WHERE nome = ?) AS fornecedores,
            (SELECT COUNT(*) FROM banco_senhas
              WHERE JSON_UNQUOTE(JSON_EXTRACT(dados_extras, '$.api_senha_id'))
-               IN (?, ?, ?)) AS cache`,
+               IN (?, ?, ?) OR chassi = ?) AS cache`,
         [
           contexto?.encontrado?.protocolo,
           contexto?.naoEncontrado?.protocolo,
           contexto?.dadosInvalidos?.protocolo,
           contexto?.indisponivel?.protocolo,
+          contexto?.resultadoFornecedor?.protocolo,
+          contexto?.estorno?.protocolo,
           contexto?.nomeCliente,
           contexto?.nomeFornecedor,
           String(contexto?.encontrado?.apiSenhaId),
           String(contexto?.dadosInvalidos?.apiSenhaId),
-          String(contexto?.indisponivel?.apiSenhaId)
+          String(contexto?.indisponivel?.apiSenhaId),
+          contexto?.resultadoFornecedor?.chassi
         ]
       );
       if (Object.values(residuos).some(Number)) {

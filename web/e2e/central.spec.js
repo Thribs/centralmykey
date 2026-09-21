@@ -661,6 +661,125 @@ test('navegador reprocessa HTTP 503 real sem acionar fornecedor', async ({ page 
   expect(Number(verificacao.estado.consultas_fornecedor || 0)).toBe(0);
 });
 
+test('navegador registra resultado real e prepara entrega na transação', async ({ page }) => {
+  const respostaContexto = await page.request.get(`${API}/api/e2e/contexto`);
+  expect(respostaContexto.ok()).toBe(true);
+  const contextoCompleto = await respostaContexto.json();
+  const contexto = contextoCompleto.resultado_fornecedor;
+
+  await page.addInitScript(() => {
+    localStorage.setItem('central_mykey_token', 'token-e2e-integrado');
+    localStorage.setItem('central_mykey_troca_senha', '0');
+  });
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Pedidos e senhas', exact: true }).click();
+  const busca = page.getByPlaceholder('Protocolo, cliente, chassi ou serviço');
+  await busca.fill(contexto.protocolo);
+  const linha = page.locator('tr', { hasText: contexto.protocolo });
+  await expect(linha).toBeVisible();
+  await linha.click();
+
+  const detalhe = page.getByRole('dialog');
+  await expect(detalhe.getByText('Em consulta', { exact: true })).toBeVisible();
+  await expect(detalhe.getByText(contexto.fornecedor, { exact: true }))
+    .toBeVisible();
+  await detalhe.getByRole('button', { name: 'Informar resultado' }).click();
+
+  const modalResultado = page.locator('.gm-result-modal');
+  await modalResultado.getByLabel('Código mecânico').fill('MEC-FORNECEDOR-E2E');
+  await modalResultado.getByLabel('Imobilizador').fill('IMMO-FORNECEDOR-E2E');
+  await modalResultado.getByRole('button', { name: 'Salvar resultado' }).click();
+  await expect(page.getByRole('status')).toContainText('Registrando resultado');
+  await expect(modalResultado).toBeHidden({ timeout: 10000 });
+
+  await expect(detalhe.getByText('Concluído', { exact: true })).toBeVisible();
+  await expect(detalhe.getByText('ENCONTRADO', { exact: true })).toBeVisible();
+  await expect(detalhe.getByText('Envio cancelado', { exact: true })).toBeVisible();
+  await expect(detalhe.getByText(
+    'O resultado ainda não foi preparado para entrega.'
+  )).toBeVisible();
+  await detalhe.getByRole('button', { name: 'Cliente confirmou' }).click();
+
+  const modalValidacao = page.getByRole('dialog', { name: 'Confirmar funcionamento' });
+  await modalValidacao.getByRole('button', { name: 'Confirmar senha correta' }).click();
+  await expect(modalValidacao).toBeHidden({ timeout: 10000 });
+
+  await expect(detalhe.getByText('CONFIRMADO', { exact: true })).toBeVisible();
+  await expect(detalhe.getByText('Aguardando envio', { exact: true })).toBeVisible();
+  await expect(detalhe.getByRole('button', { name: 'Cliente confirmou' }))
+    .toBeHidden();
+
+  const respostaVerificacao = await page.request.get(
+    `${API}/api/e2e/verificacao?cenario=resultado_fornecedor`
+  );
+  expect(respostaVerificacao.ok()).toBe(true);
+  const verificacao = await respostaVerificacao.json();
+  expect(verificacao.estado.status).toBe('CONCLUIDO');
+  expect(Number(verificacao.estado.custo)).toBeCloseTo(0.01);
+  expect(Number(verificacao.estado.fornecedor_id)).toBe(contexto.fornecedor_id);
+  expect(Number(verificacao.estado.resultados)).toBe(1);
+  expect(Number(verificacao.estado.cache)).toBe(1);
+  expect(Number(verificacao.estado.entregas)).toBe(1);
+  expect(Number(verificacao.estado.consultas_fornecedor)).toBe(1);
+  expect(Number(verificacao.estado.consultas_canceladas)).toBe(1);
+});
+
+test('navegador estorna pagamento real e cancela na transação', async ({ page }) => {
+  const respostaContexto = await page.request.get(`${API}/api/e2e/contexto`);
+  expect(respostaContexto.ok()).toBe(true);
+  const contextoCompleto = await respostaContexto.json();
+  const contexto = contextoCompleto.estorno;
+
+  await page.addInitScript(() => {
+    localStorage.setItem('central_mykey_token', 'token-e2e-integrado');
+    localStorage.setItem('central_mykey_troca_senha', '0');
+  });
+  const dialogos = [
+    ['prompt', 'Devolução integral E2E'],
+    ['confirm'],
+    ['prompt', 'PIX'],
+    ['prompt', `DEVOLUCAO-${contexto.protocolo}`],
+    ['confirm']
+  ];
+  page.on('dialog', async dialogo => {
+    const [tipo, valor] = dialogos.shift();
+    expect(dialogo.type()).toBe(tipo);
+    if (tipo === 'prompt') await dialogo.accept(valor);
+    else await dialogo.accept();
+  });
+
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Pedidos e senhas', exact: true }).click();
+  const busca = page.getByPlaceholder('Protocolo, cliente, chassi ou serviço');
+  await busca.fill(contexto.protocolo);
+  const linha = page.locator('tr', { hasText: contexto.protocolo });
+  await expect(linha).toBeVisible();
+  await linha.click();
+
+  const detalhe = page.getByRole('dialog');
+  await expect(detalhe.getByText('Aberto', { exact: true })).toBeVisible();
+  await detalhe.getByRole('button', { name: 'Cancelar pedido' }).click();
+
+  await expect(detalhe.getByText('Cancelado', { exact: true }))
+    .toBeVisible({ timeout: 10000 });
+  await expect(detalhe.getByRole('button', { name: 'Cancelar pedido' }))
+    .toBeHidden();
+  expect(dialogos).toHaveLength(0);
+
+  const respostaVerificacao = await page.request.get(
+    `${API}/api/e2e/verificacao?cenario=estorno`
+  );
+  expect(respostaVerificacao.ok()).toBe(true);
+  const verificacao = await respostaVerificacao.json();
+  expect(verificacao.estado.status).toBe('CANCELADO');
+  expect(Number(verificacao.estado.custo)).toBe(0);
+  expect(verificacao.estado.fornecedor_id).toBeNull();
+  expect(Number(verificacao.estado.pagamentos)).toBe(2);
+  expect(Number(verificacao.estado.estornos)).toBe(1);
+  expect(Number(verificacao.estado.despesas_estorno)).toBe(1);
+  expect(Number(verificacao.estado.consultas_fornecedor || 0)).toBe(0);
+});
+
 test('estorno e cancelamento só são registrados após confirmar a devolução', async ({ page }) => {
   const protocolo = 'CMK-E2E-ESTORNO';
   const pedidoId = 700004;

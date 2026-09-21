@@ -127,7 +127,7 @@ Os testes integrados criaram registros somente dentro das transações e executa
 | Estados intermediários | PARCIAL | UI mostra estados de pedidos/atendimentos/comunicações, bloqueia interação durante ações e explica indisponibilidade, custo zero e ausência de fornecedor | Playwright percorre os estados críticos do GM, inclusive resultado correto/incorreto, reprocessamento, falha confirmada, envio incerto e entrega pendente | Estados longos de atendimento e fechamento financeiro ainda não foram percorridos no navegador | Ampliar E2E conforme os módulos seguintes forem fechados | Estado de outro módulo ainda pode regredir sem detecção visual |
 | Responsividade | PARCIAL | `App.css` tem media queries entre 520px e 1120px; menu móvel funciona sem rolagem horizontal em 390 × 844 | Playwright percorre painel e menu em viewport móvel | Ainda falta matriz de celular, tablet e desktop para os formulários críticos e regressão visual | Ampliar viewports e fluxos de criação/pagamento/resultado | Formulário ainda não exercitado pode ficar inacessível em tela pequena |
 | Confirmação de ações destrutivas | PARCIAL | Cancelamento de pedido exige motivo e confirmação; estorno exige meio, referência e confirmação da devolução; bloqueios, finalização de atendimento e outras ações financeiras também pedem confirmação | Playwright comprova desistência sem mutação e confirmação única no cancelamento, estorno e bloqueio de cliente; estorno valida o corpo completo e a atualização para cancelado | Falta prova de navegador para fechamento de fornecedor e transições finais do atendimento | Ampliar a mesma política E2E para fechamento financeiro e atendimento | Ações ainda não cobertas podem ter confirmação ou repetição regressadas sem detecção |
-| Correspondência frontend/backend | PARCIAL | `Painel.jsx` liga módulos reais a componentes; Playwright sobe API local com as rotas reais e pool preso a uma transação externa | Os quatro destinos obrigatórios do pós-pagamento são integrados: encontrado, 404, 422/correção e 503/reprocessamento, com verificação MySQL e rollback | Resultado manual, estorno e módulos administrativos ainda combinam testes HTTP e navegador separados | Expandir o harness integrado para resultado, entrega e estorno | Divergência entre camadas ainda pode escapar nos fluxos não integrados |
+| Correspondência frontend/backend | PARCIAL | `Painel.jsx` liga módulos reais a componentes; Playwright sobe API local com rotas reais e pool preso a uma transação externa | O ciclo GM interno é integrado: quatro destinos pós-pagamento, correção/reprocessamento, resultado de fornecedor, validação/cache/entrega e estorno/cancelamento, com verificação MySQL e rollback | Administração, fechamento de fornecedor e demais produtos ainda combinam testes HTTP e navegador separados | Expandir o harness por módulo conforme a prioridade operacional | Divergência entre camadas ainda pode escapar nos módulos não integrados |
 
 ## Divergências entre regra documentada e código atual
 
@@ -159,8 +159,8 @@ Os testes integrados criaram registros somente dentro das transações e executa
 
 ## Próximos 10 marcos em ordem de dependência
 
-1. **Expandir o navegador transacional para o restante do ciclo GM**, cobrindo resultado do fornecedor, validação/entrega e estorno nas duas camadas juntas.
-2. **Completar a matriz responsiva e acessível dos formulários críticos**, em celular, tablet e desktop, preservando os mesmos contratos funcionais.
+1. **Completar a matriz responsiva e acessível dos formulários críticos**, em celular, tablet e desktop, preservando os mesmos contratos funcionais.
+2. **Integrar navegador, API e MySQL nos módulos administrativo e financeiro**, começando por fechamento/pagamento de fornecedor e permissões críticas.
 3. **Homologar os dois modelos WhatsApp e destinatários controlados**, realizar envio de consulta e entrega e registrar os comprovantes retornados pela Meta.
 4. **Definir e implementar o retorno estruturado do fornecedor**, associando a resposta ao pedido e deduplicando-a pelo identificador externo.
 5. **Ligar alertas críticos a um canal externo e definir SLO**, cobrindo parada de worker, fila envelhecida, API indisponível e falha de integração.
@@ -172,7 +172,7 @@ Os testes integrados criaram registros somente dentro das transações e executa
 
 ## Próximo marco recomendado
 
-O próximo marco deve ser **expandir o navegador transacional para o restante do ciclo GM**. Os quatro destinos obrigatórios após o pagamento já provam frontend, rotas reais e MySQL na mesma execução com rollback; agora o mesmo rigor deve cobrir resultado manual do fornecedor, validação/entrega e estorno antes da homologação dos serviços externos.
+O próximo marco deve ser **completar a matriz responsiva e acessível dos formulários críticos**. O ciclo interno GM já é percorrido com frontend, rotas reais e MySQL na mesma execução e rollback; agora é preciso provar que criação, pagamento, resultado, correção e validação continuam utilizáveis em celular, tablet e desktop antes da homologação externa.
 
 ## Progresso posterior à auditoria da v0.5.0
 
@@ -202,6 +202,8 @@ Na branch `feature/pagamento-manual-idempotente`, ainda não publicada:
 - o mesmo harness integrado agora percorre `SenhaNotFoundError`/HTTP 404 e comprova pela interface e pelo MySQL que o pedido entra em consulta, registra fornecedor/custo, cria uma única outbox e não alimenta cache nem entrega;
 - o cenário integrado de HTTP 422 comprova `AGUARDANDO_DADOS`, histórico específico, custo zero e nenhum fornecedor; o navegador corrige os dados pela rota real e confirma conclusão, cache e entrega depois da nova resposta encontrada;
 - o cenário integrado de HTTP 503 comprova estado aberto, histórico de indisponibilidade, custo zero, nenhum fornecedor e nenhuma outbox de consulta; a tentativa seguinte conclui, alimenta cache e agenda entrega, e a integração revelou/corrigiu o alerta que era ocultado pelo histórico posterior de pagamento;
+- o resultado manual do fornecedor agora também é integrado no navegador contra as rotas e o MySQL reais: registra a resposta, cancela a consulta pendente, confirma o resultado, alimenta o cache e prepara uma única entrega;
+- o estorno integrado parte do bloqueio real de cancelamento, percorre as confirmações da interface e comprova pedido cancelado, estorno confirmado, pagamento de devolução e despesa reversa na mesma transação;
 - a confirmação manual foi tornada idempotente por pedido, meio e referência/comprovante;
 - foi adicionado teste funcional da rota HTTP com MySQL e rollback;
 - foi criada uma outbox transacional para consultas a fornecedores;

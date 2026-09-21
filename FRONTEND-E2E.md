@@ -27,6 +27,10 @@ A suíte cobre inicialmente:
   real, nova consulta, conclusão, cache e entrega sem fornecedor;
 - HTTP 503 persistido como indisponibilidade, alerta operacional mesmo após o
   histórico de pagamento e reprocessamento posterior sem fornecedor;
+- resultado de fornecedor registrado e confirmado pelas rotas reais, com
+  consulta cancelada, cache alimentado e entrega preparada;
+- estorno real iniciado pelo bloqueio de cancelamento, com lançamento reverso,
+  pagamento de devolução e pedido cancelado atomicamente;
 - estorno seguido de cancelamento com desistência sem mutação financeira,
   confirmação explícita da devolução, estado intermediário e uma única
   requisição de estorno;
