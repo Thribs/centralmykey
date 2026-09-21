@@ -23,6 +23,8 @@ O repositório é a fonte das alterações. Nunca desenvolver diretamente nos di
 
 ## Fonte de verdade e fluxo GM
 
+A API Joel Pires é um serviço externo já existente. O ambiente público é `https://api.joelpires.com.br` e o ambiente de teste é `https://staging.api.joelpires.com.br`. A Central MyKey não implementa nem publica essa API: apenas a consome por meio do cliente em `api/consulta-api-joelpires.js`.
+
 A API Joel Pires é a fonte de verdade das senhas. O banco local armazena somente cache de respostas dessa API; entradas de outras origens não substituem a consulta à fonte de verdade.
 
 O fluxo GM obrigatório é:
