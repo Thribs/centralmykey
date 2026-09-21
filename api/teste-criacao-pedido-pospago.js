@@ -57,6 +57,7 @@ async function iniciarApi(connection, usuario) {
   };
   app.locals.exigirPermissao = () => (req, res, next) => next();
   require('./rotas-pedidos')(app, poolTransacional(connection));
+  require('./rotas-financeiro')(app, poolTransacional(connection));
 
   const servidor = await new Promise((resolve, reject) => {
     const instancia = app.listen(0, '127.0.0.1', () => resolve(instancia));
@@ -82,6 +83,7 @@ async function executar() {
   const telefoneTeste = `5598${sufixo}`;
   let servidor;
   let protocolo;
+  let protocoloAntecipado;
   let erro;
 
   try {
@@ -242,6 +244,7 @@ async function executar() {
     const antecipada = await respostaAntecipada.json();
     assert.strictEqual(respostaAntecipada.status, 201);
     assert.strictEqual(antecipada.pedido.status, 'AGUARDANDO_PAGAMENTO');
+    protocoloAntecipado = antecipada.pedido.protocolo;
     const [[partesAntecipadas]] = await connection.query(
       `SELECT COUNT(*) AS total, COUNT(DISTINCT nome) AS nomes
          FROM pedido_partes WHERE pedido_id = ?`,
@@ -251,6 +254,92 @@ async function executar() {
       [Number(partesAntecipadas.total), Number(partesAntecipadas.nomes)],
       [3, 1],
       'Cliente, comprador e pagador devem herdar o mesmo snapshot por padrão'
+    );
+
+    const apiSenhaId = 990000000 + (process.pid % 100000);
+    global.fetch = async (url, opcoes) => {
+      if (String(url).startsWith(api.url)) return fetchOriginal(url, opcoes);
+      assert.match(String(url), /^https:\/\/mock\.joelpires\.invalid\//);
+      return {
+        ok: true,
+        status: 200,
+        text: async () => JSON.stringify([{
+          id: apiSenhaId,
+          id_montadora: 1,
+          chassis: `9BGAN11A0${sufixo}`,
+          cod_mecanico: 'MEC-GM-E2E',
+          cod_immo: 'IMMO-GM-E2E'
+        }])
+      };
+    };
+    const referenciaPagamento = `PIX-GM-E2E-${process.pid}-${sufixo}`;
+    const respostaPagamento = await global.fetch(
+      `${api.url}/api/pedidos/${antecipada.pedido.id}/pagamento/confirmar-manual`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          meio_pagamento: 'PIX',
+          referencia_externa: referenciaPagamento
+        })
+      }
+    );
+    const pagamento = await respostaPagamento.json();
+    assert.strictEqual(respostaPagamento.status, 200);
+    assert.strictEqual(pagamento.pedido.status, 'CONCLUIDO');
+    assert.strictEqual(pagamento.processamento.origem, 'API_JOELPIRES');
+    assert.strictEqual(pagamento.processamento.resultado_automatico, true);
+    assert.strictEqual(pagamento.processamento.entrega.status, 'PENDENTE');
+
+    const respostaPagamentoRepetido = await global.fetch(
+      `${api.url}/api/pedidos/${antecipada.pedido.id}/pagamento/confirmar-manual`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          meio_pagamento: 'PIX',
+          referencia_externa: referenciaPagamento
+        })
+      }
+    );
+    const pagamentoRepetido = await respostaPagamentoRepetido.json();
+    assert.strictEqual(respostaPagamentoRepetido.status, 200);
+    assert.strictEqual(pagamentoRepetido.idempotente, true);
+
+    const [[cenarioGm]] = await connection.query(
+      `SELECT p.status, p.custo, p.fornecedor_id, os.codigo AS origem,
+              pr.status AS resultado_status, pr.codigo_mecanico,
+              pr.codigo_imobilizador, pr.custo AS resultado_custo,
+              (SELECT COUNT(*) FROM pagamentos pg
+                JOIN lancamentos_financeiros lf ON lf.id=pg.lancamento_id
+               WHERE lf.pedido_senha_id=p.id) AS pagamentos,
+              (SELECT COUNT(*) FROM banco_senhas
+               WHERE JSON_UNQUOTE(JSON_EXTRACT(dados_extras, '$.api_senha_id'))=?) AS cache
+         FROM pedidos_senha p
+         LEFT JOIN origens_senha os ON os.id=p.origem_id
+         LEFT JOIN pedido_resultados pr ON pr.pedido_id=p.id
+        WHERE p.id=?`,
+      [String(apiSenhaId), antecipada.pedido.id]
+    );
+    const [[entregasGm]] = await connection.query(
+      `SELECT COUNT(*) AS total FROM comunicacoes_outbox
+        WHERE pedido_id=? AND finalidade='ENTREGA_CLIENTE'
+          AND status='PENDENTE'`,
+      [antecipada.pedido.id]
+    );
+    const [[fornecedoresGm]] = await connection.query(
+      `SELECT COUNT(*) AS total FROM comunicacoes_outbox
+        WHERE pedido_id=? AND finalidade='CONSULTA_FORNECEDOR'`,
+      [antecipada.pedido.id]
+    );
+    assert.deepStrictEqual(
+      [cenarioGm.status, Number(cenarioGm.custo), cenarioGm.fornecedor_id,
+        cenarioGm.origem, cenarioGm.resultado_status, cenarioGm.codigo_mecanico,
+        cenarioGm.codigo_imobilizador, Number(cenarioGm.resultado_custo),
+        Number(cenarioGm.pagamentos), Number(entregasGm.total),
+        Number(fornecedoresGm.total), Number(cenarioGm.cache)],
+      ['CONCLUIDO', 0, null, 'API', 'CONFIRMADO', 'MEC-GM-E2E',
+        'IMMO-GM-E2E', 0, 1, 1, 0, 1]
     );
 
     const respostaResumo = await global.fetch(
@@ -319,19 +408,27 @@ async function executar() {
       await connection.rollback();
       const [[residuos]] = await connection.query(
         `SELECT
-           (SELECT COUNT(*) FROM pedidos_senha WHERE protocolo = ?) AS pedidos,
+           (SELECT COUNT(*) FROM pedidos_senha WHERE protocolo IN (?, ?)) AS pedidos,
            (SELECT COUNT(*) FROM clientes WHERE nome LIKE ?) AS clientes,
-           (SELECT COUNT(*) FROM fornecedores WHERE nome LIKE ?) AS fornecedores`,
+           (SELECT COUNT(*) FROM fornecedores WHERE nome LIKE ?) AS fornecedores,
+           (SELECT COUNT(*) FROM pagamentos
+             WHERE referencia_externa LIKE ?) AS pagamentos,
+           (SELECT COUNT(*) FROM banco_senhas
+             WHERE codigo_mecanico='MEC-GM-E2E'
+               AND chassi LIKE ?) AS cache`,
         [
           protocolo || '',
+          protocoloAntecipado || '',
           `CLIENTE TESTE ${process.pid}-${sufixo}%`,
-          `FORNECEDOR TESTE ${process.pid}-${sufixo}%`
+          `FORNECEDOR TESTE ${process.pid}-${sufixo}%`,
+          `PIX-GM-E2E-${process.pid}-${sufixo}%`,
+          `%${sufixo}`
         ]
       );
       assert.deepStrictEqual(
         Object.values(residuos).map(Number),
-        [0, 0, 0],
-        'Rollback deve remover pedido, cliente e fornecedor de teste'
+        [0, 0, 0, 0, 0],
+        'Rollback deve remover pedidos, cliente, fornecedor, pagamento e cache de teste'
       );
     } catch (falhaLimpeza) {
       erro = erro || falhaLimpeza;
@@ -342,7 +439,7 @@ async function executar() {
 
   if (erro) throw erro;
   console.log(
-    'OK: criação pós-paga, consulta e reenvio HTTP funcionam (rollback confirmado)'
+    'OK: criação GM, pagamento, API encontrada, cache e entrega funcionam (rollback confirmado)'
   );
 }
 

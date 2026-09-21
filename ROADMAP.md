@@ -207,7 +207,9 @@ Na branch `feature/pagamento-manual-idempotente`, ainda não publicada:
 - todas as chamadas HTTP do frontend agora possuem timeout padrão de 30 segundos e mensagens específicas para indisponibilidade de rede e tempo esgotado;
 - o pagamento preserva seu timeout especial de 105 segundos, e o teste automatizado do frontend cobre sucesso, rede, timeout e cancelamento fornecido pela operação;
 - pedidos novos agora distinguem cliente, comprador e pagador por snapshots; a interface permite informar pessoas diferentes e o detalhe exibe cada papel;
-- o teste HTTP da criação pós-paga comprova validação, três identidades distintas, persistência e leitura usando tabela MySQL temporária e rollback;
+- o teste HTTP da criação comprova tanto o pedido GM pós-pago quanto o antecipado, incluindo validação, identidades, persistência e leitura usando tabela MySQL temporária e rollback;
+- no pedido GM antecipado, o mesmo teste percorre criação, confirmação manual idempotente, resposta encontrada da API Joel Pires simulada, conclusão com custo zero e sem fornecedor, resultado confirmado, alimentação do cache e agendamento da entrega ao cliente;
+- essa prova usa as rotas HTTP reais e o MySQL dentro de uma transação externa; após o rollback, confirma ausência do pedido, pagamento, cache, cliente e fornecedor fictícios;
 - a API agora separa vivacidade (`/health`) de prontidão (`/health/ready`); o segundo devolve HTTP 503 quando o MySQL está indisponível sem expor detalhes internos;
 - o teste HTTP de health cobre banco disponível e indisponível com dependência simulada, e o diagnóstico detalhado continua autenticado;
 - backups agora são gerados atomicamente com API, frontend, dump MySQL, permissões restritas e manifesto SHA-256; a restauração valida integridade e cria um backup de segurança antes de substituir dados;
