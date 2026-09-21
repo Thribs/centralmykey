@@ -23,6 +23,10 @@ A suíte cobre inicialmente:
   entrega pendente e rollback sem resíduos;
 - resposta 404 percorrida nas mesmas camadas reais, com fornecedor fictício
   selecionado, custo persistido e consulta única na outbox;
+- resposta 422 persistida como dados inválidos, seguida de correção pela rota
+  real, nova consulta, conclusão, cache e entrega sem fornecedor;
+- HTTP 503 persistido como indisponibilidade, alerta operacional mesmo após o
+  histórico de pagamento e reprocessamento posterior sem fornecedor;
 - estorno seguido de cancelamento com desistência sem mutação financeira,
   confirmação explícita da devolução, estado intermediário e uma única
   requisição de estorno;

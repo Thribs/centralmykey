@@ -188,7 +188,7 @@ function DetalhePedido({
   );
   const apiJoelPiresIndisponivel =
     ['ABERTO', 'ERRO'].includes(pedido.status) &&
-    historico[0]?.tipo === 'API_JOELPIRES_INDISPONIVEL';
+    historico.some(item => item.tipo === 'API_JOELPIRES_INDISPONIVEL');
   const resultadoPendente = resultados.find(item =>
     item.status === 'ENCONTRADO' && item.fornecedor_id
   );

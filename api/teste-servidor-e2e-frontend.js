@@ -87,10 +87,18 @@ async function prepararFixture() {
   const chassi = `9BGE2E1A0${String(Date.now()).slice(-8)}`;
   const protocoloNaoEncontrado = `NF${process.pid}${String(Date.now()).slice(-7)}`;
   const chassiNaoEncontrado = `9BGE2E2A0${String(Date.now() + 1).slice(-8)}`;
+  const protocoloDadosInvalidos = `DI${process.pid}${String(Date.now()).slice(-7)}`;
+  const chassiDadosInvalidos = `9BGE2E3A0${String(Date.now() + 2).slice(-8)}`;
+  const chassiCorrigido = `9BGE2E4A0${String(Date.now() + 3).slice(-8)}`;
+  const protocoloIndisponivel = `IN${process.pid}${String(Date.now()).slice(-7)}`;
+  const chassiIndisponivel = `9BGE2E5A0${String(Date.now() + 4).slice(-8)}`;
   const telefone = `5594${String(Date.now()).slice(-8)}`;
   const nomeCliente = `CLIENTE E2E INTEGRADO ${marcador}`;
   const nomeFornecedor = `FORNECEDOR E2E INTEGRADO ${marcador}`;
   const apiSenhaId = 970000000 + (process.pid % 100000);
+  const apiSenhaIdCorrigida = 971000000 + (process.pid % 100000);
+  const apiSenhaIdReprocessada = 972000000 + (process.pid % 100000);
+  let chamadasIndisponivel = 0;
 
   const [cliente] = await connection.query(
     `INSERT INTO clientes
@@ -118,6 +126,34 @@ async function prepararFixture() {
       cliente.insertId,
       servico.id,
       chassiNaoEncontrado,
+      Number(servico.preco_base)
+    ]
+  );
+  const [pedidoDadosInvalidos] = await connection.query(
+    `INSERT INTO pedidos_senha
+       (protocolo, cliente_id, servico_id, chassi, marca, modelo, ano,
+        status, valor_venda, custo, moeda)
+     VALUES (?, ?, ?, ?, 'GM', 'DADO INVÁLIDO E2E', 2025,
+             'AGUARDANDO_PAGAMENTO', ?, 0, 'BRL')`,
+    [
+      protocoloDadosInvalidos,
+      cliente.insertId,
+      servico.id,
+      chassiDadosInvalidos,
+      Number(servico.preco_base)
+    ]
+  );
+  const [pedidoIndisponivel] = await connection.query(
+    `INSERT INTO pedidos_senha
+       (protocolo, cliente_id, servico_id, chassi, marca, modelo, ano,
+        status, valor_venda, custo, moeda)
+     VALUES (?, ?, ?, ?, 'GM', 'INDISPONÍVEL E2E', 2026,
+             'AGUARDANDO_PAGAMENTO', ?, 0, 'BRL')`,
+    [
+      protocoloIndisponivel,
+      cliente.insertId,
+      servico.id,
+      chassiIndisponivel,
       Number(servico.preco_base)
     ]
   );
@@ -149,6 +185,16 @@ async function prepararFixture() {
     pedidoNaoEncontrado.insertId,
     prepararPartes(clienteSnapshot)
   );
+  await registrarPartesPedido(
+    connection,
+    pedidoDadosInvalidos.insertId,
+    prepararPartes(clienteSnapshot)
+  );
+  await registrarPartesPedido(
+    connection,
+    pedidoIndisponivel.insertId,
+    prepararPartes(clienteSnapshot)
+  );
 
   contexto = {
     encontrado: {
@@ -164,6 +210,19 @@ async function prepararFixture() {
       fornecedorId: fornecedor.insertId,
       fornecedor: nomeFornecedor
     },
+    dadosInvalidos: {
+      pedidoId: pedidoDadosInvalidos.insertId,
+      protocolo: protocoloDadosInvalidos,
+      chassi: chassiCorrigido,
+      chassiOriginal: chassiDadosInvalidos,
+      apiSenhaId: apiSenhaIdCorrigida
+    },
+    indisponivel: {
+      pedidoId: pedidoIndisponivel.insertId,
+      protocolo: protocoloIndisponivel,
+      chassi: chassiIndisponivel,
+      apiSenhaId: apiSenhaIdReprocessada
+    },
     nomeCliente,
     nomeFornecedor,
     usuario
@@ -175,6 +234,36 @@ async function prepararFixture() {
     }
     await new Promise(resolve => setTimeout(resolve, 250));
     const chassiConsultado = new URL(String(url)).searchParams.get('chassi');
+    if (chassiConsultado === chassiIndisponivel.slice(-8)) {
+      chamadasIndisponivel += 1;
+      if (chamadasIndisponivel === 1) {
+        return {
+          ok: false,
+          status: 503,
+          text: async () => JSON.stringify({ error: 'Indisponível' })
+        };
+      }
+      return {
+        ok: true,
+        status: 200,
+        text: async () => JSON.stringify([{
+          id: apiSenhaIdReprocessada,
+          id_montadora: 1,
+          chassis: chassiIndisponivel,
+          cod_mecanico: 'MEC-E2E-REPROCESSADO',
+          cod_immo: 'IMMO-E2E-REPROCESSADO'
+        }])
+      };
+    }
+    if (chassiConsultado === chassiDadosInvalidos.slice(-8)) {
+      return {
+        ok: false,
+        status: 422,
+        text: async () => JSON.stringify({
+          error: { name: 'ValidationError', message: 'Dados inválidos' }
+        })
+      };
+    }
     if (chassiConsultado === chassiNaoEncontrado.slice(-8)) {
       return {
         ok: false,
@@ -182,6 +271,19 @@ async function prepararFixture() {
         text: async () => JSON.stringify({
           error: { name: 'SenhaNotFoundError', message: 'Não encontrada' }
         })
+      };
+    }
+    if (chassiConsultado === chassiCorrigido.slice(-8)) {
+      return {
+        ok: true,
+        status: 200,
+        text: async () => JSON.stringify([{
+          id: apiSenhaIdCorrigida,
+          id_montadora: 1,
+          chassis: chassiCorrigido,
+          cod_mecanico: 'MEC-E2E-CORRIGIDO',
+          cod_immo: 'IMMO-E2E-CORRIGIDO'
+        }])
       };
     }
     return {
@@ -244,13 +346,28 @@ async function iniciar() {
       fornecedor_id: contexto.naoEncontrado.fornecedorId,
       fornecedor: contexto.naoEncontrado.fornecedor
     },
+    dados_invalidos: {
+      pedido_id: contexto.dadosInvalidos.pedidoId,
+      protocolo: contexto.dadosInvalidos.protocolo,
+      chassi_corrigido: contexto.dadosInvalidos.chassi
+    },
+    indisponivel: {
+      pedido_id: contexto.indisponivel.pedidoId,
+      protocolo: contexto.indisponivel.protocolo
+    },
     cliente: contexto.nomeCliente
   }));
   app.get('/api/e2e/verificacao', async (req, res) => {
     const naoEncontrado = req.query.cenario === 'nao_encontrado';
-    const cenario = naoEncontrado
-      ? contexto.naoEncontrado
-      : contexto.encontrado;
+    const dadosInvalidos = req.query.cenario === 'dados_invalidos';
+    const indisponivel = req.query.cenario === 'indisponivel';
+    const cenario = indisponivel
+      ? contexto.indisponivel
+      : dadosInvalidos
+        ? contexto.dadosInvalidos
+        : naoEncontrado
+          ? contexto.naoEncontrado
+          : contexto.encontrado;
     const [[estado]] = await connection.query(
       `SELECT
          p.status,
@@ -263,6 +380,12 @@ async function iniciar() {
          (SELECT COUNT(*) FROM pedido_resultados pr
           WHERE pr.pedido_id = p.id AND pr.status = 'CONFIRMADO'
             AND pr.fornecedor_id IS NULL AND pr.custo = 0) AS resultados,
+         (SELECT COUNT(*) FROM pedido_historico ph
+          WHERE ph.pedido_id = p.id
+            AND ph.tipo = 'DADOS_INVALIDOS_API_JOELPIRES') AS dados_invalidos,
+         (SELECT COUNT(*) FROM pedido_historico ph
+          WHERE ph.pedido_id = p.id
+            AND ph.tipo = 'API_JOELPIRES_INDISPONIVEL') AS indisponibilidades,
          (SELECT COUNT(*) FROM banco_senhas bs
           WHERE bs.chassi = ?) AS cache
        FROM pedidos_senha p
@@ -307,17 +430,22 @@ async function encerrar(codigo = 0) {
       await connection.rollback();
       const [[residuos]] = await connection.query(
         `SELECT
-           (SELECT COUNT(*) FROM pedidos_senha WHERE protocolo IN (?, ?)) AS pedidos,
+           (SELECT COUNT(*) FROM pedidos_senha WHERE protocolo IN (?, ?, ?, ?)) AS pedidos,
            (SELECT COUNT(*) FROM clientes WHERE nome = ?) AS clientes,
            (SELECT COUNT(*) FROM fornecedores WHERE nome = ?) AS fornecedores,
            (SELECT COUNT(*) FROM banco_senhas
-             WHERE JSON_UNQUOTE(JSON_EXTRACT(dados_extras, '$.api_senha_id')) = ?) AS cache`,
+             WHERE JSON_UNQUOTE(JSON_EXTRACT(dados_extras, '$.api_senha_id'))
+               IN (?, ?, ?)) AS cache`,
         [
           contexto?.encontrado?.protocolo,
           contexto?.naoEncontrado?.protocolo,
+          contexto?.dadosInvalidos?.protocolo,
+          contexto?.indisponivel?.protocolo,
           contexto?.nomeCliente,
           contexto?.nomeFornecedor,
-          String(contexto?.encontrado?.apiSenhaId)
+          String(contexto?.encontrado?.apiSenhaId),
+          String(contexto?.dadosInvalidos?.apiSenhaId),
+          String(contexto?.indisponivel?.apiSenhaId)
         ]
       );
       if (Object.values(residuos).some(Number)) {
