@@ -60,3 +60,11 @@ publicação: criar os arquivos não instala nem ativa o timer no VPS.
 `api/teste-backup-agendado.js` usa somente `/tmp` e comprova retenção mínima,
 preservação de diretórios desconhecidos, bloqueio concorrente, recuperação de
 trava antiga e limpeza da trava em caso de erro.
+
+`api/teste-backup-mysql.js` passa um dump fictício compactado pelo mesmo pipeline
+de restauração e pelo cliente MySQL real. O SQL cria apenas uma tabela
+temporária e executa duas inserções em transações revertidas; ao final, outra
+conexão confirma que não existe tabela permanente. Essa prova não lê nem altera
+dados de negócio. Ela valida o transporte do dump, mas não substitui o ensaio de
+um backup completo em um schema descartável, pois a credencial atual não possui
+permissão para criar ou remover bancos.
