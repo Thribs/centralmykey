@@ -39,11 +39,16 @@ export default function CorrigirDadosPedido({ token, pedido, aoFechar, aoSalvo }
 
   return (
     <div className="vault-overlay gm-result-overlay">
-      <section className="vault-modal gm-result-modal" role="dialog" aria-modal="true">
+      <section
+        className="vault-modal gm-result-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="gm-correction-title"
+      >
         <header>
           <div>
             <span>CORRIGIR DADOS DO VEÍCULO</span>
-            <h2>{pedido.protocolo}</h2>
+            <h2 id="gm-correction-title">{pedido.protocolo}</h2>
           </div>
           <button type="button" onClick={aoFechar} aria-label="Fechar" disabled={salvando}>
             <X size={20} />

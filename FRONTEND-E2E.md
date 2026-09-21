@@ -21,6 +21,8 @@ A suíte cobre inicialmente:
   requisição de estorno;
 - recebimento do resultado de fornecedor, validação humana, bloqueio durante
   as duas mutações e preparação de uma única entrega ao cliente;
+- correção de dados GM rejeitados, reprocessamento único, conclusão pela API
+  simulada e ausência de encaminhamento ao fornecedor;
 - bloqueio de cliente somente depois da confirmação;
 - menu móvel e ausência de rolagem horizontal em 390 × 844 pixels.
 

@@ -48,7 +48,7 @@ Os testes integrados criaram registros somente dentro das transações e executa
 | Consulta à API Joel Pires no GM | COMPROVADO | `buscarSenhaFonteVerdade` em `api/consulta-api-joelpires.js`; configuração externa e timeout; sem `ID_TRANSACAO` | Mock de protocolo e teste funcional GM com todas as classes de resposta | Não há teste controlado contra staging no `npm test`, por decisão de isolamento | Criar smoke opcional, somente leitura, fora da suíte padrão | Mudança de contrato externo não detectada pelos mocks |
 | Resultado encontrado | COMPROVADO | `api/processar-pedido-pago.js` conclui com custo zero, origem API, resultado confirmado, cache e agenda de entrega idempotente | Cenário 200 no teste GM e fluxo antecipado completo em `teste-criacao-pedido-pospago.js`, ambos com rollback | O envio externo depende da homologação do canal, tratada no requisito de entrega | Preservar como regressão ao ativar o transporte | Canal não homologado mantém a entrega pendente |
 | 404/SenhaNotFoundError | COMPROVADO | Classificação em `consulta-api-joelpires.js`; seleção e agendamento transacional do fornecedor em `processar-pedido-pago.js` | Testes do fluxo GM e de envio comprovam `NAO_ENCONTRADO`, fornecedor/custo, outbox única e ausência de indisponibilidade com rollback | O transporte real permanece bloqueado até homologação da Meta | Homologar modelos e contatos controlados antes de ativar | Sem homologação, a consulta permanece pendente na outbox |
-| Dados inválidos 400/417/422 | COMPROVADO | Processamento grava `AGUARDANDO_DADOS`, custo zero e histórico específico; rota e tela permitem corrigir e reprocessar | Três classificações no teste GM e `teste-correcao-dados-gm.js` percorre correção/reprocessamento com rollback | Falta E2E de navegador da correção | Acrescentar o percurso ao Playwright | Regressão apenas visual pode impedir o operador de corrigir |
+| Dados inválidos 400/417/422 | COMPROVADO | Processamento grava `AGUARDANDO_DADOS`, custo zero e histórico específico; rota e tela permitem corrigir e reprocessar | Três classificações no teste GM; teste HTTP percorre correção com rollback; Playwright comprova formulário, bloqueio, mutação única, conclusão pela API e nenhum fornecedor | Nenhuma lacuna funcional conhecida no caminho atual | Manter regressão ao alterar campos exigidos pela API externa | Mudança do contrato externo pode exigir dado ainda ausente no formulário |
 | Rede, timeout e HTTP 5xx | COMPROVADO | Classificação `INDISPONIVEL`; pedido volta a `ABERTO` sem fornecedor/custo | Rede, AbortError e HTTP 503 no teste funcional | Estado `ABERTO` não comunica sozinho a causa na lista | Exibir estado específico/alerta de retentativa | Reprocessamento silencioso ou diagnóstico ambíguo |
 | Reprocessamento automático | COMPROVADO | `api/reprocessar-pedidos-gm.js`; agendamento e trava no `api/server.js`; resumo operacional em `/api/monitoramento/resumo` | Encontrado, nova indisponibilidade, inelegível, desabilitado e monitoramento; MySQL/rollback | Alertas críticos ainda não saem por canal externo | Homologar canal de alerta e definir SLO | Equipe precisa abrir a Central para perceber paralisação |
 | Encaminhamento ao fornecedor | PARCIAL | Seleção grava fornecedor/custo e cria outbox idempotente; worker diferencia pendente, enviada, falhou e incerta | `teste-envio-fornecedor-gm.js` cobre agenda, envio único, falhas e reprocessamento com rollback | Falta homologar modelos Meta e contatos controlados | Homologar o transporte antes de habilitá-lo | Consulta pode permanecer pendente mesmo com estado interno correto |
@@ -159,7 +159,7 @@ Os testes integrados criaram registros somente dentro das transações e executa
 
 ## Próximos 10 marcos em ordem de dependência
 
-1. **Completar os E2E do GM ainda internos**, cobrindo correção de dados, indisponibilidade/reprocessamento, resultado incorreto e falha/retentativa de comunicação.
+1. **Completar os E2E do GM ainda internos**, cobrindo indisponibilidade/reprocessamento, resultado incorreto e falha/retentativa de comunicação.
 2. **Executar o navegador contra API e MySQL descartáveis**, mantendo uma transação externa com rollback para provar os contratos das duas camadas juntas.
 3. **Homologar os dois modelos WhatsApp e destinatários controlados**, realizar envio de consulta e entrega e registrar os comprovantes retornados pela Meta.
 4. **Definir e implementar o retorno estruturado do fornecedor**, associando a resposta ao pedido e deduplicando-a pelo identificador externo.
@@ -172,7 +172,7 @@ Os testes integrados criaram registros somente dentro das transações e executa
 
 ## Próximo marco recomendado
 
-O próximo marco deve ser **completar os E2E internos do GM**, começando pela correção de dados inválidos e reprocessamento. As rotas já possuem testes MySQL com rollback; falta provar que o operador consegue reconhecer o estado, corrigir os dados e chegar ao novo destino sem repetir mutações pela interface. Depois disso, o navegador deve ser conectado a uma API transacional descartável para eliminar a lacuna entre os contratos simulados e a integração real das duas camadas.
+O próximo marco deve ser **completar os E2E internos do GM**, começando pela indisponibilidade e reprocessamento. As rotas já possuem testes MySQL com rollback; falta provar que o operador reconhece a causa, tenta novamente sem repetição e chega ao novo destino pela interface. Depois disso, o navegador deve ser conectado a uma API transacional descartável para eliminar a lacuna entre os contratos simulados e a integração real das duas camadas.
 
 ## Progresso posterior à auditoria da v0.5.0
 
@@ -194,6 +194,7 @@ Na branch `feature/pagamento-manual-idempotente`, ainda não publicada:
 - o pagamento manual agora possui E2E de navegador com API simulada que comprova o pagador exibido, bloqueio integral durante o processamento, uma única requisição e atualização do pedido para concluído;
 - o estorno com cancelamento agora possui E2E de navegador que comprova desistência final sem mutação financeira, confirmação explícita da devolução, corpo da requisição, estado intermediário próprio, uma única mutação e atualização para cancelado;
 - o resultado manual do fornecedor agora possui E2E de navegador para registro, validação, bloqueio contra repetição e preparação da entrega ao cliente; os dois modais receberam nomes acessíveis ligados aos títulos;
+- a correção de dados GM agora possui E2E de navegador para normalização dos campos, bloqueio durante a consulta, mutação única, conclusão pela API simulada e comprovação de que nenhum fornecedor foi acionado; o modal também recebeu nome acessível;
 - a confirmação manual foi tornada idempotente por pedido, meio e referência/comprovante;
 - foi adicionado teste funcional da rota HTTP com MySQL e rollback;
 - foi criada uma outbox transacional para consultas a fornecedores;

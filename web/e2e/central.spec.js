@@ -733,6 +733,153 @@ test('resultado do fornecedor é validado antes de preparar a entrega ao cliente
   expect(requisicoesConfirmacao).toBe(1);
 });
 
+test('dados GM rejeitados são corrigidos e reprocessados sem fornecedor', async ({ page }) => {
+  const protocolo = 'CMK-E2E-CORRECAO';
+  const pedidoId = 700006;
+  let corrigido = false;
+  let requisicoesCorrecao = 0;
+  let dadosCorrecao = null;
+  let liberarResposta;
+  const respostaLiberada = new Promise(resolve => {
+    liberarResposta = resolve;
+  });
+
+  await prepararPagina(page, async (route, url) => {
+    if (url.pathname === '/api/fila-pedidos/resumo') {
+      await json(route, { ok: true, indicadores: {} });
+      return true;
+    }
+    if (url.pathname === '/api/fila-pedidos') {
+      await json(route, {
+        ok: true,
+        total: 1,
+        dados: [{
+          id: pedidoId,
+          protocolo,
+          cliente: 'CLIENTE CORRECAO E2E',
+          servico: 'Senha GM',
+          marca: 'GM',
+          modelo: corrigido ? 'ONIX' : 'MODELO INCORRETO',
+          ano: corrigido ? 2026 : 2025,
+          chassi: corrigido ? '9BGKS48U0RG123456' : '9BG-DADO-INVALIDO',
+          fornecedor: null,
+          fornecedor_id: null,
+          status: corrigido ? 'CONCLUIDO' : 'AGUARDANDO_DADOS',
+          valor_venda: 60,
+          custo: 0,
+          moeda: 'BRL',
+          criado_em: '2026-09-21T12:00:00Z'
+        }]
+      });
+      return true;
+    }
+    if (url.pathname === `/api/pedidos/${pedidoId}`) {
+      await json(route, {
+        ok: true,
+        pedido: {
+          id: pedidoId,
+          protocolo,
+          cliente: 'CLIENTE CORRECAO E2E',
+          servico: 'Senha GM',
+          marca: 'GM',
+          modelo: corrigido ? 'ONIX' : 'MODELO INCORRETO',
+          ano: corrigido ? 2026 : 2025,
+          chassi: corrigido ? '9BGKS48U0RG123456' : '9BG-DADO-INVALIDO',
+          fornecedor: null,
+          fornecedor_id: null,
+          status: corrigido ? 'CONCLUIDO' : 'AGUARDANDO_DADOS',
+          valor_venda: 60,
+          custo: 0,
+          moeda: 'BRL',
+          criado_em: '2026-09-21T12:00:00Z'
+        },
+        partes: {},
+        resultados: corrigido ? [{
+          id: 930001,
+          fornecedor_id: null,
+          origem: 'API',
+          status: 'CONFIRMADO',
+          codigo_mecanico: 'MC-CORRIGIDO-E2E',
+          criado_em: '2026-09-21T12:15:00Z'
+        }] : [],
+        historico: [],
+        comunicacoes: corrigido ? [{
+          id: 920001,
+          finalidade: 'ENTREGA_CLIENTE',
+          status: 'PENDENTE',
+          tentativas: 0,
+          atualizado_em: '2026-09-21T12:15:00Z'
+        }] : []
+      });
+      return true;
+    }
+    if (
+      url.pathname === `/api/pedidos/${pedidoId}/corrigir-dados` &&
+      route.request().method() === 'POST'
+    ) {
+      requisicoesCorrecao += 1;
+      dadosCorrecao = route.request().postDataJSON();
+      await respostaLiberada;
+      corrigido = true;
+      await json(route, {
+        ok: true,
+        dados: dadosCorrecao,
+        processamento: {
+          status: 'CONCLUIDO',
+          origem: 'API_JOELPIRES',
+          resultado: 'ENCONTRADO'
+        }
+      });
+      return true;
+    }
+    return false;
+  });
+
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Pedidos e senhas', exact: true }).click();
+  await page.locator('tr', { hasText: protocolo }).click();
+  const detalhe = page.getByRole('dialog');
+  await expect(detalhe.getByText('Aguardando dados', { exact: true })).toBeVisible();
+  await detalhe.getByRole('button', { name: 'Corrigir dados' }).click();
+
+  const modal = page.locator('.gm-result-modal');
+  await expect(modal).toHaveAccessibleName(protocolo);
+  await modal.getByLabel('Chassi').fill('9bgks48u0rg123456');
+  await modal.getByLabel('Marca').fill('gm');
+  await modal.getByLabel('Modelo').fill('onix');
+  await modal.getByLabel('Ano').fill('2026');
+  await modal.getByRole('button', { name: 'Salvar e consultar novamente' }).click();
+
+  await expect(page.getByRole('status')).toContainText('Consultando novamente');
+  await expect(modal.getByRole('button', { name: 'Corrigindo e consultando...' }))
+    .toBeDisabled();
+  await expect(modal.getByRole('button', { name: 'Fechar' })).toBeDisabled();
+  expect(requisicoesCorrecao).toBe(1);
+  expect(dadosCorrecao).toEqual({
+    chassi: '9BGKS48U0RG123456',
+    marca: 'GM',
+    modelo: 'ONIX',
+    ano: 2026
+  });
+
+  liberarResposta();
+
+  await expect(modal).toBeHidden();
+  await expect(detalhe.getByText('Concluído', { exact: true })).toBeVisible();
+  await expect(detalhe.getByText('MC-CORRIGIDO-E2E', { exact: true }))
+    .toBeVisible();
+  await expect(detalhe.getByText('Base própria / não definido', { exact: true }))
+    .toBeVisible();
+  await expect(detalhe.getByRole('heading', { name: 'Comunicação com fornecedor' }))
+    .toBeVisible();
+  await expect(detalhe.getByText(
+    'Nenhum envio ao fornecedor foi registrado.'
+  )).toBeVisible();
+  await expect(detalhe.getByText('Aguardando envio', { exact: true })).toBeVisible();
+  await expect(detalhe.getByRole('button', { name: 'Corrigir dados' })).toBeHidden();
+  expect(requisicoesCorrecao).toBe(1);
+});
+
 test('bloqueio de cliente só ocorre depois da confirmação', async ({ page }) => {
   let bloqueado = false;
   let alteracoes = 0;
