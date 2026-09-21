@@ -104,11 +104,16 @@ export default function NovoPedido({
 
   return (
     <div className="vault-overlay">
-      <section className="vault-modal" role="dialog" aria-modal="true">
+      <section
+        className="vault-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="new-order-title"
+      >
         <header>
           <div>
             <span>CENTRAL OPERACIONAL</span>
-            <h2>Novo pedido</h2>
+            <h2 id="new-order-title">Novo pedido</h2>
           </div>
           <button type="button" onClick={aoFechar} aria-label="Fechar">
             <X size={20} />

@@ -46,6 +46,9 @@ A suíte cobre inicialmente:
   repetir um envio incerto;
 - bloqueio de cliente somente depois da confirmação;
 - menu móvel e ausência de rolagem horizontal em 390 × 844 pixels.
+- criação, pagamento, resultado, correção e validação GM dentro do viewport em
+  390 × 844, 768 × 1024 e 1440 × 900, com ações finais alcançáveis;
+- nomes acessíveis e `aria-modal` nos modais críticos do pedido GM.
 
 Instalação do navegador e das bibliotecas necessárias no ambiente de teste:
 

@@ -73,11 +73,17 @@ export default function ConfirmarPagamento({
           </div>
         </div>
       )}
-      <form className="vault-modal payment-modal" onSubmit={confirmar}>
+      <form
+        className="vault-modal payment-modal"
+        onSubmit={confirmar}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="payment-confirmation-title"
+      >
         <header>
           <div>
             <span>CENTRAL FINANCEIRA</span>
-            <h2>Confirmar pagamento</h2>
+            <h2 id="payment-confirmation-title">Confirmar pagamento</h2>
           </div>
           <button type="button" onClick={aoFechar} aria-label="Fechar" disabled={salvando}>
             <X size={20} />

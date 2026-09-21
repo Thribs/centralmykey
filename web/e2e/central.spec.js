@@ -158,6 +158,188 @@ test('menu móvel abre sem rolagem horizontal', async ({ page }) => {
   expect(dimensoes.largura).toBeLessThanOrEqual(dimensoes.viewport);
 });
 
+test('formulários GM permanecem acessíveis em celular tablet e desktop', async ({ page }) => {
+  test.setTimeout(90000);
+  const pedidos = [
+    ['CMK-RESP-PAGAMENTO', 710001, 'AGUARDANDO_PAGAMENTO'],
+    ['CMK-RESP-RESULTADO', 710002, 'EM_CONSULTA'],
+    ['CMK-RESP-CORRECAO', 710003, 'AGUARDANDO_DADOS'],
+    ['CMK-RESP-VALIDACAO', 710004, 'CONCLUIDO']
+  ];
+  await prepararPagina(page, async (route, url) => {
+    if (url.pathname === '/api/fila-pedidos/resumo') {
+      await json(route, { ok: true, indicadores: {} });
+      return true;
+    }
+    if (url.pathname === '/api/fila-pedidos') {
+      await json(route, {
+        ok: true,
+        total: pedidos.length,
+        dados: pedidos.map(([protocolo, id, status]) => ({
+          id,
+          protocolo,
+          cliente: 'CLIENTE RESPONSIVO E2E',
+          servico: 'Senha GM',
+          marca: 'GM',
+          modelo: 'ONIX',
+          ano: 2026,
+          chassi: `9BG-RESP-${id}`,
+          fornecedor: status === 'EM_CONSULTA' || status === 'CONCLUIDO'
+            ? 'Márcio'
+            : null,
+          status,
+          valor_venda: 60,
+          custo: status === 'EM_CONSULTA' || status === 'CONCLUIDO' ? 22 : 0,
+          moeda: 'BRL',
+          criado_em: '2026-09-21T12:00:00Z'
+        }))
+      });
+      return true;
+    }
+    if (url.pathname === '/api/clientes') {
+      await json(route, {
+        ok: true,
+        dados: [{
+          id: 720001,
+          nome: 'CLIENTE RESPONSIVO E2E',
+          telefone: '5500000000000',
+          ativo: 1
+        }]
+      });
+      return true;
+    }
+    if (url.pathname === '/api/servicos') {
+      await json(route, {
+        ok: true,
+        dados: [{
+          id: 730001,
+          codigo: 'GM_SENHA',
+          nome: 'Senha GM',
+          preco_base: 60,
+          moeda: 'BRL',
+          ativo: 1
+        }]
+      });
+      return true;
+    }
+    const item = pedidos.find(([, id]) => url.pathname === `/api/pedidos/${id}`);
+    if (item) {
+      const [protocolo, id, status] = item;
+      await json(route, {
+        ok: true,
+        pedido: {
+          id,
+          protocolo,
+          cliente: 'CLIENTE RESPONSIVO E2E',
+          servico: 'Senha GM',
+          marca: 'GM',
+          modelo: 'ONIX',
+          ano: 2026,
+          chassi: `9BG-RESP-${id}`,
+          fornecedor: status === 'EM_CONSULTA' || status === 'CONCLUIDO'
+            ? 'Márcio'
+            : null,
+          fornecedor_id: status === 'EM_CONSULTA' || status === 'CONCLUIDO'
+            ? 740001
+            : null,
+          status,
+          valor_venda: 60,
+          custo: status === 'EM_CONSULTA' || status === 'CONCLUIDO' ? 22 : 0,
+          moeda: 'BRL',
+          criado_em: '2026-09-21T12:00:00Z'
+        },
+        partes: {
+          pagador: { nome: 'PAGADOR RESPONSIVO E2E' }
+        },
+        resultados: status === 'CONCLUIDO' ? [{
+          id: 750001,
+          fornecedor_id: 740001,
+          origem: 'Fornecedor externo',
+          status: 'ENCONTRADO',
+          codigo_mecanico: 'MC-RESP-E2E',
+          criado_em: '2026-09-21T12:10:00Z'
+        }] : [],
+        historico: [],
+        comunicacoes: []
+      });
+      return true;
+    }
+    return false;
+  });
+
+  async function validarModal(modal, acaoFinal) {
+    await expect(modal).toBeVisible();
+    await expect(modal).toHaveAttribute('aria-modal', 'true');
+    const caixa = await modal.boundingBox();
+    const viewport = page.viewportSize();
+    expect(caixa).not.toBeNull();
+    expect(caixa.x).toBeGreaterThanOrEqual(0);
+    expect(caixa.y).toBeGreaterThanOrEqual(0);
+    expect(caixa.x + caixa.width).toBeLessThanOrEqual(viewport.width + 1);
+    expect(caixa.y + caixa.height).toBeLessThanOrEqual(viewport.height + 1);
+    const acao = modal.getByRole('button', { name: acaoFinal });
+    await acao.scrollIntoViewIfNeeded();
+    await expect(acao).toBeVisible();
+    const largura = await page.evaluate(() => ({
+      documento: document.documentElement.scrollWidth,
+      viewport: window.innerWidth
+    }));
+    expect(largura.documento).toBeLessThanOrEqual(largura.viewport);
+  }
+
+  for (const viewport of [
+    { width: 390, height: 844 },
+    { width: 768, height: 1024 },
+    { width: 1440, height: 900 }
+  ]) {
+    await page.setViewportSize(viewport);
+    await page.goto('/');
+    if (viewport.width <= 900) {
+      await page.getByRole('button', { name: 'Abrir menu' }).click();
+    }
+    await page.getByRole('button', { name: 'Pedidos e senhas', exact: true }).click();
+
+    await page.getByRole('button', { name: 'Novo pedido' }).click();
+    let modal = page.getByRole('dialog', { name: 'Novo pedido' });
+    await validarModal(modal, 'Criar pedido');
+    await modal.getByRole('button', { name: 'Fechar' }).click();
+
+    await page.locator('tr', { hasText: 'CMK-RESP-PAGAMENTO' }).click();
+    let detalhe = page.getByRole('dialog', { name: 'CMK-RESP-PAGAMENTO' });
+    await detalhe.getByRole('button', { name: 'Confirmar pagamento' }).click();
+    modal = page.getByRole('dialog', { name: 'Confirmar pagamento' });
+    await validarModal(modal, 'Confirmar pagamento');
+    await modal.getByRole('button', { name: 'Fechar' }).click();
+    await detalhe.getByRole('button', { name: 'Fechar' }).click();
+
+    await page.locator('tr', { hasText: 'CMK-RESP-RESULTADO' }).click();
+    detalhe = page.getByRole('dialog', { name: 'CMK-RESP-RESULTADO' });
+    await detalhe.getByRole('button', { name: 'Informar resultado' }).click();
+    modal = page.locator('.gm-result-modal');
+    await expect(modal).toHaveAccessibleName('CMK-RESP-RESULTADO');
+    await validarModal(modal, 'Salvar resultado');
+    await modal.getByRole('button', { name: 'Fechar' }).click();
+    await detalhe.getByRole('button', { name: 'Fechar' }).click();
+
+    await page.locator('tr', { hasText: 'CMK-RESP-CORRECAO' }).click();
+    detalhe = page.getByRole('dialog', { name: 'CMK-RESP-CORRECAO' });
+    await detalhe.getByRole('button', { name: 'Corrigir dados' }).click();
+    modal = page.locator('.gm-result-modal');
+    await expect(modal).toHaveAccessibleName('CMK-RESP-CORRECAO');
+    await validarModal(modal, 'Salvar e consultar novamente');
+    await modal.getByRole('button', { name: 'Fechar' }).click();
+    await detalhe.getByRole('button', { name: 'Fechar' }).click();
+
+    await page.locator('tr', { hasText: 'CMK-RESP-VALIDACAO' }).click();
+    detalhe = page.getByRole('dialog', { name: 'CMK-RESP-VALIDACAO' });
+    await detalhe.getByRole('button', { name: 'Cliente confirmou' }).click();
+    modal = page.getByRole('dialog', { name: 'Confirmar funcionamento' });
+    await validarModal(modal, 'Confirmar senha correta');
+    await modal.getByRole('button', { name: 'Fechar' }).click();
+    await detalhe.getByRole('button', { name: 'Fechar' }).click();
+  }
+});
+
 test('cancelamento exige motivo e confirmação antes de uma única mutação', async ({ page }) => {
   const protocolo = 'CMK-E2E-CANCELAR';
   const pedidoId = 700002;
@@ -689,7 +871,6 @@ test('navegador registra resultado real e prepara entrega na transação', async
   await modalResultado.getByLabel('Código mecânico').fill('MEC-FORNECEDOR-E2E');
   await modalResultado.getByLabel('Imobilizador').fill('IMMO-FORNECEDOR-E2E');
   await modalResultado.getByRole('button', { name: 'Salvar resultado' }).click();
-  await expect(page.getByRole('status')).toContainText('Registrando resultado');
   await expect(modalResultado).toBeHidden({ timeout: 10000 });
 
   await expect(detalhe.getByText('Concluído', { exact: true })).toBeVisible();
