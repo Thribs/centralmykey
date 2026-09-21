@@ -104,6 +104,23 @@ async function aplicarSql(arquivo, socket, banco) {
   await Promise.all([pipeline(fs.createReadStream(arquivo), mysql.stdin), fim]);
 }
 
+async function executarConsulta(socket, banco, sql) {
+  return new Promise((resolve, reject) => {
+    const processo = spawn('mysql', [
+      '--protocol=socket', `--socket=${socket}`, '-uroot',
+      '--batch', '--skip-column-names', banco, '-e', sql
+    ], { stdio: ['ignore', 'pipe', 'pipe'] });
+    let saida = '';
+    let erro = '';
+    processo.stdout.on('data', trecho => { if (saida.length < 12000) saida += trecho; });
+    processo.stderr.on('data', trecho => { if (erro.length < 6000) erro += trecho; });
+    processo.once('error', reject);
+    processo.once('close', codigo => codigo === 0
+      ? resolve(saida.trim())
+      : reject(new Error(`consulta descartável falhou: ${erro.trim()}`)));
+  });
+}
+
 async function consultarTabelas(socket, banco) {
   const temporario = await fsp.mkdtemp(path.join(os.tmpdir(), 'cmk-lista-tabelas-'));
   const saida = path.join(temporario, 'tabelas.txt');
@@ -177,6 +194,27 @@ async function executarValidacao() {
       '-e', `CREATE DATABASE ${banco} CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`
     ]);
     await importarEsquema(configuracao, credencial, socket, banco);
+    await executarConsulta(socket, banco, `
+      INSERT INTO clientes
+        (nome, telefone, telefone_normalizado, email, cadastro_status,
+         tipo_cobranca, credito_status, ativo)
+      VALUES
+        ('CLIENTE SINTETICO MIGRACAO', '5500000000000', '5500000000000',
+         'migracao@teste.invalid', 'COMPLETO', 'ANTECIPADO', 'LIBERADO', 1);
+      SET @cliente_id = LAST_INSERT_ID();
+      INSERT INTO servicos
+        (codigo, nome, categoria, marca, preco_base, moeda, exige_chassi, ativo)
+      VALUES
+        ('MIGRACAO_TESTE', 'Servico sintetico', 'TESTE', 'TESTE', 1.00,
+         'BRL', 1, 1);
+      SET @servico_id = LAST_INSERT_ID();
+      INSERT INTO pedidos_senha
+        (protocolo, cliente_id, servico_id, chassi, marca, status,
+         valor_venda, custo, moeda)
+      VALUES
+        ('MIGRACAO-E2E-0001', @cliente_id, @servico_id,
+         'CHASSISINTETICO01', 'TESTE', 'ABERTO', 1.00, 0, 'BRL');
+    `);
     for (const nome of MIGRACOES) {
       await aplicarSql(path.join(__dirname, 'migrations', nome), socket, banco);
     }
@@ -187,9 +225,20 @@ async function executarValidacao() {
     const tabelas = await consultarTabelas(socket, banco);
     const ausentes = TABELAS_ESPERADAS.filter(nome => !tabelas.has(nome));
     if (ausentes.length) throw new Error(`Tabelas ausentes após migração: ${ausentes.join(', ')}`);
+    const partes = await executarConsulta(socket, banco, `
+      SELECT COUNT(*), COUNT(DISTINCT papel),
+             SUM(nome = 'CLIENTE SINTETICO MIGRACAO'),
+             SUM(telefone = '5500000000000')
+        FROM pedido_partes pp
+        INNER JOIN pedidos_senha p ON p.id = pp.pedido_id
+       WHERE p.protocolo = 'MIGRACAO-E2E-0001'
+    `);
+    if (partes !== '3\t3\t3\t3') {
+      throw new Error(`Backfill de partes divergente: ${partes || 'sem resultado'}`);
+    }
     console.log(
       `OK: ${MIGRACOES.length} migrações aplicadas duas vezes em MySQL descartável; ` +
-      `${TABELAS_ESPERADAS.length} tabelas verificadas`
+      `${TABELAS_ESPERADAS.length} tabelas e backfill sintético verificados`
     );
   } finally {
     if (iniciado) {

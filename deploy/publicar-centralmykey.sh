@@ -44,9 +44,12 @@ rollback() {
     systemctl stop "$SERVICE" || true
     if node "$SOURCE_DIR/api/executar-restauracao.js" \
       "$backup_dir" --confirmar-restauracao; then
-      systemctl start "$SERVICE"
-      curl --fail --silent --show-error "$HEALTH_URL" >/dev/null
-      echo 'Rollback automático concluído e health validado.' >&2
+      if systemctl start "$SERVICE" &&
+         curl --fail --silent --show-error "$HEALTH_URL" >/dev/null; then
+        echo 'Rollback automático concluído e health validado.' >&2
+      else
+        echo 'Rollback restaurou os dados, mas serviço/health não validou.' >&2
+      fi
     else
       echo "ROLLBACK AUTOMÁTICO FALHOU. Backup preservado em ${backup_dir}." >&2
     fi
@@ -66,12 +69,10 @@ mkdir -p "$stage_dir/api" "$stage_dir/web"
 rsync -a --delete --exclude='.env' --exclude='node_modules' \
   "$SOURCE_DIR/api/" "$stage_dir/api/"
 cp --preserve=mode,ownership,timestamps "$API_DIR/.env" "$stage_dir/api/.env"
-if [[ -d "$API_DIR/storage" ]]; then
-  rsync -a "$API_DIR/storage/" "$stage_dir/api/storage/"
-fi
 (cd "$stage_dir/api" && npm ci --omit=dev)
 
 rsync -a --delete --exclude='node_modules' --exclude='dist' \
+  --exclude='test-results' --exclude='playwright-report' \
   "$SOURCE_DIR/web/" "$stage_dir/web/"
 (cd "$stage_dir/web" && npm ci && npm run build)
 

@@ -12,7 +12,8 @@ da aprovação dos testes.
   banco publicado.
 - `api/validar-migracoes-descartaveis.js` copia somente a estrutura atual para
   uma instância MySQL local sem rede, aplica as oito migrações duas vezes,
-  verifica dez tabelas e apaga integralmente a instância.
+  verifica dez tabelas, comprova o backfill das três partes de um pedido
+  inteiramente sintético e apaga integralmente a instância.
 - A validação descartável não lê linhas de negócio e não grava no banco real.
 
 Ela pode ser repetida isoladamente com `cd api && npm run test:migrations`.
