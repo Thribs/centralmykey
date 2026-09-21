@@ -47,6 +47,20 @@ async function prepararPagina(page, tratar) {
   });
 }
 
+async function autenticarIntegrado(page, credenciais) {
+  const resposta = await page.request.post(`${API}/api/auth/login`, {
+    data: credenciais
+  });
+  expect(resposta.ok()).toBe(true);
+  const corpo = await resposta.json();
+  expect(corpo.token).toBeTruthy();
+  await page.addInitScript(token => {
+    localStorage.setItem('central_mykey_token', token);
+    localStorage.setItem('central_mykey_troca_senha', '0');
+  }, corpo.token);
+  return corpo.token;
+}
+
 test('busca global abre o pedido com filtro aplicado', async ({ page }) => {
   const protocolo = 'CMK-E2E-0001';
   let filtroRecebido = '';
@@ -594,10 +608,7 @@ test('navegador confirma pagamento GM contra API e MySQL transacionais', async (
   const contexto = contextoCompleto.encontrado;
   const referencia = `PIX-${contexto.protocolo}`;
 
-  await page.addInitScript(() => {
-    localStorage.setItem('central_mykey_token', 'token-e2e-integrado');
-    localStorage.setItem('central_mykey_troca_senha', '0');
-  });
+  await autenticarIntegrado(page, contextoCompleto.autenticacao.administrador);
   await page.goto('/');
   await page.getByRole('button', { name: 'Pedidos e senhas', exact: true }).click();
   const busca = page.getByPlaceholder('Protocolo, cliente, chassi ou serviço');
@@ -649,10 +660,7 @@ test('navegador encaminha 404 real ao fornecedor na transação', async ({ page 
   const contextoCompleto = await respostaContexto.json();
   const contexto = contextoCompleto.nao_encontrado;
 
-  await page.addInitScript(() => {
-    localStorage.setItem('central_mykey_token', 'token-e2e-integrado');
-    localStorage.setItem('central_mykey_troca_senha', '0');
-  });
+  await autenticarIntegrado(page, contextoCompleto.autenticacao.administrador);
   await page.goto('/');
   await page.getByRole('button', { name: 'Pedidos e senhas', exact: true }).click();
   const busca = page.getByPlaceholder('Protocolo, cliente, chassi ou serviço');
@@ -700,10 +708,7 @@ test('navegador corrige 422 real e conclui sem fornecedor na transação', async
   const contextoCompleto = await respostaContexto.json();
   const contexto = contextoCompleto.dados_invalidos;
 
-  await page.addInitScript(() => {
-    localStorage.setItem('central_mykey_token', 'token-e2e-integrado');
-    localStorage.setItem('central_mykey_troca_senha', '0');
-  });
+  await autenticarIntegrado(page, contextoCompleto.autenticacao.administrador);
   await page.goto('/');
   await page.getByRole('button', { name: 'Pedidos e senhas', exact: true }).click();
   const busca = page.getByPlaceholder('Protocolo, cliente, chassi ou serviço');
@@ -779,10 +784,7 @@ test('navegador reprocessa HTTP 503 real sem acionar fornecedor', async ({ page 
   const contextoCompleto = await respostaContexto.json();
   const contexto = contextoCompleto.indisponivel;
 
-  await page.addInitScript(() => {
-    localStorage.setItem('central_mykey_token', 'token-e2e-integrado');
-    localStorage.setItem('central_mykey_troca_senha', '0');
-  });
+  await autenticarIntegrado(page, contextoCompleto.autenticacao.administrador);
   await page.goto('/');
   await page.getByRole('button', { name: 'Pedidos e senhas', exact: true }).click();
   const busca = page.getByPlaceholder('Protocolo, cliente, chassi ou serviço');
@@ -849,10 +851,7 @@ test('navegador registra resultado real e prepara entrega na transação', async
   const contextoCompleto = await respostaContexto.json();
   const contexto = contextoCompleto.resultado_fornecedor;
 
-  await page.addInitScript(() => {
-    localStorage.setItem('central_mykey_token', 'token-e2e-integrado');
-    localStorage.setItem('central_mykey_troca_senha', '0');
-  });
+  await autenticarIntegrado(page, contextoCompleto.autenticacao.administrador);
   await page.goto('/');
   await page.getByRole('button', { name: 'Pedidos e senhas', exact: true }).click();
   const busca = page.getByPlaceholder('Protocolo, cliente, chassi ou serviço');
@@ -911,10 +910,7 @@ test('financeiro fecha e paga fornecedor uma única vez na transação', async (
   const contextoCompleto = await respostaContexto.json();
   const contexto = contextoCompleto.fechamento_fornecedor;
 
-  await page.addInitScript(() => {
-    localStorage.setItem('central_mykey_token', 'token-e2e-integrado');
-    localStorage.setItem('central_mykey_troca_senha', '0');
-  });
+  await autenticarIntegrado(page, contextoCompleto.autenticacao.administrador);
   const dialogos = [
     ['confirm'],
     ['confirm'],
@@ -932,7 +928,8 @@ test('financeiro fecha e paga fornecedor uma única vez na transação', async (
   await page.getByRole('button', { name: 'Financeiro', exact: true }).click();
   await expect(page.getByRole('main').getByRole('heading', { name: 'Financeiro' }))
     .toBeVisible();
-  await page.getByRole('button', { name: 'Fornecedores', exact: true }).click();
+  await page.getByRole('main')
+    .getByRole('button', { name: 'Fornecedores', exact: true }).click();
   await page.locator('.finance-filters select').nth(1)
     .selectOption(String(contexto.fornecedor_id));
   await page.getByRole('button', { name: 'Gerar última semana' }).click();
@@ -966,16 +963,113 @@ test('financeiro fecha e paga fornecedor uma única vez na transação', async (
   expect(Number(verificacao.estado.pagamentos)).toBe(1);
 });
 
+test('administrador cria usuário e define permissões pelas rotas reais', async ({ page }) => {
+  test.setTimeout(60000);
+  const respostaContexto = await page.request.get(`${API}/api/e2e/contexto`);
+  expect(respostaContexto.ok()).toBe(true);
+  const contextoCompleto = await respostaContexto.json();
+  const contexto = contextoCompleto.administracao;
+  await autenticarIntegrado(page, contextoCompleto.autenticacao.administrador);
+  await page.setViewportSize({ width: 390, height: 844 });
+
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Abrir menu' }).click();
+  await page.getByRole('button', { name: 'Usuários', exact: true }).click();
+  await expect(page.getByRole('main').getByRole('heading', { name: 'Usuários' }))
+    .toBeVisible();
+  await page.getByRole('button', { name: 'Novo usuário' }).click();
+
+  const formulario = page.getByRole('dialog', { name: 'Novo usuário' });
+  await formulario.getByLabel('Nome').fill(contexto.nome_novo_usuario);
+  await formulario.getByLabel('Login').fill(contexto.login_novo_usuario);
+  await formulario.getByLabel('Perfil').selectOption(String(contexto.perfil_id));
+  await formulario.getByLabel('E-mail')
+    .fill(`${contexto.login_novo_usuario}@teste.invalid`);
+  await formulario.getByLabel('Telefone').fill('5500000000000');
+  await formulario.getByLabel('Senha provisória').fill('Senha-Provisoria-E2E-9');
+  const caixaFormulario = await formulario.boundingBox();
+  expect(caixaFormulario.width).toBeLessThanOrEqual(390);
+  await expect(formulario.getByRole('button', { name: 'Salvar usuário' }))
+    .toBeVisible();
+  await formulario.getByRole('button', { name: 'Salvar usuário' }).click();
+  await expect(formulario).toBeHidden({ timeout: 15000 });
+
+  const linha = page.locator('tr', { hasText: contexto.login_novo_usuario });
+  await expect(linha).toContainText(contexto.nome_novo_usuario);
+  await linha.getByTitle('Permissões').click();
+  const permissoes = page.getByRole('dialog', {
+    name: new RegExp(`Permissões de ${contexto.nome_novo_usuario}`)
+  });
+  await permissoes.getByRole('checkbox', { name: 'visualizar Usuários' }).check();
+  await expect(permissoes.getByRole('button', { name: 'Salvar permissões' }))
+    .toBeVisible();
+  await permissoes.getByRole('button', { name: 'Salvar permissões' }).click();
+  await expect(permissoes).toBeHidden({ timeout: 10000 });
+
+  page.once('dialog', dialogo => dialogo.accept());
+  await linha.getByTitle('Alterar status').click();
+  await expect(linha).toContainText('BLOQUEADO');
+
+  const dimensoes = await page.evaluate(() => ({
+    largura: document.documentElement.scrollWidth,
+    viewport: window.innerWidth
+  }));
+  expect(dimensoes.largura).toBeLessThanOrEqual(dimensoes.viewport);
+
+  const respostaVerificacao = await page.request.get(
+    `${API}/api/e2e/verificacao?cenario=administracao`
+  );
+  expect(respostaVerificacao.ok()).toBe(true);
+  const verificacao = await respostaVerificacao.json();
+  expect(verificacao.estado.status).toBe('BLOQUEADO');
+  expect(Number(verificacao.estado.senha_provisoria)).toBe(1);
+  expect(Number(verificacao.estado.permissoes_visualizar)).toBe(1);
+  expect(Number(verificacao.estado.auditorias)).toBe(3);
+});
+
+test('visualizador não vê ações de usuário e recebe 403 ao forçar criação', async ({ page }) => {
+  const respostaContexto = await page.request.get(`${API}/api/e2e/contexto`);
+  expect(respostaContexto.ok()).toBe(true);
+  const contextoCompleto = await respostaContexto.json();
+  const contexto = contextoCompleto.administracao;
+  const token = await autenticarIntegrado(
+    page,
+    contextoCompleto.autenticacao.visualizador
+  );
+
+  await page.goto('/');
+  await expect(page.getByRole('main').getByRole('heading', { name: 'Usuários' }))
+    .toBeVisible();
+  await expect(page.getByRole('button', { name: 'Novo usuário' })).toBeHidden();
+  await expect(page.getByTitle('Editar')).toHaveCount(0);
+  await expect(page.getByTitle('Permissões')).toHaveCount(0);
+  await expect(page.getByTitle('Alterar status')).toHaveCount(0);
+
+  const negada = await page.request.post(`${API}/api/usuarios`, {
+    headers: { Authorization: `Bearer ${token}` },
+    data: {
+      nome: 'USUÁRIO NEGADO E2E',
+      login: `${contexto.login_novo_usuario}-negado`,
+      senha: 'Senha-Negada-E2E-9',
+      perfil_id: contexto.perfil_id
+    }
+  });
+  expect(negada.status()).toBe(403);
+
+  const respostaVerificacao = await page.request.get(
+    `${API}/api/e2e/verificacao?cenario=administracao`
+  );
+  const verificacao = await respostaVerificacao.json();
+  expect(Number(verificacao.estado.criacoes_negadas)).toBe(0);
+});
+
 test('navegador estorna pagamento real e cancela na transação', async ({ page }) => {
   const respostaContexto = await page.request.get(`${API}/api/e2e/contexto`);
   expect(respostaContexto.ok()).toBe(true);
   const contextoCompleto = await respostaContexto.json();
   const contexto = contextoCompleto.estorno;
 
-  await page.addInitScript(() => {
-    localStorage.setItem('central_mykey_token', 'token-e2e-integrado');
-    localStorage.setItem('central_mykey_troca_senha', '0');
-  });
+  await autenticarIntegrado(page, contextoCompleto.autenticacao.administrador);
   const dialogos = [
     ['prompt', 'Devolução integral E2E'],
     ['confirm'],

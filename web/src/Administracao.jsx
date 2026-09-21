@@ -83,13 +83,22 @@ function ModalUsuario({ registro, perfis, erro, salvando, fechar, salvar }) {
 
   return (
     <div className="admin-overlay">
-      <section className="admin-modal">
+      <section
+        className="admin-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="titulo-modal-usuario"
+      >
         <header>
           <div>
             <span>USUÁRIOS MYKEY</span>
-            <h2>{registro ? 'Editar usuário' : 'Novo usuário'}</h2>
+            <h2 id="titulo-modal-usuario">
+              {registro ? 'Editar usuário' : 'Novo usuário'}
+            </h2>
           </div>
-          <button type="button" onClick={fechar}><X size={20} /></button>
+          <button type="button" onClick={fechar} aria-label="Fechar formulário">
+            <X size={20} />
+          </button>
         </header>
 
         <form onSubmit={evento => {
@@ -172,13 +181,22 @@ function ModalPermissoes({ dados, erro, salvando, fechar, salvar }) {
 
   return (
     <div className="admin-overlay">
-      <section className="admin-modal admin-permissions">
+      <section
+        className="admin-modal admin-permissions"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="titulo-modal-permissoes"
+      >
         <header>
           <div>
             <span>CONTROLE DE ACESSO</span>
-            <h2>Permissões de {dados.usuario.nome}</h2>
+            <h2 id="titulo-modal-permissoes">
+              Permissões de {dados.usuario.nome}
+            </h2>
           </div>
-          <button type="button" onClick={fechar}><X size={20} /></button>
+          <button type="button" onClick={fechar} aria-label="Fechar permissões">
+            <X size={20} />
+          </button>
         </header>
 
         <div className="admin-modal-body">
@@ -205,6 +223,7 @@ function ModalPermissoes({ dados, erro, salvando, fechar, salvar }) {
                           type="checkbox"
                           checked={Boolean(item[campo])}
                           onChange={() => alterar(indice, campo)}
+                          aria-label={`${campo} ${item.nome}`}
                         />
                       </td>
                     ))}
@@ -234,7 +253,7 @@ function ModalPermissoes({ dados, erro, salvando, fechar, salvar }) {
   );
 }
 
-export function Usuarios() {
+export function Usuarios({ permissoes: permissoesSessao = [] }) {
   const token = useMemo(() => tokenLocal(), []);
   const [usuarios, setUsuarios] = useState([]);
   const [perfis, setPerfis] = useState([]);
@@ -246,6 +265,11 @@ export function Usuarios() {
   const [erroModal, setErroModal] = useState('');
   const [salvando, setSalvando] = useState(false);
   const [carregando, setCarregando] = useState(true);
+  const permissaoModulo = permissoesSessao.find(
+    item => item.codigo === 'USUARIOS'
+  ) || {};
+  const podeCriar = Number(permissaoModulo.criar) === 1;
+  const podeEditar = Number(permissaoModulo.editar) === 1;
 
   const carregar = useCallback(async () => {
     setCarregando(true);
@@ -301,6 +325,8 @@ export function Usuarios() {
 
   async function mudarStatus(usuario) {
     const novo = usuario.status === 'ATIVO' ? 'BLOQUEADO' : 'ATIVO';
+    const verbo = novo === 'ATIVO' ? 'ativar' : 'bloquear';
+    if (!window.confirm(`Confirma ${verbo} o usuário ${usuario.nome}?`)) return;
 
     try {
       await alterarStatusUsuario(token, usuario.id, novo);
@@ -351,9 +377,11 @@ export function Usuarios() {
             <RefreshCw size={16} className={carregando ? 'rotating' : ''} />
             Atualizar
           </button>
-          <button type="button" className="primary" onClick={() => setModal({})}>
-            <Plus size={17} /> Novo usuário
-          </button>
+          {podeCriar && (
+            <button type="button" className="primary" onClick={() => setModal({})}>
+              <Plus size={17} /> Novo usuário
+            </button>
+          )}
         </div>
       </div>
 
@@ -397,17 +425,19 @@ export function Usuarios() {
                   <td>{dataHora(usuario.ultimo_login)}</td>
                   <td><span className={`admin-status status-${usuario.status}`}>{usuario.status}</span></td>
                   <td>
-                    <div className="admin-row-actions">
-                      <button type="button" title="Editar" onClick={() => setModal(usuario)}>
-                        <Pencil size={16} />
-                      </button>
-                      <button type="button" title="Permissões" onClick={() => abrirPermissoes(usuario)}>
-                        <KeyRound size={16} />
-                      </button>
-                      <button type="button" title="Alterar status" onClick={() => mudarStatus(usuario)}>
-                        {usuario.status === 'ATIVO' ? <Ban size={16} /> : <CheckCircle2 size={16} />}
-                      </button>
-                    </div>
+                    {podeEditar && (
+                      <div className="admin-row-actions">
+                        <button type="button" title="Editar" onClick={() => setModal(usuario)}>
+                          <Pencil size={16} />
+                        </button>
+                        <button type="button" title="Permissões" onClick={() => abrirPermissoes(usuario)}>
+                          <KeyRound size={16} />
+                        </button>
+                        <button type="button" title="Alterar status" onClick={() => mudarStatus(usuario)}>
+                          {usuario.status === 'ATIVO' ? <Ban size={16} /> : <CheckCircle2 size={16} />}
+                        </button>
+                      </div>
+                    )}
                   </td>
                 </tr>
               ))}

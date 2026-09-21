@@ -632,7 +632,7 @@ export default function Painel({
           ) : atual?.codigo === 'RELATORIOS' ? (
             <Relatorios />
           ) : atual?.codigo === 'USUARIOS' ? (
-            <Usuarios />
+            <Usuarios permissoes={permissoes} />
           ) : atual?.codigo === 'INTEGRACOES' ? (
             <>
               <Integracoes />

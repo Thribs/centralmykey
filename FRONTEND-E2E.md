@@ -3,7 +3,8 @@
 O frontend usa Playwright com Chromium para percorrer comportamentos reais no
 navegador. A maioria dos cenários intercepta a API no contexto do teste e usa
 somente dados fictícios. Os cenários integrados sobem uma API local descartável,
-usam as rotas reais de pedidos e financeiro e mantêm todas as gravações MySQL em
+usam autenticação JWT, permissões e rotas reais de pedidos, financeiro e
+administração, mantendo todas as gravações MySQL em
 uma transação externa revertida ao encerrar. Nenhuma requisição chega à API
 publicada nem à API Joel Pires.
 
@@ -31,6 +32,9 @@ A suíte cobre inicialmente:
   consulta cancelada, cache alimentado e entrega preparada;
 - fechamento semanal gerado pela tela financeira contra API e MySQL reais,
   com conferência dos itens, aprovação, despesa e pagamento únicos;
+- administrador criando, autorizando e bloqueando usuário pela interface, e
+  visualizador sem controles de mutação nem possibilidade de forçar a criação
+  pela API; todo o cenário usa JWT real e rollback;
 - estorno real iniciado pelo bloqueio de cancelamento, com lançamento reverso,
   pagamento de devolução e pedido cancelado atomicamente;
 - estorno seguido de cancelamento com desistência sem mutação financeira,

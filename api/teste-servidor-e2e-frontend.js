@@ -5,6 +5,7 @@ const express = require('express');
 const cors = require('cors');
 const dotenv = require('dotenv');
 const mysql = require('mysql2/promise');
+const bcrypt = require('bcryptjs');
 const {
   criarTabelaOutboxTemporaria
 } = require('./teste-suporte-outbox');
@@ -136,11 +137,14 @@ async function prepararFixture() {
   const [[servico]] = await connection.query(
     "SELECT id, preco_base FROM servicos WHERE codigo='GM_SENHA' AND ativo=1 LIMIT 1"
   );
-  const [[usuario]] = await connection.query(
-    "SELECT id, nome FROM usuarios WHERE status='ATIVO' ORDER BY id LIMIT 1"
+  const [[perfil]] = await connection.query(
+    'SELECT id, nome FROM perfis WHERE ativo=1 ORDER BY id LIMIT 1'
   );
-  if (!servico || !usuario) {
-    throw new Error('Serviço GM e usuário ativo são obrigatórios para o E2E');
+  const [modulos] = await connection.query(
+    'SELECT id, codigo FROM modulos WHERE ativo=1 ORDER BY id'
+  );
+  if (!servico || !perfil || !modulos.length) {
+    throw new Error('Serviço GM, perfil e módulos ativos são obrigatórios para o E2E');
   }
 
   const marcador = `${process.pid}-${String(Date.now()).slice(-8)}`;
@@ -162,10 +166,65 @@ async function prepararFixture() {
   const telefone = `5594${String(Date.now()).slice(-8)}`;
   const nomeCliente = `CLIENTE E2E INTEGRADO ${marcador}`;
   const nomeFornecedor = `FORNECEDOR E2E INTEGRADO ${marcador}`;
+  const loginOperador = `e2e-admin-${marcador}`;
+  const senhaOperador = `Admin-${marcador}-9`;
+  const loginVisualizador = `e2e-view-${marcador}`;
+  const senhaVisualizador = `View-${marcador}-9`;
+  const loginNovoUsuario = `e2e-novo-${marcador}`;
   const apiSenhaId = 970000000 + (process.pid % 100000);
   const apiSenhaIdCorrigida = 971000000 + (process.pid % 100000);
   const apiSenhaIdReprocessada = 972000000 + (process.pid % 100000);
   let chamadasIndisponivel = 0;
+
+  const [operador] = await connection.query(
+    `INSERT INTO usuarios
+       (nome, login, senha_hash, senha_provisoria, perfil_id, status)
+     VALUES (?, ?, ?, 0, ?, 'ATIVO')`,
+    [
+      `ADMINISTRADOR E2E ${marcador}`,
+      loginOperador,
+      await bcrypt.hash(senhaOperador, 4),
+      perfil.id
+    ]
+  );
+  for (const modulo of modulos) {
+    await connection.query(
+      `INSERT INTO usuario_permissoes
+         (usuario_id, modulo_id, visualizar, criar, editar, excluir, aprovar)
+       VALUES (?, ?, 1, 1, 1, 1, 1)`,
+      [operador.insertId, modulo.id]
+    );
+  }
+  const moduloUsuarios = modulos.find(item => item.codigo === 'USUARIOS');
+  if (!moduloUsuarios) {
+    throw new Error('Módulo USUARIOS ativo é obrigatório para o E2E');
+  }
+  const [visualizador] = await connection.query(
+    `INSERT INTO usuarios
+       (nome, login, senha_hash, senha_provisoria, perfil_id, status)
+     VALUES (?, ?, ?, 0, ?, 'ATIVO')`,
+    [
+      `VISUALIZADOR E2E ${marcador}`,
+      loginVisualizador,
+      await bcrypt.hash(senhaVisualizador, 4),
+      perfil.id
+    ]
+  );
+  await connection.query(
+    `INSERT INTO usuario_permissoes
+       (usuario_id, modulo_id, visualizar, criar, editar, excluir, aprovar)
+     VALUES (?, ?, 1, 0, 0, 0, 0)`,
+    [visualizador.insertId, moduloUsuarios.id]
+  );
+  const usuario = {
+    id: operador.insertId,
+    nome: `ADMINISTRADOR E2E ${marcador}`,
+    login: loginOperador,
+    perfil_id: perfil.id,
+    perfil: perfil.nome,
+    status: 'ATIVO',
+    senha_provisoria: 0
+  };
 
   const [cliente] = await connection.query(
     `INSERT INTO clientes
@@ -415,6 +474,18 @@ async function prepararFixture() {
       periodoFim: periodoFechamento.fim,
       referencia: `PIX-FECHAMENTO-${protocoloFechamento}`
     },
+    autenticacao: {
+      administrador: { login: loginOperador, senha: senhaOperador },
+      visualizador: { login: loginVisualizador, senha: senhaVisualizador }
+    },
+    administracao: {
+      visualizadorId: visualizador.insertId,
+      nomeVisualizador: `VISUALIZADOR E2E ${marcador}`,
+      loginNovoUsuario,
+      nomeNovoUsuario: `NOVO USUÁRIO E2E ${marcador}`,
+      perfilId: perfil.id,
+      perfil: perfil.nome
+    },
     nomeCliente,
     nomeFornecedor,
     usuario
@@ -497,29 +568,9 @@ async function iniciar() {
   const app = express();
   app.use(cors());
   app.use(express.json());
-  app.locals.autenticarToken = (req, res, next) => {
-    req.usuario = contexto.usuario;
-    next();
-  };
-  app.locals.exigirPermissao = () => (req, res, next) => next();
-
-  app.get('/api/auth/me', (req, res) => res.json({
-    ok: true,
-    usuario: {
-      id: contexto.usuario.id,
-      nome: contexto.usuario.nome,
-      login: 'e2e_integrado',
-      perfil_id: 1,
-      perfil: 'Administrador',
-      status: 'ATIVO',
-      senha_provisoria: 0
-    },
-    permissoes: [
-      { codigo: 'DASHBOARD', modulo: 'Dashboard', visualizar: 1 },
-      { codigo: 'PEDIDOS_SENHAS', modulo: 'Pedidos e senhas', visualizar: 1 },
-      { codigo: 'FINANCEIRO', modulo: 'Financeiro', visualizar: 1, aprovar: 1 }
-    ]
-  }));
+  const pool = poolTransacional(connection);
+  require('./rotas-auth')(app, pool);
+  require('./rotas-administracao')(app, pool);
   app.get('/api/notificacoes/resumo', (req, res) => res.json({
     ok: true,
     nao_lidas: 0,
@@ -566,9 +617,42 @@ async function iniciar() {
       periodo_fim: contexto.fechamentoFornecedor.periodoFim,
       referencia: contexto.fechamentoFornecedor.referencia
     },
+    autenticacao: contexto.autenticacao,
+    administracao: {
+      visualizador_id: contexto.administracao.visualizadorId,
+      nome_visualizador: contexto.administracao.nomeVisualizador,
+      login_novo_usuario: contexto.administracao.loginNovoUsuario,
+      nome_novo_usuario: contexto.administracao.nomeNovoUsuario,
+      perfil_id: contexto.administracao.perfilId,
+      perfil: contexto.administracao.perfil
+    },
     cliente: contexto.nomeCliente
   }));
   app.get('/api/e2e/verificacao', async (req, res) => {
+    if (req.query.cenario === 'administracao') {
+      const [[estado]] = await connection.query(
+        `SELECT
+           u.id,
+           u.status,
+           u.senha_provisoria,
+           (SELECT COUNT(*) FROM usuario_permissoes up
+             WHERE up.usuario_id = u.id AND up.visualizar = 1) AS permissoes_visualizar,
+           (SELECT COUNT(*) FROM auditoria a
+             WHERE a.entidade = 'usuarios'
+               AND a.entidade_id = CAST(u.id AS CHAR)) AS auditorias,
+           (SELECT COUNT(*) FROM usuarios negado
+             WHERE negado.login = ?) AS criacoes_negadas
+         FROM usuarios u
+         WHERE u.login = ?
+         LIMIT 1`,
+        [
+          `${contexto.administracao.loginNovoUsuario}-negado`,
+          contexto.administracao.loginNovoUsuario
+        ]
+      );
+      if (estado?.id) contexto.administracao.novoUsuarioId = estado.id;
+      return res.json({ ok: true, estado: estado || null });
+    }
     if (req.query.cenario === 'fechamento_fornecedor') {
       const [[estado]] = await connection.query(
         `SELECT
@@ -659,7 +743,6 @@ async function iniciar() {
     res.json({ ok: true, estado: { ...estado, ...comunicacoes } });
   });
 
-  const pool = poolTransacional(connection);
   require('./rotas-pedidos')(app, pool);
   require('./rotas-financeiro')(app, pool);
   require('./rotas-relatorios')(app, pool);
@@ -688,6 +771,11 @@ async function encerrar(codigo = 0) {
            (SELECT COUNT(*) FROM pedidos_senha WHERE protocolo IN (?, ?, ?, ?, ?, ?, ?)) AS pedidos,
            (SELECT COUNT(*) FROM clientes WHERE nome = ?) AS clientes,
            (SELECT COUNT(*) FROM fornecedores WHERE nome = ?) AS fornecedores,
+           (SELECT COUNT(*) FROM usuarios WHERE login IN (?, ?, ?, ?)) AS usuarios,
+           (SELECT COUNT(*) FROM usuario_permissoes
+             WHERE usuario_id IN (?, ?, ?)) AS permissoes,
+           (SELECT COUNT(*) FROM auditoria
+             WHERE entidade = 'usuarios' AND entidade_id IN (?, ?, ?)) AS auditorias,
            (SELECT COUNT(*) FROM banco_senhas
              WHERE JSON_UNQUOTE(JSON_EXTRACT(dados_extras, '$.api_senha_id'))
                IN (?, ?, ?) OR chassi = ?) AS cache`,
@@ -701,6 +789,16 @@ async function encerrar(codigo = 0) {
           contexto?.fechamentoFornecedor?.protocolo,
           contexto?.nomeCliente,
           contexto?.nomeFornecedor,
+          contexto?.autenticacao?.administrador?.login,
+          contexto?.autenticacao?.visualizador?.login,
+          contexto?.administracao?.loginNovoUsuario,
+          `${contexto?.administracao?.loginNovoUsuario}-negado`,
+          contexto?.usuario?.id || 0,
+          contexto?.administracao?.visualizadorId || 0,
+          contexto?.administracao?.novoUsuarioId || 0,
+          String(contexto?.usuario?.id || 0),
+          String(contexto?.administracao?.visualizadorId || 0),
+          String(contexto?.administracao?.novoUsuarioId || 0),
           String(contexto?.encontrado?.apiSenhaId),
           String(contexto?.dadosInvalidos?.apiSenhaId),
           String(contexto?.indisponivel?.apiSenhaId),
