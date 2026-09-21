@@ -733,6 +733,150 @@ test('resultado do fornecedor é validado antes de preparar a entrega ao cliente
   expect(requisicoesConfirmacao).toBe(1);
 });
 
+test('resultado incorreto segue uma única vez ao próximo fornecedor', async ({ page }) => {
+  const protocolo = 'CMK-E2E-INCORRETO';
+  const pedidoId = 700008;
+  let redirecionado = false;
+  let requisicoes = 0;
+  let dadosRecebidos = null;
+  let liberarResposta;
+  const respostaLiberada = new Promise(resolve => {
+    liberarResposta = resolve;
+  });
+
+  await prepararPagina(page, async (route, url) => {
+    if (url.pathname === '/api/fila-pedidos/resumo') {
+      await json(route, { ok: true, indicadores: {} });
+      return true;
+    }
+    if (url.pathname === '/api/fila-pedidos') {
+      await json(route, {
+        ok: true,
+        total: 1,
+        dados: [{
+          id: pedidoId,
+          protocolo,
+          cliente: 'CLIENTE INCORRETO E2E',
+          servico: 'Senha GM',
+          marca: 'GM',
+          chassi: '9BG-E2E-INCORRETO',
+          fornecedor: redirecionado ? 'Emerson' : 'Márcio',
+          status: redirecionado ? 'EM_CONSULTA' : 'CONCLUIDO',
+          valor_venda: 60,
+          custo: redirecionado ? 25 : 22,
+          moeda: 'BRL',
+          criado_em: '2026-09-21T12:00:00Z'
+        }]
+      });
+      return true;
+    }
+    if (url.pathname === `/api/pedidos/${pedidoId}`) {
+      await json(route, {
+        ok: true,
+        pedido: {
+          id: pedidoId,
+          protocolo,
+          cliente: 'CLIENTE INCORRETO E2E',
+          servico: 'Senha GM',
+          marca: 'GM',
+          chassi: '9BG-E2E-INCORRETO',
+          fornecedor: redirecionado ? 'Emerson' : 'Márcio',
+          fornecedor_id: redirecionado ? 850002 : 850001,
+          status: redirecionado ? 'EM_CONSULTA' : 'CONCLUIDO',
+          valor_venda: 60,
+          custo: redirecionado ? 25 : 22,
+          moeda: 'BRL',
+          criado_em: '2026-09-21T12:00:00Z'
+        },
+        partes: {},
+        resultados: [{
+          id: 880001,
+          fornecedor_id: 850001,
+          origem: 'Fornecedor externo',
+          status: redirecionado ? 'INCORRETO' : 'ENCONTRADO',
+          codigo_mecanico: 'MC-INCORRETO-E2E',
+          criado_em: '2026-09-21T12:10:00Z'
+        }],
+        historico: redirecionado ? [{
+          id: 870001,
+          tipo: 'RESULTADO_INCORRETO',
+          descricao: 'Código mecânico não funcionou no veículo',
+          criado_em: '2026-09-21T12:15:00Z'
+        }] : [],
+        comunicacoes: redirecionado ? [{
+          id: 860001,
+          finalidade: 'CONSULTA_FORNECEDOR',
+          fornecedor_id: 850002,
+          status: 'PENDENTE',
+          tentativas: 0,
+          atualizado_em: '2026-09-21T12:15:00Z'
+        }] : []
+      });
+      return true;
+    }
+    if (
+      url.pathname === `/api/pedidos/${pedidoId}/resultado/incorreto` &&
+      route.request().method() === 'POST'
+    ) {
+      requisicoes += 1;
+      dadosRecebidos = route.request().postDataJSON();
+      await respostaLiberada;
+      redirecionado = true;
+      await json(route, {
+        ok: true,
+        pedido: { id: pedidoId, protocolo, status: 'EM_CONSULTA' },
+        base: { banco_senha_id: null, bloqueada: false },
+        fornecedor: {
+          id: 850002,
+          nome: 'Emerson',
+          custo: 25,
+          envio: { id: 860001, status: 'PENDENTE' }
+        }
+      });
+      return true;
+    }
+    return false;
+  });
+
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Pedidos e senhas', exact: true }).click();
+  await page.locator('tr', { hasText: protocolo }).click();
+  const detalhe = page.getByRole('dialog');
+  await detalhe.getByRole('button', { name: 'Senha incorreta' }).click();
+
+  const modal = page.getByRole('dialog', { name: 'Informar erro' });
+  await modal.getByLabel('Motivo do erro').fill('não');
+  await modal.getByRole('button', { name: 'Confirmar resultado incorreto' }).click();
+  await expect(modal.getByText('Informe o motivo do resultado incorreto.'))
+    .toBeVisible();
+  expect(requisicoes).toBe(0);
+
+  await modal.getByLabel('Motivo do erro')
+    .fill('Código mecânico não funcionou no veículo');
+  await modal.getByRole('button', { name: 'Confirmar resultado incorreto' }).click();
+  await expect(page.getByRole('status')).toContainText(
+    'Atualizando pedido e cache'
+  );
+  await expect(modal.getByRole('button', { name: 'Processando...' }))
+    .toBeDisabled();
+  expect(requisicoes).toBe(1);
+  expect(dadosRecebidos).toEqual({
+    motivo: 'Código mecânico não funcionou no veículo'
+  });
+
+  liberarResposta();
+
+  await expect(modal).toBeHidden();
+  await expect(detalhe.getByText('Em consulta', { exact: true })).toBeVisible();
+  await expect(detalhe.getByText('Emerson', { exact: true })).toBeVisible();
+  await expect(detalhe.getByText('R$ 25,00', { exact: true })).toBeVisible();
+  await expect(detalhe.getByText('INCORRETO', { exact: true })).toBeVisible();
+  await expect(detalhe.getByText('Aguardando envio', { exact: true })).toBeVisible();
+  await expect(detalhe.getByRole('button', { name: 'Senha incorreta' }))
+    .toBeHidden();
+  expect(requisicoes).toBe(1);
+});
+
 test('dados GM rejeitados são corrigidos e reprocessados sem fornecedor', async ({ page }) => {
   const protocolo = 'CMK-E2E-CORRECAO';
   const pedidoId = 700006;

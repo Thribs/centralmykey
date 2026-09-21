@@ -21,6 +21,8 @@ A suíte cobre inicialmente:
   requisição de estorno;
 - recebimento do resultado de fornecedor, validação humana, bloqueio durante
   as duas mutações e preparação de uma única entrega ao cliente;
+- rejeição de resultado incorreto, validação do motivo, mutação única e nova
+  consulta ao próximo fornecedor com custo atualizado;
 - correção de dados GM rejeitados, reprocessamento único, conclusão pela API
   simulada e ausência de encaminhamento ao fornecedor;
 - indisponibilidade da API explicada ao operador, custo e fornecedor zerados,
