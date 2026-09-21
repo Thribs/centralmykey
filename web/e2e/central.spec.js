@@ -546,6 +546,193 @@ test('estorno e cancelamento só são registrados após confirmar a devolução'
   expect(dialogos).toHaveLength(0);
 });
 
+test('resultado do fornecedor é validado antes de preparar a entrega ao cliente', async ({ page }) => {
+  const protocolo = 'CMK-E2E-RESULTADO';
+  const pedidoId = 700005;
+  let etapa = 'CONSULTA';
+  let requisicoesResultado = 0;
+  let requisicoesConfirmacao = 0;
+  let dadosResultado = null;
+  let liberarResultado;
+  let liberarConfirmacao;
+  const resultadoLiberado = new Promise(resolve => {
+    liberarResultado = resolve;
+  });
+  const confirmacaoLiberada = new Promise(resolve => {
+    liberarConfirmacao = resolve;
+  });
+
+  await prepararPagina(page, async (route, url) => {
+    if (url.pathname === '/api/fila-pedidos/resumo') {
+      await json(route, { ok: true, indicadores: {} });
+      return true;
+    }
+    if (url.pathname === '/api/fila-pedidos') {
+      await json(route, {
+        ok: true,
+        total: 1,
+        dados: [{
+          id: pedidoId,
+          protocolo,
+          cliente: 'CLIENTE RESULTADO E2E',
+          servico: 'Senha GM',
+          marca: 'GM',
+          chassi: '9BG-E2E-RESULTADO',
+          fornecedor: 'Márcio',
+          status: etapa === 'CONSULTA' ? 'EM_CONSULTA' : 'CONCLUIDO',
+          valor_venda: 60,
+          custo: 22,
+          moeda: 'BRL',
+          criado_em: '2026-09-21T12:00:00Z'
+        }]
+      });
+      return true;
+    }
+    if (url.pathname === `/api/pedidos/${pedidoId}`) {
+      const possuiResultado = etapa !== 'CONSULTA';
+      await json(route, {
+        ok: true,
+        pedido: {
+          id: pedidoId,
+          protocolo,
+          cliente: 'CLIENTE RESULTADO E2E',
+          servico: 'Senha GM',
+          marca: 'GM',
+          chassi: '9BG-E2E-RESULTADO',
+          fornecedor: 'Márcio',
+          fornecedor_id: 850001,
+          status: possuiResultado ? 'CONCLUIDO' : 'EM_CONSULTA',
+          valor_venda: 60,
+          custo: 22,
+          moeda: 'BRL',
+          criado_em: '2026-09-21T12:00:00Z'
+        },
+        partes: {},
+        resultados: possuiResultado ? [{
+          id: 960001,
+          fornecedor_id: 850001,
+          origem: 'Fornecedor externo',
+          status: etapa === 'CONFIRMADO' ? 'CONFIRMADO' : 'ENCONTRADO',
+          codigo_mecanico: 'MC-E2E-01',
+          codigo_imobilizador: 'IM-E2E-02',
+          resultado: { codigo_alarme: 'AL-E2E-03' },
+          criado_em: '2026-09-21T12:10:00Z'
+        }] : [],
+        historico: [],
+        comunicacoes: [
+          {
+            id: 950001,
+            finalidade: 'CONSULTA_FORNECEDOR',
+            status: 'ENVIADA',
+            tentativas: 1,
+            enviado_em: '2026-09-21T12:05:00Z'
+          },
+          ...(etapa === 'CONFIRMADO' ? [{
+            id: 950002,
+            finalidade: 'ENTREGA_CLIENTE',
+            status: 'PENDENTE',
+            tentativas: 0,
+            atualizado_em: '2026-09-21T12:12:00Z'
+          }] : [])
+        ]
+      });
+      return true;
+    }
+    if (
+      url.pathname === `/api/pedidos/${pedidoId}/resultado` &&
+      route.request().method() === 'POST'
+    ) {
+      requisicoesResultado += 1;
+      dadosResultado = route.request().postDataJSON();
+      await resultadoLiberado;
+      etapa = 'RESULTADO';
+      await json(route, {
+        ok: true,
+        pedido: { id: pedidoId, protocolo, status: 'CONCLUIDO' },
+        resultado: { id: 960001, codigo_mecanico: 'MC-E2E-01' }
+      }, 201);
+      return true;
+    }
+    if (
+      url.pathname === `/api/pedidos/${pedidoId}/resultado/confirmar` &&
+      route.request().method() === 'POST'
+    ) {
+      requisicoesConfirmacao += 1;
+      expect(route.request().postDataJSON()).toEqual({});
+      await confirmacaoLiberada;
+      etapa = 'CONFIRMADO';
+      await json(route, {
+        ok: true,
+        pedido_id: pedidoId,
+        resultado_id: 960001,
+        banco_senha_id: 940001,
+        acao_base: 'CRIADO',
+        entrega: { criada: true, id: 950002, status: 'PENDENTE' }
+      });
+      return true;
+    }
+    return false;
+  });
+
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Pedidos e senhas', exact: true }).click();
+  await page.locator('tr', { hasText: protocolo }).click();
+  const detalhe = page.getByRole('dialog');
+  await detalhe.getByRole('button', { name: 'Informar resultado' }).click();
+
+  const modalResultado = page.locator('.gm-result-modal');
+  await expect(modalResultado).toHaveAccessibleName(protocolo);
+  await expect(modalResultado.getByText('Márcio', { exact: true })).toBeVisible();
+  await modalResultado.getByLabel('Código mecânico').fill('mc-e2e-01');
+  await modalResultado.getByLabel('Imobilizador').fill('im-e2e-02');
+  await modalResultado.getByLabel('Alarme').fill('al-e2e-03');
+  await modalResultado.getByRole('button', { name: 'Salvar resultado' }).click();
+
+  await expect(page.getByRole('status')).toContainText('Registrando resultado');
+  await expect(modalResultado.getByRole('button', { name: 'Salvando resultado...' }))
+    .toBeDisabled();
+  await expect(modalResultado.getByRole('button', { name: 'Fechar' })).toBeDisabled();
+  expect(requisicoesResultado).toBe(1);
+  expect(dadosResultado).toEqual({
+    codigo_mecanico: 'MC-E2E-01',
+    codigo_imobilizador: 'IM-E2E-02',
+    codigo_radio: '',
+    codigo_alarme: 'AL-E2E-03',
+    pin: ''
+  });
+
+  liberarResultado();
+
+  await expect(modalResultado).toBeHidden();
+  await expect(detalhe.getByText('ENCONTRADO', { exact: true })).toBeVisible();
+  await expect(detalhe.getByText(
+    'O resultado ainda não foi preparado para entrega.'
+  )).toBeVisible();
+  await detalhe.getByRole('button', { name: 'Cliente confirmou' }).click();
+
+  const modalValidacao = page.getByRole('dialog', { name: 'Confirmar funcionamento' });
+  await modalValidacao.getByRole('button', { name: 'Confirmar senha correta' }).click();
+  await expect(page.getByRole('status')).toContainText(
+    'Atualizando pedido e cache'
+  );
+  await expect(modalValidacao.getByRole('button', { name: 'Processando...' }))
+    .toBeDisabled();
+  expect(requisicoesConfirmacao).toBe(1);
+
+  liberarConfirmacao();
+
+  await expect(modalValidacao).toBeHidden();
+  await expect(detalhe.getByText('CONFIRMADO', { exact: true })).toBeVisible();
+  await expect(detalhe.getByRole('heading', { name: 'Entrega ao cliente' }))
+    .toBeVisible();
+  await expect(detalhe.getByText('Aguardando envio', { exact: true }).last())
+    .toBeVisible();
+  await expect(detalhe.getByRole('button', { name: 'Cliente confirmou' }))
+    .toBeHidden();
+  expect(requisicoesResultado).toBe(1);
+  expect(requisicoesConfirmacao).toBe(1);
+});
+
 test('bloqueio de cliente só ocorre depois da confirmação', async ({ page }) => {
   let bloqueado = false;
   let alteracoes = 0;

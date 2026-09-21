@@ -32,11 +32,18 @@ export default function ValidarResultado({ token, pedido, modo, aoFechar, aoConc
 
   return (
     <div className="vault-overlay gm-result-overlay">
-      <section className="vault-modal gm-validation-modal" role="dialog" aria-modal="true">
+      <section
+        className="vault-modal gm-validation-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="gm-validation-title"
+      >
         <header>
           <div>
             <span>VALIDAÇÃO DA SENHA GM</span>
-            <h2>{incorreto ? 'Informar erro' : 'Confirmar funcionamento'}</h2>
+            <h2 id="gm-validation-title">
+              {incorreto ? 'Informar erro' : 'Confirmar funcionamento'}
+            </h2>
           </div>
           <button type="button" onClick={aoFechar} aria-label="Fechar" disabled={salvando}>
             <X size={20} />

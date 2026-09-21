@@ -40,11 +40,16 @@ export default function ResultadoPedido({ token, pedido, aoFechar, aoSalvo }) {
 
   return (
     <div className="vault-overlay gm-result-overlay">
-      <section className="vault-modal gm-result-modal" role="dialog" aria-modal="true">
+      <section
+        className="vault-modal gm-result-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="gm-result-title"
+      >
         <header>
           <div>
             <span>RESULTADO DO FORNECEDOR</span>
-            <h2>{pedido.protocolo}</h2>
+            <h2 id="gm-result-title">{pedido.protocolo}</h2>
           </div>
           <button type="button" onClick={aoFechar} aria-label="Fechar" disabled={salvando}>
             <X size={20} />

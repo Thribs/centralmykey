@@ -19,6 +19,8 @@ A suíte cobre inicialmente:
 - estorno seguido de cancelamento com desistência sem mutação financeira,
   confirmação explícita da devolução, estado intermediário e uma única
   requisição de estorno;
+- recebimento do resultado de fornecedor, validação humana, bloqueio durante
+  as duas mutações e preparação de uma única entrega ao cliente;
 - bloqueio de cliente somente depois da confirmação;
 - menu móvel e ausência de rolagem horizontal em 390 × 844 pixels.
 
