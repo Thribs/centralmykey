@@ -880,6 +880,147 @@ test('dados GM rejeitados são corrigidos e reprocessados sem fornecedor', async
   expect(requisicoesCorrecao).toBe(1);
 });
 
+test('indisponibilidade da API é explicada e reprocessada sem fornecedor', async ({ page }) => {
+  const protocolo = 'CMK-E2E-INDISPONIVEL';
+  const pedidoId = 700007;
+  let concluido = false;
+  let requisicoesReprocessamento = 0;
+  let liberarResposta;
+  const respostaLiberada = new Promise(resolve => {
+    liberarResposta = resolve;
+  });
+
+  await prepararPagina(page, async (route, url) => {
+    if (url.pathname === '/api/fila-pedidos/resumo') {
+      await json(route, { ok: true, indicadores: {} });
+      return true;
+    }
+    if (url.pathname === '/api/fila-pedidos') {
+      await json(route, {
+        ok: true,
+        total: 1,
+        dados: [{
+          id: pedidoId,
+          protocolo,
+          cliente: 'CLIENTE INDISPONIBILIDADE E2E',
+          servico: 'Senha GM',
+          marca: 'GM',
+          chassi: '9BG-E2E-INDISPONIVEL',
+          fornecedor: null,
+          fornecedor_id: null,
+          status: concluido ? 'CONCLUIDO' : 'ABERTO',
+          valor_venda: 60,
+          custo: 0,
+          moeda: 'BRL',
+          criado_em: '2026-09-21T12:00:00Z'
+        }]
+      });
+      return true;
+    }
+    if (url.pathname === `/api/pedidos/${pedidoId}`) {
+      await json(route, {
+        ok: true,
+        pedido: {
+          id: pedidoId,
+          protocolo,
+          cliente: 'CLIENTE INDISPONIBILIDADE E2E',
+          servico: 'Senha GM',
+          marca: 'GM',
+          chassi: '9BG-E2E-INDISPONIVEL',
+          fornecedor: null,
+          fornecedor_id: null,
+          status: concluido ? 'CONCLUIDO' : 'ABERTO',
+          valor_venda: 60,
+          custo: 0,
+          moeda: 'BRL',
+          criado_em: '2026-09-21T12:00:00Z'
+        },
+        partes: {},
+        resultados: concluido ? [{
+          id: 910001,
+          fornecedor_id: null,
+          origem: 'API',
+          status: 'CONFIRMADO',
+          codigo_mecanico: 'MC-REPROCESSADO-E2E',
+          criado_em: '2026-09-21T12:20:00Z'
+        }] : [],
+        historico: concluido ? [{
+          id: 900002,
+          tipo: 'RESULTADO_ENCONTRADO',
+          descricao: 'Senha localizada após nova tentativa',
+          criado_em: '2026-09-21T12:20:00Z'
+        }] : [{
+          id: 900001,
+          tipo: 'API_JOELPIRES_INDISPONIVEL',
+          descricao: 'API Joel Pires indisponível; fornecedor externo não acionado',
+          criado_em: '2026-09-21T12:10:00Z'
+        }],
+        comunicacoes: concluido ? [{
+          id: 890001,
+          finalidade: 'ENTREGA_CLIENTE',
+          status: 'PENDENTE',
+          tentativas: 0,
+          atualizado_em: '2026-09-21T12:20:00Z'
+        }] : []
+      });
+      return true;
+    }
+    if (
+      url.pathname === `/api/pedidos/${pedidoId}/reprocessar` &&
+      route.request().method() === 'POST'
+    ) {
+      requisicoesReprocessamento += 1;
+      await respostaLiberada;
+      concluido = true;
+      await json(route, {
+        ok: true,
+        processamento: {
+          status: 'CONCLUIDO',
+          origem: 'API_JOELPIRES',
+          resultado: 'ENCONTRADO'
+        }
+      });
+      return true;
+    }
+    return false;
+  });
+
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Pedidos e senhas', exact: true }).click();
+  await page.locator('tr', { hasText: protocolo }).click();
+  const detalhe = page.getByRole('dialog');
+
+  await expect(detalhe.getByText(
+    'API Joel Pires temporariamente indisponível'
+  )).toBeVisible();
+  await expect(detalhe.getByText(/Nenhum fornecedor foi acionado/)).toBeVisible();
+  await expect(detalhe.getByText('R$ 0,00', { exact: true })).toBeVisible();
+  await expect(detalhe.getByText('Base própria / não definido', { exact: true }))
+    .toBeVisible();
+  await expect(detalhe.getByText(
+    'Nenhum envio ao fornecedor foi registrado.'
+  )).toBeVisible();
+
+  await detalhe.getByRole('button', { name: 'Tentar novamente' }).click();
+  await expect(page.getByRole('status')).toContainText(
+    'Consultando novamente a API Joel Pires'
+  );
+  expect(requisicoesReprocessamento).toBe(1);
+
+  liberarResposta();
+
+  await expect(detalhe.getByText('Concluído', { exact: true })).toBeVisible();
+  await expect(detalhe.getByText(
+    'API Joel Pires temporariamente indisponível'
+  )).toBeHidden();
+  await expect(detalhe.getByText('MC-REPROCESSADO-E2E', { exact: true }))
+    .toBeVisible();
+  await expect(detalhe.getByText('Aguardando envio', { exact: true })).toBeVisible();
+  await expect(detalhe.getByRole('button', { name: 'Tentar novamente' }))
+    .toBeHidden();
+  expect(requisicoesReprocessamento).toBe(1);
+});
+
 test('bloqueio de cliente só ocorre depois da confirmação', async ({ page }) => {
   let bloqueado = false;
   let alteracoes = 0;

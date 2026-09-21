@@ -186,6 +186,9 @@ function DetalhePedido({
   const entregasCliente = comunicacoes.filter(
     item => item.finalidade === 'ENTREGA_CLIENTE'
   );
+  const apiJoelPiresIndisponivel =
+    ['ABERTO', 'ERRO'].includes(pedido.status) &&
+    historico[0]?.tipo === 'API_JOELPIRES_INDISPONIVEL';
   const resultadoPendente = resultados.find(item =>
     item.status === 'ENCONTRADO' && item.fornecedor_id
   );
@@ -265,6 +268,20 @@ function DetalhePedido({
                 </button>
               )}
           </div>
+
+          {apiJoelPiresIndisponivel && (
+            <div className="order-operational-alert">
+              <Clock3 size={20} />
+              <div>
+                <strong>API Joel Pires temporariamente indisponível</strong>
+                <span>
+                  Nenhum fornecedor foi acionado e o custo permanece zero.
+                  A Central tentará novamente automaticamente; use a ação
+                  manual somente quando precisar antecipar a tentativa.
+                </span>
+              </div>
+            </div>
+          )}
 
           <section className="order-detail-section">
             <h3><UserRound size={17} /> Partes e serviço</h3>

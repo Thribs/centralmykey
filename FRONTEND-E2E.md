@@ -23,6 +23,8 @@ A suíte cobre inicialmente:
   as duas mutações e preparação de uma única entrega ao cliente;
 - correção de dados GM rejeitados, reprocessamento único, conclusão pela API
   simulada e ausência de encaminhamento ao fornecedor;
+- indisponibilidade da API explicada ao operador, custo e fornecedor zerados,
+  reprocessamento único e conclusão posterior;
 - bloqueio de cliente somente depois da confirmação;
 - menu móvel e ausência de rolagem horizontal em 390 × 844 pixels.
 

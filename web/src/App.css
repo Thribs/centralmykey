@@ -2686,6 +2686,37 @@
   font-size: 10px;
 }
 
+.order-operational-alert {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 13px;
+  padding: 12px 14px;
+  border: 1px solid #f0d688;
+  border-radius: 12px;
+  background: #fff9df;
+  color: #765b00;
+}
+
+.order-operational-alert svg {
+  flex: 0 0 auto;
+  margin-top: 1px;
+}
+
+.order-operational-alert div {
+  display: grid;
+  gap: 3px;
+}
+
+.order-operational-alert strong {
+  font-size: 12px;
+}
+
+.order-operational-alert span {
+  font-size: 11px;
+  line-height: 1.45;
+}
+
 .order-detail-section {
   margin-bottom: 13px;
   padding: 15px;
