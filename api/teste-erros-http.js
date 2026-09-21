@@ -11,11 +11,16 @@ const {
 async function iniciarApi() {
   const app = express();
   registrarContextoRequisicao(app);
+  app.use(express.json({ limit: '100b' }));
   app.get('/api/sucesso', (req, res) => res.json({ ok: true }));
   app.get('/api/validacao', (req, res) => res.status(422).json({
     ok: false,
     error: 'Dado inválido',
     codigo: 'DADO_INVALIDO_TESTE'
+  }));
+  app.post('/api/generico', (req, res) => res.status(400).json({
+    ok: false,
+    error: 'Entrada recusada'
   }));
   app.get('/api/falha', async () => {
     throw new Error('DETALHE_INTERNO_SIGILOSO');
@@ -39,6 +44,15 @@ async function requisitar(url, headers = {}) {
   return { resposta, corpo: await resposta.json() };
 }
 
+async function enviar(url, corpo) {
+  const resposta = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: corpo
+  });
+  return { resposta, corpo: await resposta.json() };
+}
+
 async function executar() {
   assert.equal(idInformadoValido('proxy_12345678'), true);
   assert.equal(idInformadoValido('inválido com espaço'), false);
@@ -57,6 +71,22 @@ async function executar() {
     assert.strictEqual(validacao.resposta.headers.get('x-request-id'), idProxy);
     assert.strictEqual(validacao.corpo.request_id, idProxy);
     assert.strictEqual(validacao.corpo.codigo, 'DADO_INVALIDO_TESTE');
+
+    const generico = await enviar(`${url}/api/generico`, '{}');
+    assert.strictEqual(generico.resposta.status, 400);
+    assert.strictEqual(generico.corpo.codigo, 'REQUISICAO_INVALIDA');
+
+    const jsonInvalido = await enviar(`${url}/api/generico`, '{invalido');
+    assert.strictEqual(jsonInvalido.resposta.status, 400);
+    assert.strictEqual(jsonInvalido.corpo.codigo, 'JSON_INVALIDO');
+    assert.ok(jsonInvalido.corpo.request_id);
+
+    const corpoGrande = await enviar(
+      `${url}/api/generico`,
+      JSON.stringify({ valor: 'X'.repeat(200) })
+    );
+    assert.strictEqual(corpoGrande.resposta.status, 413);
+    assert.strictEqual(corpoGrande.corpo.codigo, 'CORPO_MUITO_GRANDE');
 
     const falha = await requisitar(`${url}/api/falha`);
     assert.strictEqual(falha.resposta.status, 500);
