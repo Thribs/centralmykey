@@ -16,6 +16,9 @@ const {
   criarTabelaEstornosTemporaria
 } = require('./teste-suporte-estornos');
 const {
+  criarTabelasNotificacoesTemporarias
+} = require('./teste-suporte-notificacoes');
+const {
   prepararPartes,
   registrarPartesPedido
 } = require('./identidades-pedido');
@@ -111,6 +114,34 @@ async function criarTabelasFechamentoTemporarias(conexao) {
   );
 }
 
+async function criarTabelaEventosIntegracaoTemporaria(conexao) {
+  await conexao.query(
+    `CREATE TEMPORARY TABLE integracao_eventos (
+       id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+       provedor VARCHAR(40) NOT NULL,
+       evento_externo_id VARCHAR(160) NOT NULL,
+       tipo VARCHAR(80) NOT NULL,
+       referencia_externa VARCHAR(120) NULL,
+       entidade VARCHAR(40) NULL,
+       entidade_id BIGINT NULL,
+       lancamento_id BIGINT NULL,
+       pagamento_id BIGINT NULL,
+       payload_hash CHAR(64) NOT NULL,
+       payload JSON NOT NULL,
+       status ENUM('RECEBIDO','PROCESSADO','IGNORADO','FALHOU')
+         NOT NULL DEFAULT 'RECEBIDO',
+       tentativas SMALLINT UNSIGNED NOT NULL DEFAULT 1,
+       erro_codigo VARCHAR(80) NULL,
+       erro_detalhe VARCHAR(500) NULL,
+       recebido_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+       processado_em DATETIME NULL,
+       atualizado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+         ON UPDATE CURRENT_TIMESTAMP,
+       UNIQUE KEY uk_evento (provedor, evento_externo_id)
+     ) ENGINE=InnoDB`
+  );
+}
+
 async function prepararFixture() {
   connection = await mysql.createConnection({
     host: process.env.DB_HOST,
@@ -123,6 +154,8 @@ async function prepararFixture() {
   await criarTabelaOutboxTemporaria(connection);
   await criarTabelaPartesPedidoTemporaria(connection);
   await criarTabelaEstornosTemporaria(connection);
+  await criarTabelasNotificacoesTemporarias(connection);
+  await criarTabelaEventosIntegracaoTemporaria(connection);
   await criarTabelasFechamentoTemporarias(connection);
   await connection.query(
     `CREATE TEMPORARY TABLE fornecedor_servicos (
@@ -140,7 +173,7 @@ async function prepararFixture() {
   const [perfis] = await connection.query(
     'SELECT id, nome FROM perfis WHERE ativo=1 ORDER BY id'
   );
-  const perfil = perfis[0];
+  const perfil = perfis.find(item => Number(item.id) === 1) || perfis[0];
   const perfilAtendente = perfis.find(item => item.nome !== 'Administrador') || perfil;
   const [modulos] = await connection.query(
     'SELECT id, codigo FROM modulos WHERE ativo=1 ORDER BY id'
@@ -180,6 +213,9 @@ async function prepararFixture() {
   const notaAtendimento = `Nota interna E2E ${marcador}`;
   const respostaAtendimento = `Resposta WhatsApp E2E ${marcador}`;
   const mensagemExternaAtendimento = `wamid.e2e.${marcador}`;
+  const chaveConfiguracao = `E2E_CONFIG_${process.pid}_${String(Date.now()).slice(-6)}`;
+  const valorConfiguracaoInicial = `INICIAL-${marcador}`;
+  const valorConfiguracaoFinal = `ATUALIZADO-${marcador}`;
   const apiSenhaId = 970000000 + (process.pid % 100000);
   const apiSenhaIdCorrigida = 971000000 + (process.pid % 100000);
   const apiSenhaIdReprocessada = 972000000 + (process.pid % 100000);
@@ -216,7 +252,7 @@ async function prepararFixture() {
       `VISUALIZADOR E2E ${marcador}`,
       loginVisualizador,
       await bcrypt.hash(senhaVisualizador, 4),
-      perfil.id
+      perfilAtendente.id
     ]
   );
   await connection.query(
@@ -224,6 +260,18 @@ async function prepararFixture() {
        (usuario_id, modulo_id, visualizar, criar, editar, excluir, aprovar)
      VALUES (?, ?, 1, 0, 0, 0, 0)`,
     [visualizador.insertId, moduloUsuarios.id]
+  );
+  const moduloConfiguracoes = modulos.find(
+    item => item.codigo === 'CONFIGURACOES'
+  );
+  if (!moduloConfiguracoes) {
+    throw new Error('Módulo CONFIGURACOES ativo é obrigatório para o E2E');
+  }
+  await connection.query(
+    `INSERT INTO usuario_permissoes
+       (usuario_id, modulo_id, visualizar, criar, editar, excluir, aprovar)
+     VALUES (?, ?, 1, 0, 0, 0, 0)`,
+    [visualizador.insertId, moduloConfiguracoes.id]
   );
   const moduloAtendimento = modulos.find(item => item.codigo === 'ATENDIMENTO');
   if (!moduloAtendimento) {
@@ -255,6 +303,11 @@ async function prepararFixture() {
     status: 'ATIVO',
     senha_provisoria: 0
   };
+  await connection.query(
+    `INSERT INTO configuracoes (chave, valor, descricao)
+     VALUES (?, ?, 'Configuração fictícia para E2E integrado')`,
+    [chaveConfiguracao, valorConfiguracaoInicial]
+  );
 
   const [cliente] = await connection.query(
     `INSERT INTO clientes
@@ -543,6 +596,11 @@ async function prepararFixture() {
       mensagemExternaId: mensagemExternaAtendimento,
       chamadasWhatsapp: 0
     },
+    configuracao: {
+      chave: chaveConfiguracao,
+      valorInicial: valorConfiguracaoInicial,
+      valorFinal: valorConfiguracaoFinal
+    },
     nomeCliente,
     nomeFornecedor,
     usuario
@@ -698,9 +756,38 @@ async function iniciar() {
       nota: contexto.atendimento.nota,
       resposta: contexto.atendimento.resposta
     },
+    configuracao: {
+      chave: contexto.configuracao.chave,
+      valor_inicial: contexto.configuracao.valorInicial,
+      valor_final: contexto.configuracao.valorFinal
+    },
     cliente: contexto.nomeCliente
   }));
   app.get('/api/e2e/verificacao', async (req, res) => {
+    if (req.query.cenario === 'configuracao') {
+      const [[estado]] = await connection.query(
+        `SELECT
+           c.valor = ? AS valor_atualizado,
+           (SELECT COUNT(*) FROM auditoria a
+             WHERE a.modulo = 'CONFIGURACOES'
+               AND a.acao = 'ALTERAR_CONFIGURACAO'
+               AND a.entidade = 'configuracoes'
+               AND a.entidade_id = c.chave) AS auditorias,
+           (SELECT COUNT(*) FROM auditoria a
+             WHERE a.entidade = 'configuracoes'
+               AND a.entidade_id = c.chave
+               AND (CAST(a.dados_antes AS CHAR) LIKE ?
+                 OR CAST(a.dados_depois AS CHAR) LIKE ?)) AS valores_na_auditoria
+         FROM configuracoes c WHERE c.chave = ? LIMIT 1`,
+        [
+          contexto.configuracao.valorFinal,
+          `%${contexto.configuracao.valorInicial}%`,
+          `%${contexto.configuracao.valorFinal}%`,
+          contexto.configuracao.chave
+        ]
+      );
+      return res.json({ ok: true, estado: estado || null });
+    }
     if (req.query.cenario === 'atendimento') {
       const [[estado]] = await connection.query(
         `SELECT
@@ -742,19 +829,21 @@ async function iniciar() {
              WHERE up.usuario_id = u.id AND up.visualizar = 1) AS permissoes_visualizar,
            (SELECT COUNT(*) FROM auditoria a
              WHERE a.entidade = 'usuarios'
-               AND a.entidade_id = CAST(u.id AS CHAR)) AS auditorias,
-           (SELECT COUNT(*) FROM usuarios negado
-             WHERE negado.login = ?) AS criacoes_negadas
+               AND a.entidade_id = CAST(u.id AS CHAR)) AS auditorias
          FROM usuarios u
          WHERE u.login = ?
          LIMIT 1`,
-        [
-          `${contexto.administracao.loginNovoUsuario}-negado`,
-          contexto.administracao.loginNovoUsuario
-        ]
+        [contexto.administracao.loginNovoUsuario]
+      );
+      const [[negado]] = await connection.query(
+        'SELECT COUNT(*) AS criacoes_negadas FROM usuarios WHERE login = ?',
+        [`${contexto.administracao.loginNovoUsuario}-negado`]
       );
       if (estado?.id) contexto.administracao.novoUsuarioId = estado.id;
-      return res.json({ ok: true, estado: estado || null });
+      return res.json({
+        ok: true,
+        estado: { ...(estado || {}), criacoes_negadas: negado.criacoes_negadas }
+      });
     }
     if (req.query.cenario === 'fechamento_fornecedor') {
       const [[estado]] = await connection.query(
@@ -852,6 +941,8 @@ async function iniciar() {
   require('./rotas-relatorios')(app, pool);
   require('./rotas-estornos')(app, pool);
   require('./rotas-fechamentos-fornecedores')(app, pool);
+  require('./rotas-auditoria')(app, pool);
+  require('./rotas-health')(app, pool);
 
   servidor = await new Promise((resolve, reject) => {
     const instancia = app.listen(PORTA, '127.0.0.1', () => resolve(instancia));
@@ -885,6 +976,9 @@ async function encerrar(codigo = 0) {
              WHERE atendimento_id = ?) AS mensagens_atendimento,
            (SELECT COUNT(*) FROM atendimento_transferencias
              WHERE atendimento_id = ?) AS transferencias_atendimento,
+           (SELECT COUNT(*) FROM configuracoes WHERE chave = ?) AS configuracoes,
+           (SELECT COUNT(*) FROM auditoria
+             WHERE entidade = 'configuracoes' AND entidade_id = ?) AS auditorias_configuracao,
            (SELECT COUNT(*) FROM banco_senhas
              WHERE JSON_UNQUOTE(JSON_EXTRACT(dados_extras, '$.api_senha_id'))
                IN (?, ?, ?) OR chassi = ?) AS cache`,
@@ -914,6 +1008,8 @@ async function encerrar(codigo = 0) {
           contexto?.atendimento?.protocolo,
           contexto?.atendimento?.id || 0,
           contexto?.atendimento?.id || 0,
+          contexto?.configuracao?.chave,
+          contexto?.configuracao?.chave,
           String(contexto?.encontrado?.apiSenhaId),
           String(contexto?.dadosInvalidos?.apiSenhaId),
           String(contexto?.indisponivel?.apiSenhaId),

@@ -1129,6 +1129,66 @@ test('atendimento é assumido, respondido, transferido e finalizado na transaç�
   expect(Number(verificacao.chamadas_whatsapp)).toBe(1);
 });
 
+test('configuração é confirmada, auditada e monitorada sem expor valor', async ({ page }) => {
+  const respostaContexto = await page.request.get(`${API}/api/e2e/contexto`);
+  expect(respostaContexto.ok()).toBe(true);
+  const contextoCompleto = await respostaContexto.json();
+  const contexto = contextoCompleto.configuracao;
+  await autenticarIntegrado(page, contextoCompleto.autenticacao.administrador);
+  await page.setViewportSize({ width: 768, height: 1024 });
+
+  await page.goto('/');
+  const abrirMenu = page.getByRole('button', { name: 'Abrir menu' });
+  if (await abrirMenu.isVisible()) await abrirMenu.click();
+  await page.getByRole('button', { name: 'Configurações', exact: true }).click();
+  await page.getByPlaceholder('Buscar configuração').fill(contexto.chave);
+  const cartao = page.locator('.config-grid article', { hasText: contexto.chave });
+  await expect(cartao).toContainText(contexto.valor_inicial);
+  await cartao.getByRole('button', { name: 'Editar' }).click();
+
+  const modal = page.getByRole('dialog', { name: contexto.chave });
+  await modal.getByLabel('Valor').fill(contexto.valor_final);
+  const caixaModal = await modal.boundingBox();
+  expect(caixaModal.width).toBeLessThanOrEqual(768);
+  page.once('dialog', dialogo => dialogo.accept());
+  await modal.getByRole('button', { name: 'Salvar' }).click();
+  await expect(modal).toBeHidden({ timeout: 10000 });
+  await expect(cartao).toContainText(contexto.valor_final);
+
+  if (await abrirMenu.isVisible()) await abrirMenu.click();
+  await page.getByRole('button', { name: 'Auditoria', exact: true }).click();
+  await page.getByPlaceholder('Descrição, ação, entidade ou usuário')
+    .fill(contexto.chave);
+  await page.getByRole('button', { name: 'Filtrar' }).click();
+  const linhaAuditoria = page.locator('tr', { hasText: contexto.chave });
+  await expect(linhaAuditoria).toContainText('ALTERAR_CONFIGURACAO');
+  await expect(linhaAuditoria).not.toContainText(contexto.valor_final);
+
+  if (await abrirMenu.isVisible()) await abrirMenu.click();
+  await page.getByRole('button', { name: 'Monitoramento', exact: true }).click();
+  await expect(page.getByRole('main').getByRole('heading', {
+    name: 'Monitoramento'
+  })).toBeVisible();
+  await expect(page.getByText('Comunicações atrasadas', { exact: true }))
+    .toBeVisible();
+  await expect(page.getByText('Eventos externos pendentes', { exact: true }))
+    .toBeVisible();
+  const dimensoes = await page.evaluate(() => ({
+    largura: document.documentElement.scrollWidth,
+    viewport: window.innerWidth
+  }));
+  expect(dimensoes.largura).toBeLessThanOrEqual(dimensoes.viewport);
+
+  const respostaVerificacao = await page.request.get(
+    `${API}/api/e2e/verificacao?cenario=configuracao`
+  );
+  expect(respostaVerificacao.ok()).toBe(true);
+  const verificacao = await respostaVerificacao.json();
+  expect(Number(verificacao.estado.valor_atualizado)).toBe(1);
+  expect(Number(verificacao.estado.auditorias)).toBe(1);
+  expect(Number(verificacao.estado.valores_na_auditoria)).toBe(0);
+});
+
 test('visualizador não vê ações de usuário e recebe 403 ao forçar criação', async ({ page }) => {
   const respostaContexto = await page.request.get(`${API}/api/e2e/contexto`);
   expect(respostaContexto.ok()).toBe(true);
@@ -1163,6 +1223,29 @@ test('visualizador não vê ações de usuário e recebe 403 ao forçar criaçã
   );
   const verificacao = await respostaVerificacao.json();
   expect(Number(verificacao.estado.criacoes_negadas)).toBe(0);
+
+  await page.getByRole('button', { name: 'Configurações', exact: true }).click();
+  const configuracao = contextoCompleto.configuracao;
+  await page.getByPlaceholder('Buscar configuração').fill(configuracao.chave);
+  const cartao = page.locator('.config-grid article', {
+    hasText: configuracao.chave
+  });
+  await expect(cartao).toBeVisible();
+  await expect(cartao.getByRole('button', { name: 'Editar' })).toHaveCount(0);
+  const alteracaoNegada = await page.request.put(
+    `${API}/api/configuracoes/${configuracao.chave}`,
+    {
+      headers: { Authorization: `Bearer ${token}` },
+      data: { valor: 'ALTERACAO-NEGADA-E2E' }
+    }
+  );
+  expect(alteracaoNegada.status()).toBe(403);
+  const verificacaoConfiguracao = await page.request.get(
+    `${API}/api/e2e/verificacao?cenario=configuracao`
+  );
+  const estadoConfiguracao = await verificacaoConfiguracao.json();
+  expect(Number(estadoConfiguracao.estado.valor_atualizado)).toBe(1);
+  expect(Number(estadoConfiguracao.estado.auditorias)).toBe(1);
 });
 
 test('navegador estorna pagamento real e cancela na transação', async ({ page }) => {

@@ -773,7 +773,7 @@ export function Integracoes() {
   );
 }
 
-export function Configuracoes() {
+export function Configuracoes({ permissoes: permissoesSessao = [] }) {
   const token = useMemo(() => tokenLocal(), []);
   const [dados, setDados] = useState([]);
   const [busca, setBusca] = useState('');
@@ -781,6 +781,10 @@ export function Configuracoes() {
   const [valor, setValor] = useState('');
   const [erro, setErro] = useState('');
   const [salvando, setSalvando] = useState(false);
+  const permissaoModulo = permissoesSessao.find(
+    item => item.codigo === 'CONFIGURACOES'
+  ) || {};
+  const podeEditar = Number(permissaoModulo.editar) === 1;
 
   const carregar = useCallback(async () => {
     setErro('');
@@ -805,6 +809,7 @@ export function Configuracoes() {
 
   async function salvar(evento) {
     evento.preventDefault();
+    if (!window.confirm(`Confirma a alteração de ${edicao.chave}?`)) return;
     setSalvando(true);
     setErro('');
 
@@ -856,15 +861,17 @@ export function Configuracoes() {
                   {item.configurado ? item.valor : 'Não configurado'}
                 </span>
               </div>
-              <button
-                type="button"
-                onClick={() => {
-                  setEdicao(item);
-                  setValor(item.sensivel ? '' : item.valor || '');
-                }}
-              >
-                <Pencil size={15} /> Editar
-              </button>
+              {podeEditar && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEdicao(item);
+                    setValor(item.sensivel ? '' : item.valor || '');
+                  }}
+                >
+                  <Pencil size={15} /> Editar
+                </button>
+              )}
             </article>
           ))}
         </div>
@@ -872,10 +879,24 @@ export function Configuracoes() {
 
       {edicao && (
         <div className="admin-overlay">
-          <section className="admin-modal config-modal">
+          <section
+            className="admin-modal config-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="titulo-modal-configuracao"
+          >
             <header>
-              <div><span>CONFIGURAÇÃO</span><h2>{edicao.chave}</h2></div>
-              <button type="button" onClick={() => setEdicao(null)}><X size={20} /></button>
+              <div>
+                <span>CONFIGURAÇÃO</span>
+                <h2 id="titulo-modal-configuracao">{edicao.chave}</h2>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEdicao(null)}
+                aria-label="Fechar configuração"
+              >
+                <X size={20} />
+              </button>
             </header>
             <form onSubmit={salvar}>
               <label>

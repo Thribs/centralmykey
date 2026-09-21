@@ -639,7 +639,7 @@ export default function Painel({
               <OpenAILab />
             </>
           ) : atual?.codigo === 'CONFIGURACOES' ? (
-            <Configuracoes />
+            <Configuracoes permissoes={permissoes} />
           ) : atual?.codigo === 'AUDITORIA' ? (
             <Auditoria />
           ) : atual?.codigo === 'MONITORAMENTO' ? (

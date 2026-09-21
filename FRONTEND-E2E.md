@@ -38,6 +38,9 @@ A suíte cobre inicialmente:
 - atendimento móvel assumido da fila, nota interna, resposta WhatsApp mockada,
   mudança de etapa, transferência para outro usuário autenticado e finalização
   confirmada, com persistência real e rollback;
+- configuração fictícia alterada após confirmação em tablet, valor omitido da
+  auditoria, evento localizado na tela e monitoramento carregado; visualizador
+  não recebe o botão nem consegue forçar a alteração pela API;
 - estorno real iniciado pelo bloqueio de cancelamento, com lançamento reverso,
   pagamento de devolução e pedido cancelado atomicamente;
 - estorno seguido de cancelamento com desistência sem mutação financeira,

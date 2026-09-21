@@ -90,8 +90,9 @@ module.exports = function(app, pool) {
         });
       }
 
-      const connection = await pool.getConnection();
+      let connection;
       try {
+        connection = await pool.getConnection();
         await connection.beginTransaction();
         const [perfil] = await connection.query(`
           SELECT id
@@ -152,7 +153,7 @@ module.exports = function(app, pool) {
           mensagem: 'Usuário atualizado com sucesso'
         });
       } catch (error) {
-        await connection.rollback();
+        if (connection) await connection.rollback();
         if (error.code === 'ER_DUP_ENTRY') {
           return res.status(409).json({
             ok: false,
@@ -166,7 +167,7 @@ module.exports = function(app, pool) {
           error: 'Erro ao atualizar usuário'
         });
       } finally {
-        connection.release();
+        connection?.release();
       }
     }
   );
@@ -502,25 +503,63 @@ module.exports = function(app, pool) {
         });
       }
 
+      const connection = await pool.getConnection();
       try {
-        await pool.query(`
+        await connection.beginTransaction();
+        const [[atual]] = await connection.query(
+          `SELECT chave, valor, descricao
+             FROM configuracoes
+            WHERE chave = ?
+            LIMIT 1 FOR UPDATE`,
+          [chave]
+        );
+        await connection.query(`
           INSERT INTO configuracoes (chave, valor, descricao)
           VALUES (?, ?, ?)
           ON DUPLICATE KEY UPDATE
             valor = VALUES(valor),
             descricao = COALESCE(VALUES(descricao), descricao)
         `, [chave, valor, descricao]);
+        const resumoAntes = atual ? {
+          chave,
+          configurado: Boolean(atual.valor),
+          descricao: atual.descricao || null
+        } : null;
+        const resumoDepois = {
+          chave,
+          configurado: Boolean(valor),
+          descricao: descricao || atual?.descricao || null
+        };
+        await connection.query(
+          `INSERT INTO auditoria
+             (usuario_id, modulo, acao, entidade, entidade_id, descricao,
+              dados_antes, dados_depois, ip)
+           VALUES (?, 'CONFIGURACOES', 'ALTERAR_CONFIGURACAO',
+                   'configuracoes', ?, ?, ?, ?, ?)`,
+          [
+            req.usuario.id,
+            chave,
+            `Configuração ${chave} atualizada`,
+            resumoAntes ? JSON.stringify(resumoAntes) : null,
+            JSON.stringify(resumoDepois),
+            req.ip || null
+          ]
+        );
+        await connection.commit();
 
         return res.json({
           ok: true,
           mensagem: 'Configuração salva com sucesso'
         });
       } catch (error) {
+        await connection.rollback();
         console.error('Erro ao salvar configuração:', error);
         return res.status(500).json({
           ok: false,
           error: 'Erro ao salvar configuração'
         });
+      } finally {
+        connection.release();
       }
     }
   );
