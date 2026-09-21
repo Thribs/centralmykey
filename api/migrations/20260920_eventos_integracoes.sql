@@ -1,0 +1,31 @@
+CREATE TABLE IF NOT EXISTS integracao_eventos (
+  id BIGINT NOT NULL AUTO_INCREMENT,
+  provedor VARCHAR(40) NOT NULL,
+  evento_externo_id VARCHAR(160) NOT NULL,
+  tipo VARCHAR(80) NOT NULL,
+  referencia_externa VARCHAR(120) DEFAULT NULL,
+  entidade VARCHAR(40) DEFAULT NULL,
+  entidade_id BIGINT DEFAULT NULL,
+  lancamento_id BIGINT DEFAULT NULL,
+  pagamento_id BIGINT DEFAULT NULL,
+  payload_hash CHAR(64) NOT NULL,
+  payload JSON NOT NULL,
+  status ENUM('RECEBIDO','PROCESSADO','IGNORADO','FALHOU') NOT NULL DEFAULT 'RECEBIDO',
+  tentativas SMALLINT UNSIGNED NOT NULL DEFAULT 1,
+  erro_codigo VARCHAR(80) DEFAULT NULL,
+  erro_detalhe VARCHAR(500) DEFAULT NULL,
+  recebido_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  processado_em DATETIME DEFAULT NULL,
+  atualizado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_integracao_evento (provedor, evento_externo_id),
+  KEY idx_integracao_referencia (provedor, referencia_externa),
+  KEY idx_integracao_status (status, recebido_em),
+  KEY idx_integracao_entidade (entidade, entidade_id),
+  KEY idx_integracao_lancamento (lancamento_id),
+  KEY idx_integracao_pagamento (pagamento_id),
+  CONSTRAINT fk_integracao_evento_lancamento
+    FOREIGN KEY (lancamento_id) REFERENCES lancamentos_financeiros (id),
+  CONSTRAINT fk_integracao_evento_pagamento
+    FOREIGN KEY (pagamento_id) REFERENCES pagamentos (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

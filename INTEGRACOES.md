@@ -37,3 +37,14 @@ esse estado e não confirma pagamentos ou importa pedidos. Antes de desenvolver
 cada adaptador, é necessário identificar o produto/conta exato, obter a
 documentação oficial e mapear identificadores externos para pedidos, clientes,
 faturas, pagamentos e estornos da Central MyKey.
+
+## Eventos financeiros externos
+
+A tabela `integracao_eventos` é a caixa de entrada auditável dos conectores de
+pagamento. O serviço normalizado valida provedor, pedido, valor e moeda, impede
+colisão de identificadores, deduplica reentregas pela referência externa e só
+então cria o lançamento, o pagamento e executa o fluxo pós-pagamento. O payload
+bruto fica restrito ao banco; a rota administrativa expõe apenas metadados.
+
+Nenhum endpoint público de provedor é ativado antes da validação de assinatura
+ou do mecanismo de autenticação definido no contrato oficial correspondente.

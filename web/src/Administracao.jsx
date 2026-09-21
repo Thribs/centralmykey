@@ -24,6 +24,7 @@ import {
   cadastrarModeloWhatsapp,
   cadastrarUsuario,
   listarConfiguracoesSeguras,
+  listarEventosIntegracao,
   listarModelosWhatsapp,
   listarPerfis,
   listarUsuarios,
@@ -446,6 +447,7 @@ export function Integracoes() {
   const token = useMemo(() => tokenLocal(), []);
   const [integracoes, setIntegracoes] = useState([]);
   const [modelos, setModelos] = useState([]);
+  const [eventos, setEventos] = useState([]);
   const [resumo, setResumo] = useState({});
   const [erro, setErro] = useState('');
   const [novo, setNovo] = useState({
@@ -459,14 +461,16 @@ export function Integracoes() {
     setErro('');
 
     try {
-      const [dadosIntegracoes, dadosModelos] = await Promise.all([
+      const [dadosIntegracoes, dadosModelos, dadosEventos] = await Promise.all([
         buscarIntegracoes(token),
-        listarModelosWhatsapp(token)
+        listarModelosWhatsapp(token),
+        listarEventosIntegracao(token, { limite: 30 })
       ]);
 
       setIntegracoes(dadosIntegracoes.integracoes || []);
       setResumo(dadosIntegracoes.modelos_whatsapp || {});
       setModelos(dadosModelos.dados || []);
+      setEventos(dadosEventos.dados || []);
     } catch (falha) {
       setErro(falha.message);
     }
@@ -530,6 +534,38 @@ export function Integracoes() {
             </i>
           </article>
         ))}
+      </div>
+
+      <div className="admin-panel integration-panel">
+        <header>
+          <div>
+            <span>EVENTOS FINANCEIROS</span>
+            <h2>Recebimentos das integrações</h2>
+          </div>
+          <div className="integration-counts">
+            <span>Últimos: <strong>{eventos.length}</strong></span>
+          </div>
+        </header>
+        <div className="admin-table-wrap">
+          <table className="admin-table">
+            <thead><tr><th>Provedor</th><th>Evento</th><th>Referência</th><th>Pedido</th><th>Status</th><th>Recebido</th></tr></thead>
+            <tbody>
+              {eventos.length === 0 && (
+                <tr><td colSpan="6" className="admin-empty">Nenhum evento financeiro recebido.</td></tr>
+              )}
+              {eventos.map(evento => (
+                <tr key={evento.id}>
+                  <td><strong>{evento.provedor}</strong></td>
+                  <td>{evento.tipo}</td>
+                  <td>{evento.referencia_externa || '—'}</td>
+                  <td>{evento.entidade_id || '—'}</td>
+                  <td><span className={`admin-status status-${evento.status}`}>{evento.status}</span></td>
+                  <td>{dataHora(evento.recebido_em)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       <div className="admin-panel integration-panel">

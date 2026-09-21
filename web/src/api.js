@@ -839,6 +839,18 @@ export async function buscarIntegracoes(token) {
   return lerResposta(resposta);
 }
 
+export async function listarEventosIntegracao(token, filtros = {}) {
+  const parametros = new URLSearchParams();
+  if (filtros.provedor) parametros.set('provedor', filtros.provedor);
+  if (filtros.status) parametros.set('status', filtros.status);
+  if (filtros.limite) parametros.set('limite', filtros.limite);
+  const resposta = await requisitar(
+    `${API_URL}/api/integracoes/eventos?${parametros.toString()}`,
+    { headers: cabecalhoAutenticado(token) }
+  );
+  return lerResposta(resposta);
+}
+
 export async function listarModelosWhatsapp(token) {
   const resposta = await requisitar(`${API_URL}/api/whatsapp/modelos`, {
     headers: cabecalhoAutenticado(token)
