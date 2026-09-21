@@ -13,6 +13,12 @@ A suíte cobre inicialmente:
 - recuperação da fila após uma atualização bem-sucedida;
 - cancelamento de pedido com motivo, desistência sem requisição, confirmação,
   estado intermediário e uma única mutação;
+- confirmação manual de pagamento com identificação do pagador, bloqueio do
+  formulário durante o processamento, uma única mutação e atualização do
+  pedido concluído;
+- estorno seguido de cancelamento com desistência sem mutação financeira,
+  confirmação explícita da devolução, estado intermediário e uma única
+  requisição de estorno;
 - bloqueio de cliente somente depois da confirmação;
 - menu móvel e ausência de rolagem horizontal em 390 × 844 pixels.
 

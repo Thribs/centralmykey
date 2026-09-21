@@ -264,6 +264,288 @@ test('cancelamento exige motivo e confirmação antes de uma única mutação', 
   expect(dialogos).toHaveLength(0);
 });
 
+test('pagamento manual bloqueia repetição enquanto processa e atualiza o pedido', async ({ page }) => {
+  const protocolo = 'CMK-E2E-PAGAMENTO';
+  const pedidoId = 700003;
+  let confirmado = false;
+  let requisicoesPagamento = 0;
+  let dadosPagamento = null;
+  let liberarResposta;
+  const respostaLiberada = new Promise(resolve => {
+    liberarResposta = resolve;
+  });
+
+  await prepararPagina(page, async (route, url) => {
+    if (url.pathname === '/api/fila-pedidos/resumo') {
+      await json(route, {
+        ok: true,
+        indicadores: { aguardando_pagamento: confirmado ? 0 : 1 }
+      });
+      return true;
+    }
+    if (url.pathname === '/api/fila-pedidos') {
+      await json(route, {
+        ok: true,
+        total: 1,
+        dados: [{
+          id: pedidoId,
+          protocolo,
+          cliente: 'CLIENTE PAGAMENTO E2E',
+          servico: 'Senha GM',
+          marca: 'GM',
+          chassi: 'CHASSI-E2E-PAGAR',
+          status: confirmado ? 'CONCLUIDO' : 'AGUARDANDO_PAGAMENTO',
+          valor_venda: 60,
+          custo: 0,
+          moeda: 'BRL',
+          criado_em: '2026-09-21T12:00:00Z'
+        }]
+      });
+      return true;
+    }
+    if (url.pathname === `/api/pedidos/${pedidoId}`) {
+      await json(route, {
+        ok: true,
+        pedido: {
+          id: pedidoId,
+          protocolo,
+          cliente: 'CLIENTE PAGAMENTO E2E',
+          servico: 'Senha GM',
+          marca: 'GM',
+          chassi: 'CHASSI-E2E-PAGAR',
+          status: confirmado ? 'CONCLUIDO' : 'AGUARDANDO_PAGAMENTO',
+          valor_venda: 60,
+          custo: 0,
+          moeda: 'BRL',
+          criado_em: '2026-09-21T12:00:00Z'
+        },
+        partes: {
+          pagador: { nome: 'PAGADOR PAGAMENTO E2E' }
+        },
+        resultados: confirmado ? [{
+          id: 990001,
+          status: 'ENCONTRADO',
+          senha: 'SENHA-E2E',
+          origem: 'API_JOELPIRES',
+          confirmado: 1,
+          fornecedor_id: null
+        }] : [],
+        historico: [],
+        comunicacoes: []
+      });
+      return true;
+    }
+    if (
+      url.pathname === `/api/pedidos/${pedidoId}/pagamento/confirmar-manual` &&
+      route.request().method() === 'POST'
+    ) {
+      requisicoesPagamento += 1;
+      dadosPagamento = route.request().postDataJSON();
+      await respostaLiberada;
+      confirmado = true;
+      await json(route, {
+        ok: true,
+        pedido: { id: pedidoId, protocolo, status: 'CONCLUIDO' },
+        pagamento: {
+          id: 980001,
+          valor: 60,
+          moeda: 'BRL',
+          meio_pagamento: 'PIX'
+        },
+        processamento: {
+          status: 'CONCLUIDO',
+          origem: 'API_JOELPIRES',
+          resultado: 'ENCONTRADO'
+        }
+      });
+      return true;
+    }
+    return false;
+  });
+
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Pedidos e senhas', exact: true }).click();
+  await page.locator('tr', { hasText: protocolo }).click();
+  const detalhe = page.getByRole('dialog');
+  await expect(detalhe).toBeVisible();
+  await detalhe.getByRole('button', { name: 'Confirmar pagamento' }).click();
+
+  const formulario = page.locator('form.payment-modal');
+  await expect(formulario.getByRole('heading', { name: 'Confirmar pagamento' }))
+    .toBeVisible();
+  await expect(formulario.getByText('Pagador: PAGADOR PAGAMENTO E2E'))
+    .toBeVisible();
+  await formulario.getByLabel('Referência do pagamento')
+    .fill('PIX-E2E-IDEMPOTENTE');
+  await formulario.getByLabel('Observação').fill('Comprovante fictício E2E');
+  await formulario.getByRole('button', { name: 'Confirmar pagamento' }).click();
+
+  await expect(page.getByRole('status')).toContainText(
+    'Confirmando o pagamento e consultando a senha'
+  );
+  await expect(page.getByRole('status')).toContainText(
+    'Não feche esta tela nem repita a operação'
+  );
+  await expect(formulario.getByRole('button', { name: 'Confirmando...' }))
+    .toBeDisabled();
+  await expect(formulario.getByRole('button', { name: 'Fechar' })).toBeDisabled();
+  expect(requisicoesPagamento).toBe(1);
+  expect(dadosPagamento).toEqual({
+    meio_pagamento: 'PIX',
+    referencia_externa: 'PIX-E2E-IDEMPOTENTE',
+    observacao: 'Comprovante fictício E2E'
+  });
+
+  liberarResposta();
+
+  await expect(formulario).toBeHidden();
+  await expect(detalhe.getByText('Concluído', { exact: true })).toBeVisible();
+  await expect(detalhe.getByRole('button', { name: 'Confirmar pagamento' }))
+    .toBeHidden();
+  expect(requisicoesPagamento).toBe(1);
+});
+
+test('estorno e cancelamento só são registrados após confirmar a devolução', async ({ page }) => {
+  const protocolo = 'CMK-E2E-ESTORNO';
+  const pedidoId = 700004;
+  let cancelado = false;
+  let tentativasCancelamento = 0;
+  let requisicoesEstorno = 0;
+  let dadosEstorno = null;
+  let liberarResposta;
+  const respostaLiberada = new Promise(resolve => {
+    liberarResposta = resolve;
+  });
+
+  await prepararPagina(page, async (route, url) => {
+    if (url.pathname === '/api/fila-pedidos/resumo') {
+      await json(route, { ok: true, indicadores: {} });
+      return true;
+    }
+    if (url.pathname === '/api/fila-pedidos') {
+      await json(route, {
+        ok: true,
+        total: 1,
+        dados: [{
+          id: pedidoId,
+          protocolo,
+          cliente: 'CLIENTE ESTORNO E2E',
+          servico: 'Senha GM',
+          marca: 'GM',
+          chassi: 'CHASSI-E2E-ESTORNO',
+          status: cancelado ? 'CANCELADO' : 'ABERTO',
+          valor_venda: 60,
+          custo: 0,
+          moeda: 'BRL',
+          criado_em: '2026-09-21T12:00:00Z'
+        }]
+      });
+      return true;
+    }
+    if (url.pathname === `/api/pedidos/${pedidoId}`) {
+      await json(route, {
+        ok: true,
+        pedido: {
+          id: pedidoId,
+          protocolo,
+          cliente: 'CLIENTE ESTORNO E2E',
+          servico: 'Senha GM',
+          marca: 'GM',
+          chassi: 'CHASSI-E2E-ESTORNO',
+          status: cancelado ? 'CANCELADO' : 'ABERTO',
+          valor_venda: 60,
+          custo: 0,
+          moeda: 'BRL',
+          criado_em: '2026-09-21T12:00:00Z'
+        },
+        partes: {},
+        resultados: [],
+        historico: [],
+        comunicacoes: []
+      });
+      return true;
+    }
+    if (
+      url.pathname === `/api/pedidos/${pedidoId}/cancelar` &&
+      route.request().method() === 'POST'
+    ) {
+      tentativasCancelamento += 1;
+      await json(route, {
+        ok: false,
+        codigo: 'ESTORNO_FINANCEIRO_NECESSARIO',
+        error: 'O pagamento deve ser estornado antes do cancelamento'
+      }, 409);
+      return true;
+    }
+    if (
+      url.pathname === `/api/pedidos/${pedidoId}/estornar-e-cancelar` &&
+      route.request().method() === 'POST'
+    ) {
+      requisicoesEstorno += 1;
+      dadosEstorno = route.request().postDataJSON();
+      await respostaLiberada;
+      cancelado = true;
+      await json(route, {
+        ok: true,
+        estorno: { id: 970001, idempotente: false },
+        cancelamento: { status: 'CANCELADO' }
+      });
+      return true;
+    }
+    return false;
+  });
+
+  const dialogos = [
+    ['prompt', true, 'Estorno E2E controlado'],
+    ['confirm', true],
+    ['prompt', true, 'PIX'],
+    ['prompt', true, 'DEVOLUCAO-E2E-001'],
+    ['confirm', false],
+    ['prompt', true, 'Estorno E2E controlado'],
+    ['confirm', true],
+    ['prompt', true, 'PIX'],
+    ['prompt', true, 'DEVOLUCAO-E2E-001'],
+    ['confirm', true]
+  ];
+  page.on('dialog', async dialogo => {
+    const [tipo, aceitar, valor] = dialogos.shift();
+    expect(dialogo.type()).toBe(tipo);
+    if (aceitar) await dialogo.accept(valor);
+    else await dialogo.dismiss();
+  });
+
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Pedidos e senhas', exact: true }).click();
+  await page.locator('tr', { hasText: protocolo }).click();
+  const detalhe = page.getByRole('dialog');
+  const botaoCancelar = detalhe.getByRole('button', { name: 'Cancelar pedido' });
+
+  await botaoCancelar.click();
+  await expect(botaoCancelar).toBeVisible();
+  expect(tentativasCancelamento).toBe(1);
+  expect(requisicoesEstorno).toBe(0);
+
+  await botaoCancelar.click();
+  await expect(page.getByRole('status')).toContainText(
+    'Registrando estorno e cancelando o pedido'
+  );
+  expect(tentativasCancelamento).toBe(2);
+  expect(requisicoesEstorno).toBe(1);
+  expect(dadosEstorno).toEqual({
+    meio_estorno: 'PIX',
+    referencia_externa: 'DEVOLUCAO-E2E-001',
+    motivo_estorno: 'Estorno E2E controlado',
+    motivo_cancelamento: 'Estorno E2E controlado'
+  });
+
+  liberarResposta();
+
+  await expect(detalhe.getByText('Cancelado', { exact: true })).toBeVisible();
+  await expect(botaoCancelar).toBeHidden();
+  expect(requisicoesEstorno).toBe(1);
+  expect(dialogos).toHaveLength(0);
+});
+
 test('bloqueio de cliente só ocorre depois da confirmação', async ({ page }) => {
   let bloqueado = false;
   let alteracoes = 0;

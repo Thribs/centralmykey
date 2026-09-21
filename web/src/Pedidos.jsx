@@ -562,6 +562,7 @@ export default function Pedidos({ buscaInicial = '' }) {
           'Confirma que o valor já foi devolvido ao cliente e deseja registrar o estorno e cancelar o pedido?'
         )) return;
         try {
+          setProcessando('Registrando estorno e cancelando o pedido...');
           await estornarECancelarPedido(token, pedido.id, {
             meio_estorno: meio,
             referencia_externa: referencia,
