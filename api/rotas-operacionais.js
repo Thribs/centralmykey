@@ -1253,6 +1253,7 @@ module.exports = function(app, pool) {
   );
 
   app.post('/api/fornecedores', autenticarToken, exigirPermissao('FORNECEDORES', 'criar'), async (req, res) => {
+    let conexao;
     try {
       const {
         nome,
@@ -1265,15 +1266,32 @@ module.exports = function(app, pool) {
         horario_fim,
         observacoes
       } = req.body;
+      const tipoNormalizado = String(tipo || 'PESSOA').toUpperCase();
 
-      if (!nome || !String(nome).trim()) {
+      if (
+        !nome || !String(nome).trim() ||
+        !['PESSOA', 'EMPRESA', 'SISTEMA', 'API'].includes(tipoNormalizado)
+      ) {
         return res.status(400).json({
           ok: false,
-          error: 'Nome do fornecedor é obrigatório'
+          error: 'Nome e tipo válido do fornecedor são obrigatórios'
         });
       }
 
-      const [result] = await pool.query(`
+      const dados = {
+        nome: String(nome).trim(),
+        contato: contato || null,
+        telefone: telefone || null,
+        whatsapp: whatsapp || null,
+        email: email || null,
+        tipo: tipoNormalizado,
+        horario_inicio: horario_inicio || null,
+        horario_fim: horario_fim || null,
+        observacoes: observacoes || null
+      };
+      conexao = await pool.getConnection();
+      await conexao.beginTransaction();
+      const [result] = await conexao.query(`
         INSERT INTO fornecedores (
           nome,
           contato,
@@ -1286,17 +1304,19 @@ module.exports = function(app, pool) {
           observacoes
         )
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `, [
-        String(nome).trim(),
-        contato || null,
-        telefone || null,
-        whatsapp || null,
-        email || null,
-        tipo,
-        horario_inicio || null,
-        horario_fim || null,
-        observacoes || null
-      ]);
+      `, [dados.nome, dados.contato, dados.telefone, dados.whatsapp,
+        dados.email, dados.tipo, dados.horario_inicio, dados.horario_fim,
+        dados.observacoes]);
+      const depois = { id: result.insertId, ativo: 1, ...dados };
+      await conexao.query(`
+        INSERT INTO auditoria
+          (usuario_id, modulo, acao, entidade, entidade_id, descricao,
+           dados_antes, dados_depois, ip)
+        VALUES (?, 'FORNECEDORES', 'CRIAR', 'fornecedores', ?,
+                'Fornecedor cadastrado', NULL, ?, ?)
+      `, [req.usuario?.id || null, String(result.insertId),
+        JSON.stringify(depois), req.ip || null]);
+      await conexao.commit();
 
       res.status(201).json({
         ok: true,
@@ -1305,12 +1325,15 @@ module.exports = function(app, pool) {
       });
 
     } catch (error) {
+      if (conexao) await conexao.rollback();
       console.error(error);
 
       res.status(500).json({
         ok: false,
         error: 'Erro ao cadastrar fornecedor'
       });
+    } finally {
+      if (conexao) conexao.release();
     }
   });
 };

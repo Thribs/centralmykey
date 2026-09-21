@@ -59,6 +59,22 @@ module.exports = function(app, pool) {
     };
   };
 
+  const registrarAuditoriaFornecedor = async (
+    connection,
+    req,
+    { acao, entidade = 'fornecedores', entidadeId, descricao, antes, depois }
+  ) => {
+    await connection.query(`
+      INSERT INTO auditoria
+        (usuario_id, modulo, acao, entidade, entidade_id, descricao,
+         dados_antes, dados_depois, ip)
+      VALUES (?, 'FORNECEDORES', ?, ?, ?, ?, ?, ?, ?)
+    `, [req.usuario?.id || null, acao, entidade, String(entidadeId), descricao,
+      antes ? JSON.stringify(antes) : null,
+      depois ? JSON.stringify(depois) : null,
+      req.ip || null]);
+  };
+
   // ============================================================
   // FORNECEDORES
   // ============================================================
@@ -158,21 +174,42 @@ module.exports = function(app, pool) {
       }
 
       const nome = texto(req.body.nome);
-      const tipo = ['PESSOA', 'EMPRESA', 'SISTEMA', 'API'].includes(
-        req.body.tipo
-      )
-        ? req.body.tipo
-        : 'PESSOA';
+      const tipo = String(req.body.tipo || 'PESSOA').toUpperCase();
 
-      if (!nome) {
+      if (!nome || !['PESSOA', 'EMPRESA', 'SISTEMA', 'API'].includes(tipo)) {
         return res.status(400).json({
           ok: false,
-          error: 'Nome do fornecedor é obrigatório'
+          error: 'Nome e tipo válido do fornecedor são obrigatórios'
         });
       }
 
+      const connection = await pool.getConnection();
       try {
-        const [resultado] = await pool.query(`
+        await connection.beginTransaction();
+        const [atuais] = await connection.query(`
+          SELECT id, nome, contato, telefone, whatsapp, email, tipo,
+                 horario_inicio, horario_fim, ativo, observacoes
+            FROM fornecedores
+           WHERE id = ? LIMIT 1 FOR UPDATE
+        `, [id]);
+        if (!atuais.length) {
+          await connection.rollback();
+          return res.status(404).json({ ok: false, error: 'Fornecedor não encontrado' });
+        }
+
+        const depois = {
+          ...atuais[0],
+          nome,
+          contato: texto(req.body.contato),
+          telefone: texto(req.body.telefone),
+          whatsapp: texto(req.body.whatsapp),
+          email: texto(req.body.email),
+          tipo,
+          horario_inicio: texto(req.body.horario_inicio),
+          horario_fim: texto(req.body.horario_fim),
+          observacoes: texto(req.body.observacoes)
+        };
+        await connection.query(`
           UPDATE fornecedores
           SET
             nome = ?,
@@ -185,36 +222,31 @@ module.exports = function(app, pool) {
             horario_fim = ?,
             observacoes = ?
           WHERE id = ?
-        `, [
-          nome,
-          texto(req.body.contato),
-          texto(req.body.telefone),
-          texto(req.body.whatsapp),
-          texto(req.body.email),
-          tipo,
-          texto(req.body.horario_inicio),
-          texto(req.body.horario_fim),
-          texto(req.body.observacoes),
-          id
-        ]);
-
-        if (!resultado.affectedRows) {
-          return res.status(404).json({
-            ok: false,
-            error: 'Fornecedor não encontrado'
-          });
-        }
+        `, [depois.nome, depois.contato, depois.telefone, depois.whatsapp,
+          depois.email, depois.tipo, depois.horario_inicio, depois.horario_fim,
+          depois.observacoes, id]);
+        await registrarAuditoriaFornecedor(connection, req, {
+          acao: 'EDITAR',
+          entidadeId: id,
+          descricao: 'Cadastro do fornecedor atualizado',
+          antes: atuais[0],
+          depois
+        });
+        await connection.commit();
 
         return res.json({
           ok: true,
           mensagem: 'Fornecedor atualizado com sucesso'
         });
       } catch (error) {
+        await connection.rollback();
         console.error('Erro ao atualizar fornecedor:', error);
         return res.status(500).json({
           ok: false,
           error: 'Erro ao atualizar fornecedor'
         });
+      } finally {
+        connection.release();
       }
     }
   );
@@ -234,18 +266,30 @@ module.exports = function(app, pool) {
         });
       }
 
+      const connection = await pool.getConnection();
       try {
-        const [resultado] = await pool.query(
+        await connection.beginTransaction();
+        const [atuais] = await connection.query(
+          `SELECT id, nome, ativo FROM fornecedores
+            WHERE id = ? LIMIT 1 FOR UPDATE`,
+          [id]
+        );
+        if (!atuais.length) {
+          await connection.rollback();
+          return res.status(404).json({ ok: false, error: 'Fornecedor não encontrado' });
+        }
+        await connection.query(
           'UPDATE fornecedores SET ativo = ? WHERE id = ?',
           [ativo, id]
         );
-
-        if (!resultado.affectedRows) {
-          return res.status(404).json({
-            ok: false,
-            error: 'Fornecedor não encontrado'
-          });
-        }
+        await registrarAuditoriaFornecedor(connection, req, {
+          acao: ativo ? 'ATIVAR' : 'BLOQUEAR',
+          entidadeId: id,
+          descricao: ativo ? 'Fornecedor ativado' : 'Fornecedor bloqueado',
+          antes: atuais[0],
+          depois: { ...atuais[0], ativo }
+        });
+        await connection.commit();
 
         return res.json({
           ok: true,
@@ -254,11 +298,14 @@ module.exports = function(app, pool) {
             : 'Fornecedor bloqueado com sucesso'
         });
       } catch (error) {
+        await connection.rollback();
         console.error('Erro ao alterar fornecedor:', error);
         return res.status(500).json({
           ok: false,
           error: 'Erro ao alterar status do fornecedor'
         });
+      } finally {
+        connection.release();
       }
     }
   );
@@ -413,14 +460,16 @@ module.exports = function(app, pool) {
       }
 
       const depois = { id, fornecedor_id: fornecedorId, ...dados };
-      await connection.query(`
-        INSERT INTO auditoria
-          (usuario_id, modulo, acao, entidade, entidade_id, descricao,
-           dados_antes, dados_depois, ip)
-        VALUES (?, 'FORNECEDORES', ?, 'fornecedor_servicos', ?, ?, ?, ?, ?)
-      `, [req.usuario?.id || null, criar ? 'CRIAR_SERVICO' : 'EDITAR_SERVICO',
-        String(id), criar ? 'Serviço vinculado ao fornecedor' : 'Serviço do fornecedor atualizado',
-        antes ? JSON.stringify(antes) : null, JSON.stringify(depois), req.ip || null]);
+      await registrarAuditoriaFornecedor(connection, req, {
+        acao: criar ? 'CRIAR_SERVICO' : 'EDITAR_SERVICO',
+        entidade: 'fornecedor_servicos',
+        entidadeId: id,
+        descricao: criar
+          ? 'Serviço vinculado ao fornecedor'
+          : 'Serviço do fornecedor atualizado',
+        antes,
+        depois
+      });
 
       await connection.commit();
       return res.status(criar ? 201 : 200).json({

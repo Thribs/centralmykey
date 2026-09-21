@@ -213,7 +213,10 @@ async function executar() {
              fs.ativo AS servico_ativo,
              (SELECT COUNT(*) FROM auditoria a
                WHERE a.entidade='fornecedor_servicos'
-                 AND a.entidade_id=CAST(fs.id AS CHAR)) AS auditorias
+                 AND a.entidade_id=CAST(fs.id AS CHAR)) AS auditorias_servico,
+             (SELECT COUNT(*) FROM auditoria a
+               WHERE a.entidade='fornecedores'
+                 AND a.entidade_id=CAST(f.id AS CHAR)) AS auditorias_fornecedor
         FROM fornecedores f
         JOIN fornecedor_servicos fs ON fs.fornecedor_id=f.id
        WHERE f.id=? AND fs.id=?
@@ -221,8 +224,9 @@ async function executar() {
     assert.deepStrictEqual(
       [persistido.nome, persistido.tipo, Number(persistido.ativo),
         Number(persistido.custo), Number(persistido.prazo_estimado_minutos),
-        Number(persistido.servico_ativo), Number(persistido.auditorias)],
-      [`${nome} EDITADO`, 'EMPRESA', 0, 23.75, 30, 0, 2]
+        Number(persistido.servico_ativo), Number(persistido.auditorias_servico),
+        Number(persistido.auditorias_fornecedor)],
+      [`${nome} EDITADO`, 'EMPRESA', 0, 23.75, 30, 0, 2, 3]
     );
   } catch (falha) {
     erro = falha;
@@ -238,12 +242,15 @@ async function executar() {
            WHERE f.nome LIKE ?) AS servicos,
           (SELECT COUNT(*) FROM auditoria
            WHERE entidade='fornecedor_servicos'
-             AND entidade_id=?) AS auditorias
-      `, [`${nome}%`, `${nome}%`, String(vinculoId || 0)]);
+             AND entidade_id=?) AS auditorias_servico,
+          (SELECT COUNT(*) FROM auditoria
+           WHERE entidade='fornecedores'
+             AND entidade_id=?) AS auditorias_fornecedor
+      `, [`${nome}%`, `${nome}%`, String(vinculoId || 0), String(fornecedorId || 0)]);
       assert.strictEqual(Number(residuos.fornecedores), 0);
       assert.strictEqual(Number(residuos.servicos), 0);
-      // Auditorias do teste são revertidas junto com a transação externa.
-      if (fornecedorId) assert.strictEqual(Number(residuos.auditorias), 0);
+      assert.strictEqual(Number(residuos.auditorias_servico), 0);
+      assert.strictEqual(Number(residuos.auditorias_fornecedor), 0);
     } catch (falhaLimpeza) {
       erro = erro || falhaLimpeza;
     } finally {
