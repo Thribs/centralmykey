@@ -1027,6 +1027,108 @@ test('administrador cria usuário e define permissões pelas rotas reais', async
   expect(Number(verificacao.estado.auditorias)).toBe(3);
 });
 
+test('atendimento é assumido, respondido, transferido e finalizado na transação', async ({ page }) => {
+  test.setTimeout(60000);
+  const respostaContexto = await page.request.get(`${API}/api/e2e/contexto`);
+  expect(respostaContexto.ok()).toBe(true);
+  const contextoCompleto = await respostaContexto.json();
+  const contexto = contextoCompleto.atendimento;
+  await autenticarIntegrado(page, contextoCompleto.autenticacao.administrador);
+  await page.setViewportSize({ width: 390, height: 844 });
+
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Abrir menu' }).click();
+  await page.getByRole('button', { name: 'Atendimento', exact: true }).click();
+  const busca = page.getByPlaceholder('Cliente, telefone ou protocolo');
+  await busca.fill(contexto.protocolo);
+  const item = page.locator('.attendance-item', { hasText: contexto.cliente });
+  await expect(item).toBeVisible();
+  await item.click();
+
+  const conversa = page.locator('.conversation-panel');
+  await expect(conversa.getByText(contexto.protocolo, { exact: true })).toBeVisible();
+  await expect(conversa.locator('.conversation-meta .attendance-status'))
+    .toHaveText('Na fila');
+  await conversa.getByRole('button', { name: 'Assumir atendimento' }).click();
+  await expect(conversa.locator('.conversation-meta .attendance-status'))
+    .toHaveText('Em atendimento');
+
+  await conversa.getByRole('button', { name: 'Nota interna' }).click();
+  await conversa.getByPlaceholder(
+    'Escreva uma observação visível apenas para a equipe'
+  ).fill(contexto.nota);
+  await conversa.getByTitle('Enviar').click();
+  await expect(conversa.getByText(contexto.nota, { exact: true })).toBeVisible();
+
+  await conversa.getByRole('button', { name: 'Responder cliente' }).click();
+  await conversa.getByPlaceholder('Digite uma mensagem para o cliente')
+    .fill(contexto.resposta);
+  await conversa.getByTitle('Enviar').click();
+  await expect(conversa.getByText(contexto.resposta, { exact: true })).toBeVisible();
+
+  await conversa.getByLabel('Alterar etapa').selectOption('PRONTO_ENVIO');
+  await expect(conversa.locator('.conversation-meta .attendance-status'))
+    .toHaveText('Pronto para envio');
+  await conversa.getByRole('button', { name: 'Transferir' }).click();
+  const transferencia = page.getByRole('dialog', { name: 'Transferir atendimento' });
+  await transferencia.getByLabel('Novo responsável')
+    .selectOption(String(contexto.atendente_id));
+  await transferencia.getByLabel('Motivo da transferência')
+    .fill('Continuidade E2E em outro atendente');
+  const caixaTransferencia = await transferencia.boundingBox();
+  expect(caixaTransferencia.width).toBeLessThanOrEqual(390);
+  await transferencia.getByRole('button', { name: 'Confirmar transferência' })
+    .click();
+  await expect(transferencia).toBeHidden({ timeout: 10000 });
+  await expect(conversa.getByText(contexto.atendente, { exact: true })).toBeVisible();
+
+  const paginaAtendente = await page.context().newPage();
+  await autenticarIntegrado(
+    paginaAtendente,
+    contextoCompleto.autenticacao.atendente
+  );
+  await paginaAtendente.setViewportSize({ width: 390, height: 844 });
+  await paginaAtendente.goto('/');
+  const buscaAtendente = paginaAtendente.getByPlaceholder(
+    'Cliente, telefone ou protocolo'
+  );
+  await buscaAtendente.fill(contexto.protocolo);
+  const itemAtendente = paginaAtendente.locator('.attendance-item', {
+    hasText: contexto.cliente
+  });
+  await expect(itemAtendente).toBeVisible();
+  await itemAtendente.click();
+  const conversaAtendente = paginaAtendente.locator('.conversation-panel');
+  await expect(conversaAtendente.getByText(contexto.atendente, { exact: true }))
+    .toBeVisible();
+  paginaAtendente.once('dialog', dialogo => dialogo.accept());
+  await conversaAtendente.getByLabel('Alterar etapa').selectOption('FINALIZADO');
+  await expect(conversaAtendente.locator('.conversation-meta .attendance-status'))
+    .toHaveText('Finalizado');
+  await expect(conversaAtendente.getByTitle('Enviar')).toHaveCount(0);
+  const dimensoes = await paginaAtendente.evaluate(() => ({
+    largura: document.documentElement.scrollWidth,
+    viewport: window.innerWidth
+  }));
+  expect(dimensoes.largura).toBeLessThanOrEqual(dimensoes.viewport);
+  await paginaAtendente.close();
+
+  const respostaVerificacao = await page.request.get(
+    `${API}/api/e2e/verificacao?cenario=atendimento`
+  );
+  expect(respostaVerificacao.ok()).toBe(true);
+  const verificacao = await respostaVerificacao.json();
+  expect(verificacao.estado.status).toBe('FINALIZADO');
+  expect(verificacao.estado.modo).toBe('HUMANO');
+  expect(Number(verificacao.estado.responsavel_id)).toBe(contexto.atendente_id);
+  expect(Number(verificacao.estado.finalizado)).toBe(1);
+  expect(Number(verificacao.estado.transferencias)).toBe(2);
+  expect(Number(verificacao.estado.notas)).toBe(1);
+  expect(Number(verificacao.estado.mensagens_whatsapp)).toBe(1);
+  expect(Number(verificacao.estado.auditorias)).toBe(6);
+  expect(Number(verificacao.chamadas_whatsapp)).toBe(1);
+});
+
 test('visualizador não vê ações de usuário e recebe 403 ao forçar criação', async ({ page }) => {
   const respostaContexto = await page.request.get(`${API}/api/e2e/contexto`);
   expect(respostaContexto.ok()).toBe(true);

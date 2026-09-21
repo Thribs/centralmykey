@@ -35,6 +35,9 @@ A suíte cobre inicialmente:
 - administrador criando, autorizando e bloqueando usuário pela interface, e
   visualizador sem controles de mutação nem possibilidade de forçar a criação
   pela API; todo o cenário usa JWT real e rollback;
+- atendimento móvel assumido da fila, nota interna, resposta WhatsApp mockada,
+  mudança de etapa, transferência para outro usuário autenticado e finalização
+  confirmada, com persistência real e rollback;
 - estorno real iniciado pelo bloqueio de cancelamento, com lançamento reverso,
   pagamento de devolução e pedido cancelado atomicamente;
 - estorno seguido de cancelamento com desistência sem mutação financeira,

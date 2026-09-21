@@ -124,10 +124,10 @@ Os testes integrados criaram registros somente dentro das transações e executa
 |---|---|---|---|---|---|---|
 | Carregamento e timeout | COMPROVADO | Cliente comum `web/src/http.js` aplica timeout e mensagens específicas; pagamento mantém 105s | `web/teste-http.js`, lint e build | Nenhuma lacuna conhecida no cliente HTTP atual | Manter testes ao adicionar chamadas | Operação longa nova exige timeout explícito |
 | Mensagens de erro | COMPROVADO | Todas as respostas possuem `X-Request-ID`; erros JSON preservam códigos específicos ou recebem código estável pelo status; JSON inválido e limite têm classificação própria; frontend exibe a referência sem detalhes internos | `teste-erros-http.js` cobre o contrato da API; `teste-api.js` cobre o cliente; Playwright comprova exibição e recuperação da fila no navegador | Nenhuma lacuna funcional conhecida no contrato atual | Ampliar cenários E2E junto de cada fluxo novo | Código genérico ainda exige consulta da referência quando a rota não possui classificação mais específica |
-| Estados intermediários | PARCIAL | UI mostra estados de pedidos/atendimentos/comunicações, bloqueia interação durante ações e explica indisponibilidade, custo zero e ausência de fornecedor | Playwright percorre os estados críticos do GM e as transições `RASCUNHO`, `FECHADO` e `PAGO` do fornecedor contra API/MySQL reais | Estados longos de atendimento ainda não foram percorridos no navegador | Ampliar E2E para atendimento | Estado de outro módulo ainda pode regredir sem detecção visual |
-| Responsividade | PARCIAL | `App.css` tem media queries entre 520px e 1120px; modais críticos possuem limites de largura/altura, rolagem interna e nomes acessíveis | Playwright percorre a matriz GM em três viewports e o ciclo administrativo de usuários em 390 × 844, verificando ação final e ausência de rolagem horizontal | Financeiro, demais formulários administrativos e atendimento ainda não possuem a mesma matriz | Ampliar a matriz junto dos E2E integrados desses módulos | Tela não coberta ainda pode ocultar controles em viewport menor |
-| Confirmação de ações destrutivas | PARCIAL | Cancelamento de pedido, estorno, fechamento e bloqueio de usuário exigem confirmação | Playwright comprova confirmação única no cancelamento, estorno, bloqueio de cliente/usuário e fechamento/pagamento de fornecedor | Faltam as transições finais do atendimento | Ampliar a mesma política E2E para atendimento | Ações ainda não cobertas podem ter confirmação ou repetição regressadas sem detecção |
-| Correspondência frontend/backend | PARCIAL | `Painel.jsx` liga módulos reais a componentes; Playwright sobe API local com JWT/middleware reais e pool preso a uma transação externa | O ciclo GM, fechamento semanal e usuários/permissões são integrados com verificação MySQL e rollback | Atendimento, configurações e demais produtos ainda combinam testes HTTP e navegador separados | Expandir o harness por módulo conforme a prioridade operacional | Divergência entre camadas ainda pode escapar nos módulos não integrados |
+| Estados intermediários | PARCIAL | UI mostra estados de pedidos, atendimentos e comunicações e bloqueia interação durante ações | Playwright percorre estados críticos do GM, `RASCUNHO`/`FECHADO`/`PAGO` do fornecedor e fila/assunção/pronto/transferência/finalização do atendimento contra API/MySQL reais | Estados de configurações, integrações e monitoramento ainda não foram percorridos no navegador | Ampliar E2E aos módulos administrativos restantes | Estado de outro módulo ainda pode regredir sem detecção visual |
+| Responsividade | PARCIAL | `App.css` tem media queries entre 520px e 1120px; modais críticos possuem limites de largura/altura, rolagem interna e nomes acessíveis | Playwright percorre a matriz GM em três viewports e usuários/atendimento em 390 × 844, verificando ações finais e ausência de rolagem horizontal | Financeiro e demais formulários administrativos ainda não possuem a mesma matriz | Ampliar a matriz junto dos E2E integrados desses módulos | Tela não coberta ainda pode ocultar controles em viewport menor |
+| Confirmação de ações destrutivas | PARCIAL | Cancelamento de pedido, estorno, fechamento, bloqueio de usuário e finalização/cancelamento de atendimento exigem confirmação | Playwright comprova confirmação nos fluxos críticos e finalização do atendimento pelo responsável transferido | Demais ações administrativas ainda não têm prova uniforme no navegador | Ampliar a mesma política nos módulos administrativos restantes | Ação não coberta pode ter confirmação ou repetição regressada sem detecção |
+| Correspondência frontend/backend | PARCIAL | `Painel.jsx` liga módulos reais a componentes; Playwright sobe API local com JWT/middleware reais e pool preso a uma transação externa | Ciclo GM, fechamento semanal, usuários/permissões e atendimento são integrados com verificação MySQL e rollback | Configurações, auditoria, monitoramento e demais produtos ainda combinam testes HTTP e navegador separados | Expandir o harness por módulo conforme a prioridade operacional | Divergência entre camadas ainda pode escapar nos módulos não integrados |
 
 ## Divergências entre regra documentada e código atual
 
@@ -154,13 +154,13 @@ Os testes integrados criaram registros somente dentro das transações e executa
 - Retorno de fornecedor: o registro interno funciona, porém a resposta automática pelo canal ainda não foi especificada nem homologada.
 - Sicoob: base técnica simulada pronta, sem mTLS e homologação externa; PlugPay, WBuy e Bling continuam sem integração funcional completa.
 - Monitoramento, backup e auditoria: funcionais internamente, com canal externo de alerta, timer publicado e restauração integral ainda pendentes.
-- Frontend: GM, fechamento semanal e usuários/permissões possuem navegador contra autenticação, rotas e MySQL reais; atendimento, demais telas administrativas e demais produtos ainda não têm a mesma prova integrada.
+- Frontend: GM, fechamento semanal, usuários/permissões e atendimento possuem navegador contra autenticação, rotas e MySQL reais; demais telas administrativas e demais produtos ainda não têm a mesma prova integrada.
 - Demais verticais: faltam requisitos comerciais e implementação ponta a ponta; não estão prontas para operação.
 
 ## Próximos 10 marcos em ordem de dependência
 
-1. **Completar os E2E do atendimento**, cobrindo estados longos, transferência, finalização, confirmações e responsividade.
-2. **Integrar as demais telas administrativas**, começando por configurações, auditoria e monitoramento com autorização real e matriz responsiva.
+1. **Integrar as demais telas administrativas**, começando por configurações, auditoria e monitoramento com autorização real e matriz responsiva.
+2. **Completar a matriz responsiva financeira e administrativa**, cobrindo formulários, tabelas roláveis e ações finais em celular, tablet e desktop.
 3. **Homologar os dois modelos WhatsApp e destinatários controlados**, realizar envio de consulta e entrega e registrar os comprovantes retornados pela Meta.
 4. **Definir e implementar o retorno estruturado do fornecedor**, associando a resposta ao pedido e deduplicando-a pelo identificador externo.
 5. **Ligar alertas críticos a um canal externo e definir SLO**, cobrindo parada de worker, fila envelhecida, API indisponível e falha de integração.
@@ -172,7 +172,7 @@ Os testes integrados criaram registros somente dentro das transações e executa
 
 ## Próximo marco recomendado
 
-O próximo marco deve ser **completar os E2E do atendimento**. O ciclo GM, o fechamento/pagamento de fornecedor e usuários/permissões já possuem prova transacional entre navegador, JWT, rotas e MySQL; a maior lacuna interna seguinte está nas transferências e finalizações do atendimento.
+O próximo marco deve ser **integrar as demais telas administrativas**, começando por configurações, auditoria e monitoramento. O ciclo GM, o fechamento/pagamento de fornecedor, usuários/permissões e atendimento já possuem prova transacional entre navegador, JWT, rotas e MySQL.
 
 ## Progresso posterior à auditoria da v0.5.0
 
@@ -206,6 +206,7 @@ Na branch `feature/pagamento-manual-idempotente`, ainda não publicada:
 - o estorno integrado parte do bloqueio real de cancelamento, percorre as confirmações da interface e comprova pedido cancelado, estorno confirmado, pagamento de devolução e despesa reversa na mesma transação;
 - o fechamento semanal do fornecedor agora também é integrado no navegador contra as rotas e o MySQL reais: gera a última semana, confere o item, aprova, cria uma única despesa, registra um único pagamento e reverte tudo ao encerrar;
 - usuários e permissões agora possuem E2E integrado com JWT e middleware reais: o administrador cria, concede acesso e bloqueia em viewport móvel; o visualizador não vê mutações, recebe 403 ao forçar criação e nada fica persistido após o rollback;
+- atendimento agora possui E2E integrado em viewport móvel: o administrador assume a fila, registra nota, envia uma resposta WhatsApp simulada, muda a etapa e transfere; o novo responsável autenticado finaliza após confirmação, com mensagens, transferências e auditoria verificadas no MySQL antes do rollback;
 - criação, pagamento, resultado, correção e validação GM agora são percorridos em celular, tablet e desktop; os testes verificam que cada modal cabe no viewport, não cria rolagem horizontal e mantém a ação final alcançável, e os modais de criação/pagamento receberam nomes acessíveis;
 - a confirmação manual foi tornada idempotente por pedido, meio e referência/comprovante;
 - foi adicionado teste funcional da rota HTTP com MySQL e rollback;

@@ -137,9 +137,11 @@ async function prepararFixture() {
   const [[servico]] = await connection.query(
     "SELECT id, preco_base FROM servicos WHERE codigo='GM_SENHA' AND ativo=1 LIMIT 1"
   );
-  const [[perfil]] = await connection.query(
-    'SELECT id, nome FROM perfis WHERE ativo=1 ORDER BY id LIMIT 1'
+  const [perfis] = await connection.query(
+    'SELECT id, nome FROM perfis WHERE ativo=1 ORDER BY id'
   );
+  const perfil = perfis[0];
+  const perfilAtendente = perfis.find(item => item.nome !== 'Administrador') || perfil;
   const [modulos] = await connection.query(
     'SELECT id, codigo FROM modulos WHERE ativo=1 ORDER BY id'
   );
@@ -171,6 +173,13 @@ async function prepararFixture() {
   const loginVisualizador = `e2e-view-${marcador}`;
   const senhaVisualizador = `View-${marcador}-9`;
   const loginNovoUsuario = `e2e-novo-${marcador}`;
+  const loginAtendente = `e2e-atendimento-${marcador}`;
+  const senhaAtendente = `Atendimento-${marcador}-9`;
+  const nomeAtendente = `ATENDENTE E2E ${marcador}`;
+  const protocoloAtendimento = `ATE2E${process.pid}${String(Date.now()).slice(-7)}`;
+  const notaAtendimento = `Nota interna E2E ${marcador}`;
+  const respostaAtendimento = `Resposta WhatsApp E2E ${marcador}`;
+  const mensagemExternaAtendimento = `wamid.e2e.${marcador}`;
   const apiSenhaId = 970000000 + (process.pid % 100000);
   const apiSenhaIdCorrigida = 971000000 + (process.pid % 100000);
   const apiSenhaIdReprocessada = 972000000 + (process.pid % 100000);
@@ -216,6 +225,27 @@ async function prepararFixture() {
      VALUES (?, ?, 1, 0, 0, 0, 0)`,
     [visualizador.insertId, moduloUsuarios.id]
   );
+  const moduloAtendimento = modulos.find(item => item.codigo === 'ATENDIMENTO');
+  if (!moduloAtendimento) {
+    throw new Error('Módulo ATENDIMENTO ativo é obrigatório para o E2E');
+  }
+  const [atendente] = await connection.query(
+    `INSERT INTO usuarios
+       (nome, login, senha_hash, senha_provisoria, perfil_id, status)
+     VALUES (?, ?, ?, 0, ?, 'ATIVO')`,
+    [
+      nomeAtendente,
+      loginAtendente,
+      await bcrypt.hash(senhaAtendente, 4),
+      perfilAtendente.id
+    ]
+  );
+  await connection.query(
+    `INSERT INTO usuario_permissoes
+       (usuario_id, modulo_id, visualizar, criar, editar, excluir, aprovar)
+     VALUES (?, ?, 1, 0, 1, 0, 0)`,
+    [atendente.insertId, moduloAtendimento.id]
+  );
   const usuario = {
     id: operador.insertId,
     nome: `ADMINISTRADOR E2E ${marcador}`,
@@ -232,6 +262,21 @@ async function prepararFixture() {
         tipo_cobranca, credito_status)
      VALUES (?, ?, ?, 'COMPLETO', 1, 'ANTECIPADO', 'LIBERADO')`,
     [nomeCliente, telefone, telefone]
+  );
+  const [atendimento] = await connection.query(
+    `INSERT INTO atendimentos
+       (protocolo, cliente_id, telefone, telefone_normalizado, canal,
+        modo, status, prioridade, assunto, ultima_mensagem_em)
+     VALUES (?, ?, ?, ?, 'WHATSAPP', 'ELETRONICO', 'FILA', 'ALTA',
+             'Atendimento integrado E2E', NOW())`,
+    [protocoloAtendimento, cliente.insertId, telefone, telefone]
+  );
+  await connection.query(
+    `INSERT INTO atendimento_mensagens
+       (atendimento_id, direcao, autor_tipo, tipo_conteudo, texto, criado_em)
+     VALUES (?, 'ENTRADA', 'CLIENTE', 'TEXTO',
+             'Mensagem inicial fictícia E2E', NOW())`,
+    [atendimento.insertId]
   );
   const [pedido] = await connection.query(
     `INSERT INTO pedidos_senha
@@ -476,7 +521,8 @@ async function prepararFixture() {
     },
     autenticacao: {
       administrador: { login: loginOperador, senha: senhaOperador },
-      visualizador: { login: loginVisualizador, senha: senhaVisualizador }
+      visualizador: { login: loginVisualizador, senha: senhaVisualizador },
+      atendente: { login: loginAtendente, senha: senhaAtendente }
     },
     administracao: {
       visualizadorId: visualizador.insertId,
@@ -485,6 +531,17 @@ async function prepararFixture() {
       nomeNovoUsuario: `NOVO USUÁRIO E2E ${marcador}`,
       perfilId: perfil.id,
       perfil: perfil.nome
+    },
+    atendimento: {
+      id: atendimento.insertId,
+      protocolo: protocoloAtendimento,
+      cliente: nomeCliente,
+      atendenteId: atendente.insertId,
+      atendente: nomeAtendente,
+      nota: notaAtendimento,
+      resposta: respostaAtendimento,
+      mensagemExternaId: mensagemExternaAtendimento,
+      chamadasWhatsapp: 0
     },
     nomeCliente,
     nomeFornecedor,
@@ -571,6 +628,12 @@ async function iniciar() {
   const pool = poolTransacional(connection);
   require('./rotas-auth')(app, pool);
   require('./rotas-administracao')(app, pool);
+  app.locals.enviarMensagemWhatsapp = async () => {
+    contexto.atendimento.chamadasWhatsapp += 1;
+    return {
+      mensagem_externa_id: contexto.atendimento.mensagemExternaId
+    };
+  };
   app.get('/api/notificacoes/resumo', (req, res) => res.json({
     ok: true,
     nao_lidas: 0,
@@ -626,9 +689,49 @@ async function iniciar() {
       perfil_id: contexto.administracao.perfilId,
       perfil: contexto.administracao.perfil
     },
+    atendimento: {
+      id: contexto.atendimento.id,
+      protocolo: contexto.atendimento.protocolo,
+      cliente: contexto.atendimento.cliente,
+      atendente_id: contexto.atendimento.atendenteId,
+      atendente: contexto.atendimento.atendente,
+      nota: contexto.atendimento.nota,
+      resposta: contexto.atendimento.resposta
+    },
     cliente: contexto.nomeCliente
   }));
   app.get('/api/e2e/verificacao', async (req, res) => {
+    if (req.query.cenario === 'atendimento') {
+      const [[estado]] = await connection.query(
+        `SELECT
+           a.status,
+           a.modo,
+           a.responsavel_id,
+           a.finalizado_em IS NOT NULL AS finalizado,
+           (SELECT COUNT(*) FROM atendimento_transferencias t
+             WHERE t.atendimento_id = a.id) AS transferencias,
+           (SELECT COUNT(*) FROM atendimento_mensagens m
+             WHERE m.atendimento_id = a.id AND m.direcao = 'INTERNA'
+               AND m.autor_tipo = 'ATENDENTE' AND m.texto = ?) AS notas,
+           (SELECT COUNT(*) FROM atendimento_mensagens m
+             WHERE m.atendimento_id = a.id AND m.direcao = 'SAIDA'
+               AND m.mensagem_externa_id = ?) AS mensagens_whatsapp,
+           (SELECT COUNT(*) FROM auditoria au
+             WHERE au.entidade = 'atendimentos'
+               AND au.entidade_id = CAST(a.id AS CHAR)) AS auditorias
+         FROM atendimentos a WHERE a.id = ? LIMIT 1`,
+        [
+          contexto.atendimento.nota,
+          contexto.atendimento.mensagemExternaId,
+          contexto.atendimento.id
+        ]
+      );
+      return res.json({
+        ok: true,
+        estado: estado || null,
+        chamadas_whatsapp: contexto.atendimento.chamadasWhatsapp
+      });
+    }
     if (req.query.cenario === 'administracao') {
       const [[estado]] = await connection.query(
         `SELECT
@@ -744,6 +847,7 @@ async function iniciar() {
   });
 
   require('./rotas-pedidos')(app, pool);
+  require('./rotas-atendimento')(app, pool);
   require('./rotas-financeiro')(app, pool);
   require('./rotas-relatorios')(app, pool);
   require('./rotas-estornos')(app, pool);
@@ -771,11 +875,16 @@ async function encerrar(codigo = 0) {
            (SELECT COUNT(*) FROM pedidos_senha WHERE protocolo IN (?, ?, ?, ?, ?, ?, ?)) AS pedidos,
            (SELECT COUNT(*) FROM clientes WHERE nome = ?) AS clientes,
            (SELECT COUNT(*) FROM fornecedores WHERE nome = ?) AS fornecedores,
-           (SELECT COUNT(*) FROM usuarios WHERE login IN (?, ?, ?, ?)) AS usuarios,
+           (SELECT COUNT(*) FROM usuarios WHERE login IN (?, ?, ?, ?, ?)) AS usuarios,
            (SELECT COUNT(*) FROM usuario_permissoes
-             WHERE usuario_id IN (?, ?, ?)) AS permissoes,
+             WHERE usuario_id IN (?, ?, ?, ?)) AS permissoes,
            (SELECT COUNT(*) FROM auditoria
-             WHERE entidade = 'usuarios' AND entidade_id IN (?, ?, ?)) AS auditorias,
+             WHERE entidade = 'usuarios' AND entidade_id IN (?, ?, ?, ?)) AS auditorias,
+           (SELECT COUNT(*) FROM atendimentos WHERE protocolo = ?) AS atendimentos,
+           (SELECT COUNT(*) FROM atendimento_mensagens
+             WHERE atendimento_id = ?) AS mensagens_atendimento,
+           (SELECT COUNT(*) FROM atendimento_transferencias
+             WHERE atendimento_id = ?) AS transferencias_atendimento,
            (SELECT COUNT(*) FROM banco_senhas
              WHERE JSON_UNQUOTE(JSON_EXTRACT(dados_extras, '$.api_senha_id'))
                IN (?, ?, ?) OR chassi = ?) AS cache`,
@@ -793,12 +902,18 @@ async function encerrar(codigo = 0) {
           contexto?.autenticacao?.visualizador?.login,
           contexto?.administracao?.loginNovoUsuario,
           `${contexto?.administracao?.loginNovoUsuario}-negado`,
+          contexto?.autenticacao?.atendente?.login,
           contexto?.usuario?.id || 0,
           contexto?.administracao?.visualizadorId || 0,
           contexto?.administracao?.novoUsuarioId || 0,
+          contexto?.atendimento?.atendenteId || 0,
           String(contexto?.usuario?.id || 0),
           String(contexto?.administracao?.visualizadorId || 0),
           String(contexto?.administracao?.novoUsuarioId || 0),
+          String(contexto?.atendimento?.atendenteId || 0),
+          contexto?.atendimento?.protocolo,
+          contexto?.atendimento?.id || 0,
+          contexto?.atendimento?.id || 0,
           String(contexto?.encontrado?.apiSenhaId),
           String(contexto?.dadosInvalidos?.apiSenhaId),
           String(contexto?.indisponivel?.apiSenhaId),
