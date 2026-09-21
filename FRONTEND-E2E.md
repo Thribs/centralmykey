@@ -1,0 +1,30 @@
+# Testes funcionais do frontend
+
+O frontend usa Playwright com Chromium para percorrer comportamentos reais no
+navegador. A API é interceptada dentro do contexto do teste e responde somente
+com dados fictícios; nenhuma requisição chega à API publicada, à API Joel Pires
+ou ao banco de dados.
+
+A suíte cobre inicialmente:
+
+- sessão autenticada e carregamento do painel;
+- busca global de pedido, seleção do resultado e aplicação do filtro no módulo;
+- exibição do código e da referência de uma falha HTTP;
+- recuperação da fila após uma atualização bem-sucedida;
+- menu móvel e ausência de rolagem horizontal em 390 × 844 pixels.
+
+Instalação do navegador e das bibliotecas necessárias no ambiente de teste:
+
+```bash
+cd /opt/centralmykey-source/web
+npx playwright install --with-deps chromium
+```
+
+Execução isolada:
+
+```bash
+npm run test:e2e
+```
+
+`npm test` também executa os testes E2E depois dos testes unitários do cliente
+HTTP. Evidências de falha ficam em `test-results/`, que não é versionado.
