@@ -23,7 +23,10 @@ const CHAVES = {
   sicoobChavePix: ['SICOOB_CHAVE_PIX'],
   sicoobAmbiente: ['SICOOB_AMBIENTE'],
   plugPayToken: ['PLUGPAY_TOKEN', 'PLUGPAY_API_KEY'],
-  wbuyToken: ['WBUY_TOKEN', 'WBUY_API_KEY'],
+  wbuyUsuario: ['WBUY_USUARIO', 'WBUY_USERNAME'],
+  wbuySenha: ['WBUY_SENHA', 'WBUY_PASSWORD'],
+  wbuyLojaUrl: ['WBUY_LOJA_URL'],
+  wbuyCredencialLegada: ['WBUY_TOKEN', 'WBUY_API_KEY'],
   blingClientId: ['BLING_CLIENT_ID'],
   blingClientSecret: ['BLING_CLIENT_SECRET']
 };
@@ -126,7 +129,16 @@ function resumirIntegracoes(config) {
     {
       codigo: 'WBUY',
       nome: 'WBuy',
-      ...estadoConector({ implementado: false, requisitos: [Boolean(config.wbuyToken)] })
+      ...estadoConector({
+        implementado: false,
+        requisitos: [Boolean(config.wbuyUsuario), Boolean(config.wbuySenha),
+          Boolean(config.wbuyLojaUrl)]
+      }),
+      ...(config.wbuyCredencialLegada
+        ? { configurado: false, status: 'CREDENCIAIS_SEM_CONECTOR' }
+        : {}),
+      componentes: { mapeamento_produtos: true, pedidos: false, webhook: false,
+        credencial_legada: Boolean(config.wbuyCredencialLegada) }
     },
     {
       codigo: 'BLING',

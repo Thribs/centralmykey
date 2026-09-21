@@ -851,6 +851,36 @@ export async function listarEventosIntegracao(token, filtros = {}) {
   return lerResposta(resposta);
 }
 
+export async function listarMapeamentosIntegracoes(token, provedor = '') {
+  const parametros = new URLSearchParams();
+  if (provedor) parametros.set('provedor', provedor);
+  const resposta = await requisitar(
+    `${API_URL}/api/integracoes/mapeamentos-produtos?${parametros.toString()}`,
+    { headers: cabecalhoAutenticado(token) }
+  );
+  return lerResposta(resposta);
+}
+
+export async function salvarMapeamentoIntegracao(token, dados) {
+  const resposta = await requisitar(`${API_URL}/api/integracoes/mapeamentos-produtos`, {
+    method: 'POST',
+    headers: cabecalhoAutenticado(token, { 'Content-Type': 'application/json' }),
+    body: JSON.stringify(dados)
+  });
+  return lerResposta(resposta);
+}
+
+export async function alterarStatusMapeamentoIntegracao(token, id, ativo) {
+  const resposta = await requisitar(
+    `${API_URL}/api/integracoes/mapeamentos-produtos/${id}/status`, {
+      method: 'PATCH',
+      headers: cabecalhoAutenticado(token, { 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ ativo })
+    }
+  );
+  return lerResposta(resposta);
+}
+
 export async function listarModelosWhatsapp(token) {
   const resposta = await requisitar(`${API_URL}/api/whatsapp/modelos`, {
     headers: cabecalhoAutenticado(token)

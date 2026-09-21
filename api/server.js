@@ -91,6 +91,7 @@ require('./rotas-whatsapp-admin')(app, pool);
 require('./rotas-atendimento')(app, pool);
 require('./rotas-administracao')(app, pool);
 require('./rotas-integracoes')(app, pool);
+require('./rotas-mapeamentos-integracoes')(app, pool);
 require('./rotas-relatorios')(app, pool);
 require('./rotas-cadastros')(app, pool);
 require('./rotas-operacionais')(app, pool);

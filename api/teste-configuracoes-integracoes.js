@@ -15,7 +15,9 @@ const CHAVES_TESTE = [
   'WHATSAPP_MODELO_CONSULTA_FORNECEDOR',
   'WHATSAPP_MODELO_ENTREGA_RESULTADO', 'COMUNICACOES_OUTBOX_HABILITADO',
   'SICOOB_CLIENT_ID', 'SICOOB_CLIENT_SECRET', 'SICOOB_CERT_PATH',
-  'SICOOB_KEY_PATH', 'SICOOB_CA_PATH', 'SICOOB_CHAVE_PIX', 'SICOOB_AMBIENTE'
+  'SICOOB_KEY_PATH', 'SICOOB_CA_PATH', 'SICOOB_CHAVE_PIX', 'SICOOB_AMBIENTE',
+  'WBUY_USUARIO', 'WBUY_USERNAME', 'WBUY_SENHA', 'WBUY_PASSWORD',
+  'WBUY_LOJA_URL', 'WBUY_TOKEN', 'WBUY_API_KEY'
 ];
 
 function poolFalso(valores) {
@@ -58,7 +60,8 @@ async function executar() {
     WHATSAPP_MODELO_CONSULTA_FORNECEDOR: 'consulta_teste',
     WHATSAPP_MODELO_ENTREGA_RESULTADO: 'entrega_teste',
     COMUNICACOES_OUTBOX_HABILITADO: 'true',
-    SICOOB_CLIENT_ID: 'id-ficticio'
+    SICOOB_CLIENT_ID: 'id-ficticio',
+    WBUY_TOKEN: 'token-legado-ficticio'
   };
   let servidor;
   try {
@@ -76,9 +79,12 @@ async function executar() {
     const itemWhatsapp = resumo.find(item => item.codigo === 'WHATSAPP');
     const itemSicoob = resumo.find(item => item.codigo === 'SICOOB');
     const itemBling = resumo.find(item => item.codigo === 'BLING');
+    const itemWbuy = resumo.find(item => item.codigo === 'WBUY');
     assert.strictEqual(itemWhatsapp.status, 'CONFIGURADO');
     assert.strictEqual(itemSicoob.status, 'PARCIAL');
     assert.strictEqual(itemSicoob.componentes.webhook_publico_mtls, false);
+    assert.strictEqual(itemWbuy.status, 'CREDENCIAIS_SEM_CONECTOR');
+    assert.strictEqual(itemWbuy.componentes.credencial_legada, true);
     assert.strictEqual(itemBling.status, 'PENDENTE');
     assert.ok(resumo.every(item => !JSON.stringify(item).includes('ficticio')),
       'O resumo nunca pode expor valores de configuração');

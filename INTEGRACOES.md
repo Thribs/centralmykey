@@ -46,12 +46,26 @@ credenciais e certificados de homologação. A criação remota por
 `PUT /cob/{txid}` está implementada com transporte simulado nos testes, mas
 ainda não foi homologada contra o Sicoob.
 
-## PlugPay, WBuy e Bling
+## WBuy e Bling
 
-Esses conectores ainda não estão implementados. Cadastrar credenciais não
-confirma pagamentos nem importa pedidos. Cada adaptador precisa do contrato
-oficial e do mapeamento de identificadores externos para pedidos, clientes,
-faturas, pagamentos e estornos da Central MyKey.
+A camada comum de produtos externos está implementada. A administração permite
+associar ID e/ou SKU da WBuy e do Bling a um serviço ativo da Central MyKey,
+detectar colisões, atualizar ou desativar o vínculo e auditar cada mudança.
+
+A configuração WBuy agora representa o contrato documentado pela plataforma:
+usuário e senha da API REST mais a URL da loja. O antigo token isolado não é
+considerado configuração suficiente. A importação continua desativada porque a
+documentação pública confirma os eventos `order` e `order_status`, mas não
+publica o esquema completo do payload nem um mecanismo verificável de assinatura.
+
+O adaptador Bling e a coexistência durante a transição ainda dependem do fluxo
+OAuth e do mapeamento de estados definido para a conta utilizada.
+
+## PlugPay
+
+O nome do produto ainda não identifica inequivocamente o provedor contratado.
+A base financeira aceita eventos normalizados `PLUGPAY`, mas nenhum endpoint
+externo será aberto antes de confirmar o fornecedor e seu contrato de assinatura.
 
 ## Eventos financeiros externos
 

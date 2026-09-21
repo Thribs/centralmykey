@@ -25,11 +25,14 @@ import {
   cadastrarUsuario,
   listarConfiguracoesSeguras,
   listarEventosIntegracao,
+  listarMapeamentosIntegracoes,
   listarModelosWhatsapp,
   listarPerfis,
   listarUsuarios,
+  salvarMapeamentoIntegracao,
   salvarConfiguracao,
-  salvarPermissoesUsuario
+  salvarPermissoesUsuario,
+  alterarStatusMapeamentoIntegracao
 } from './api';
 
 function tokenLocal() {
@@ -448,6 +451,8 @@ export function Integracoes() {
   const [integracoes, setIntegracoes] = useState([]);
   const [modelos, setModelos] = useState([]);
   const [eventos, setEventos] = useState([]);
+  const [mapeamentos, setMapeamentos] = useState([]);
+  const [servicos, setServicos] = useState([]);
   const [resumo, setResumo] = useState({});
   const [erro, setErro] = useState('');
   const [novo, setNovo] = useState({
@@ -456,21 +461,28 @@ export function Integracoes() {
     categoria: 'UTILIDADE'
   });
   const [salvando, setSalvando] = useState(false);
+  const [novoMapeamento, setNovoMapeamento] = useState({
+    provedor: 'WBUY', produto_externo_id: '', sku: '', nome_externo: '', servico_id: ''
+  });
 
   const carregar = useCallback(async () => {
     setErro('');
 
     try {
-      const [dadosIntegracoes, dadosModelos, dadosEventos] = await Promise.all([
+      const [dadosIntegracoes, dadosModelos, dadosEventos,
+        dadosMapeamentos] = await Promise.all([
         buscarIntegracoes(token),
         listarModelosWhatsapp(token),
-        listarEventosIntegracao(token, { limite: 30 })
+        listarEventosIntegracao(token, { limite: 30 }),
+        listarMapeamentosIntegracoes(token)
       ]);
 
       setIntegracoes(dadosIntegracoes.integracoes || []);
       setResumo(dadosIntegracoes.modelos_whatsapp || {});
       setModelos(dadosModelos.dados || []);
       setEventos(dadosEventos.dados || []);
+      setMapeamentos(dadosMapeamentos.dados || []);
+      setServicos(dadosMapeamentos.servicos || []);
     } catch (falha) {
       setErro(falha.message);
     }
@@ -499,6 +511,33 @@ export function Integracoes() {
   async function alterar(modelo, status, ativo = false) {
     try {
       await alterarModeloWhatsapp(token, modelo.id, { status, ativo });
+      await carregar();
+    } catch (falha) {
+      setErro(falha.message);
+    }
+  }
+
+  async function salvarMapeamento(evento) {
+    evento.preventDefault();
+    setSalvando(true);
+    setErro('');
+    try {
+      await salvarMapeamentoIntegracao(token, novoMapeamento);
+      setNovoMapeamento({
+        provedor: novoMapeamento.provedor,
+        produto_externo_id: '', sku: '', nome_externo: '', servico_id: ''
+      });
+      await carregar();
+    } catch (falha) {
+      setErro(falha.message);
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  async function alternarMapeamento(item) {
+    try {
+      await alterarStatusMapeamentoIntegracao(token, item.id, !item.ativo);
       await carregar();
     } catch (falha) {
       setErro(falha.message);
@@ -534,6 +573,66 @@ export function Integracoes() {
             </i>
           </article>
         ))}
+      </div>
+
+      <div className="admin-panel integration-panel">
+        <header>
+          <div>
+            <span>COMÉRCIO ELETRÔNICO</span>
+            <h2>Produtos WBuy/Bling → serviços MyKey</h2>
+          </div>
+          <div className="integration-counts">
+            <span>Mapeados: <strong>{mapeamentos.length}</strong></span>
+          </div>
+        </header>
+        <form className="integration-form" onSubmit={salvarMapeamento}>
+          <select value={novoMapeamento.provedor}
+            onChange={e => setNovoMapeamento({ ...novoMapeamento, provedor: e.target.value })}>
+            <option value="WBUY">WBuy</option><option value="BLING">Bling</option>
+          </select>
+          <input value={novoMapeamento.produto_externo_id}
+            onChange={e => setNovoMapeamento({ ...novoMapeamento, produto_externo_id: e.target.value })}
+            placeholder="ID externo" />
+          <input value={novoMapeamento.sku}
+            onChange={e => setNovoMapeamento({ ...novoMapeamento, sku: e.target.value })}
+            placeholder="SKU" />
+          <input value={novoMapeamento.nome_externo}
+            onChange={e => setNovoMapeamento({ ...novoMapeamento, nome_externo: e.target.value })}
+            placeholder="Nome do produto" />
+          <select value={novoMapeamento.servico_id}
+            onChange={e => setNovoMapeamento({ ...novoMapeamento, servico_id: e.target.value })}
+            required>
+            <option value="">Serviço MyKey</option>
+            {servicos.map(servico => <option key={servico.id} value={servico.id}>
+              {servico.codigo} · {servico.nome}
+            </option>)}
+          </select>
+          <button type="submit" disabled={salvando ||
+            (!novoMapeamento.produto_externo_id.trim() && !novoMapeamento.sku.trim())}>
+            <Plus size={15} /> Mapear
+          </button>
+        </form>
+        <div className="admin-table-wrap">
+          <table className="admin-table">
+            <thead><tr><th>Origem</th><th>Produto/SKU</th><th>Serviço MyKey</th><th>Status</th><th>Ação</th></tr></thead>
+            <tbody>
+              {mapeamentos.length === 0 && <tr><td colSpan="5" className="admin-empty">
+                Nenhum produto externo mapeado.
+              </td></tr>}
+              {mapeamentos.map(item => <tr key={item.id}>
+                <td><strong>{item.provedor}</strong></td>
+                <td>{item.nome_externo || item.produto_externo_id || item.sku}<small>
+                  {[item.produto_externo_id, item.sku].filter(Boolean).join(' · ')}
+                </small></td>
+                <td>{item.servico_codigo} · {item.servico_nome}</td>
+                <td>{item.ativo ? 'ATIVO' : 'INATIVO'}</td>
+                <td><button type="button" onClick={() => alternarMapeamento(item)}>
+                  {item.ativo ? 'Desativar' : 'Ativar'}
+                </button></td>
+              </tr>)}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       <div className="admin-panel integration-panel">
