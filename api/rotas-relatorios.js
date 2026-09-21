@@ -2,17 +2,27 @@ module.exports = function(app, pool) {
   const autenticarToken = app.locals.autenticarToken;
   const exigirPermissao = app.locals.exigirPermissao;
 
+  function dataIsoValida(valor) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(valor)) return false;
+    const [ano, mes, dia] = valor.split('-').map(Number);
+    const data = new Date(Date.UTC(ano, mes - 1, dia));
+    return data.getUTCFullYear() === ano &&
+      data.getUTCMonth() === mes - 1 &&
+      data.getUTCDate() === dia;
+  }
+
   function periodo(req) {
-    const fim = /^\d{4}-\d{2}-\d{2}$/.test(String(req.query.fim || ''))
-      ? String(req.query.fim)
-      : null;
+    const inicioInformado = String(req.query.inicio || '').trim();
+    const fimInformado = String(req.query.fim || '').trim();
+    const inicio = inicioInformado || null;
+    const fim = fimInformado || null;
 
-    const inicio = /^\d{4}-\d{2}-\d{2}$/.test(
-      String(req.query.inicio || '')
-    )
-      ? String(req.query.inicio)
-      : null;
-
+    if ((inicio && !dataIsoValida(inicio)) || (fim && !dataIsoValida(fim))) {
+      return { erro: 'Período inválido' };
+    }
+    if (inicio && fim && inicio > fim) {
+      return { erro: 'A data inicial não pode ser posterior à data final' };
+    }
     return { inicio, fim };
   }
 
@@ -242,9 +252,17 @@ module.exports = function(app, pool) {
     exigirPermissao('RELATORIOS', 'visualizar'),
     async (req, res) => {
       try {
-        const { inicio, fim } = periodo(req);
-        const filtros = [];
-        const parametros = [];
+        const intervalo = periodo(req);
+        if (intervalo.erro) {
+          return res.status(400).json({ ok: false, error: intervalo.erro });
+        }
+        const { inicio, fim } = intervalo;
+        const moeda = String(req.query.moeda || 'BRL').trim().toUpperCase();
+        if (!['BRL', 'USD', 'PYG'].includes(moeda)) {
+          return res.status(400).json({ ok: false, error: 'Moeda inválida' });
+        }
+        const filtros = ['p.moeda = ?'];
+        const parametros = [moeda];
 
         if (inicio) {
           filtros.push('DATE(p.criado_em) >= ?');
@@ -256,6 +274,8 @@ module.exports = function(app, pool) {
         if (fim) {
           filtros.push('DATE(p.criado_em) <= ?');
           parametros.push(fim);
+        } else {
+          filtros.push('DATE(p.criado_em) <= CURDATE()');
         }
 
         const where = `WHERE ${filtros.join(' AND ')}`;
@@ -338,7 +358,8 @@ module.exports = function(app, pool) {
           periodo: {
             inicio: inicio || null,
             fim: fim || null,
-            padrao_dias: inicio ? null : 30
+            padrao_dias: inicio ? null : 30,
+            moeda
           },
           resumo: resumo[0],
           por_status: porStatus,

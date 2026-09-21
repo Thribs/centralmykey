@@ -3521,7 +3521,9 @@
   display:flex;align-items:center;gap:6px;padding:0 9px;
   border:1px solid #d8deeb;border-radius:8px;background:white
 }
-.report-heading input { min-height:36px;border:0;outline:0 }
+.report-heading input,.report-heading select {
+  min-height:36px;border:0;background:white;outline:0
+}
 .report-heading form button {
   display:flex;align-items:center;gap:6px;min-height:38px;padding:0 13px;
   border:0;border-radius:8px;background:#2f23e8;color:white;

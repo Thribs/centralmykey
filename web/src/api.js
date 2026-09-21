@@ -794,6 +794,7 @@ export async function buscarRelatorioOperacional(token, filtros = {}) {
 
   if (filtros.inicio) parametros.set('inicio', filtros.inicio);
   if (filtros.fim) parametros.set('fim', filtros.fim);
+  if (filtros.moeda) parametros.set('moeda', filtros.moeda);
 
   const resposta = await requisitar(
     `${API_URL}/api/relatorios/operacional?${parametros.toString()}`,

@@ -30,10 +30,10 @@ function tokenLocal() {
   return encontrada ? localStorage.getItem(encontrada) : '';
 }
 
-function dinheiro(valor) {
+function dinheiro(valor, moeda = 'BRL') {
   return new Intl.NumberFormat('pt-BR', {
     style: 'currency',
-    currency: 'BRL'
+    currency: moeda
   }).format(Number(valor || 0));
 }
 
@@ -51,9 +51,11 @@ export default function Relatorios() {
   const token = useMemo(() => tokenLocal(), []);
   const [inicio, setInicio] = useState(trintaDiasAtras());
   const [fim, setFim] = useState(hoje());
+  const [moeda, setMoeda] = useState('BRL');
   const [filtros, setFiltros] = useState({
     inicio: trintaDiasAtras(),
-    fim: hoje()
+    fim: hoje(),
+    moeda: 'BRL'
   });
   const [dados, setDados] = useState({
     resumo: {},
@@ -84,10 +86,11 @@ export default function Relatorios() {
 
   function aplicar(evento) {
     evento.preventDefault();
-    setFiltros({ inicio, fim });
+    setFiltros({ inicio, fim, moeda });
   }
 
   const resumo = dados.resumo || {};
+  const moedaRelatorio = dados.periodo?.moeda || filtros.moeda || 'BRL';
   const maximoDiario = Math.max(
     ...(dados.por_dia || []).map(item => Number(item.quantidade || 0)),
     1
@@ -111,6 +114,14 @@ export default function Relatorios() {
           <label>
             <CalendarDays size={15} />
             <input type="date" value={fim} onChange={e => setFim(e.target.value)} />
+          </label>
+          <label>
+            <CircleDollarSign size={15} />
+            <select value={moeda} onChange={e => setMoeda(e.target.value)}>
+              <option value="BRL">BRL</option>
+              <option value="USD">USD</option>
+              <option value="PYG">PYG</option>
+            </select>
           </label>
           <button type="submit">
             <RefreshCw size={15} className={carregando ? 'rotating' : ''} />
@@ -137,13 +148,13 @@ export default function Relatorios() {
         <article>
           <span><CircleDollarSign size={18} /></span>
           <div><small>Valor de vendas</small><strong>
-            {dinheiro(resumo.valor_vendas)}
+            {dinheiro(resumo.valor_vendas, moedaRelatorio)}
           </strong></div>
         </article>
         <article>
           <span><CircleDollarSign size={18} /></span>
           <div><small>Resultado bruto</small><strong>
-            {dinheiro(resumo.resultado_bruto)}
+            {dinheiro(resumo.resultado_bruto, moedaRelatorio)}
           </strong></div>
         </article>
         <article>
@@ -194,7 +205,7 @@ export default function Relatorios() {
                 <tr key={item.status}>
                   <td>{item.status}</td>
                   <td>{item.quantidade}</td>
-                  <td>{dinheiro(item.valor_vendas)}</td>
+                  <td>{dinheiro(item.valor_vendas, moedaRelatorio)}</td>
                 </tr>
               ))}
             </tbody>
@@ -210,7 +221,7 @@ export default function Relatorios() {
                 <tr key={item.fornecedor}>
                   <td>{item.fornecedor}</td>
                   <td>{item.quantidade}</td>
-                  <td>{dinheiro(item.custo)}</td>
+                  <td>{dinheiro(item.custo, moedaRelatorio)}</td>
                 </tr>
               ))}
             </tbody>
@@ -226,7 +237,7 @@ export default function Relatorios() {
                 <tr key={item.origem}>
                   <td>{item.origem}</td>
                   <td>{item.quantidade}</td>
-                  <td>{dinheiro(item.valor_vendas)}</td>
+                  <td>{dinheiro(item.valor_vendas, moedaRelatorio)}</td>
                 </tr>
               ))}
             </tbody>
