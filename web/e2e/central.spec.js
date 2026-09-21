@@ -1165,6 +1165,161 @@ test('indisponibilidade da API é explicada e reprocessada sem fornecedor', asyn
   expect(requisicoesReprocessamento).toBe(1);
 });
 
+test('retentativa de comunicação distingue falha confirmada de envio incerto', async ({ page }) => {
+  const pedidos = [
+    {
+      id: 700009,
+      protocolo: 'CMK-E2E-ENVIO-FALHOU',
+      comunicacaoId: 840001,
+      status: 'FALHOU',
+      reagendada: false,
+      requisicoes: 0,
+      corpo: null
+    },
+    {
+      id: 700010,
+      protocolo: 'CMK-E2E-ENVIO-INCERTO',
+      comunicacaoId: 840002,
+      status: 'INCERTA',
+      reagendada: false,
+      requisicoes: 0,
+      corpo: null
+    }
+  ];
+
+  await prepararPagina(page, async (route, url) => {
+    if (url.pathname === '/api/fila-pedidos/resumo') {
+      await json(route, { ok: true, indicadores: {} });
+      return true;
+    }
+    if (url.pathname === '/api/fila-pedidos') {
+      await json(route, {
+        ok: true,
+        total: pedidos.length,
+        dados: pedidos.map(item => ({
+          id: item.id,
+          protocolo: item.protocolo,
+          cliente: 'CLIENTE COMUNICACAO E2E',
+          servico: 'Senha GM',
+          marca: 'GM',
+          chassi: `9BG-E2E-${item.id}`,
+          fornecedor: 'Márcio',
+          status: 'EM_CONSULTA',
+          valor_venda: 60,
+          custo: 22,
+          moeda: 'BRL',
+          criado_em: '2026-09-21T12:00:00Z',
+          comunicacao_fornecedor_status: item.reagendada
+            ? 'PENDENTE'
+            : item.status
+        }))
+      });
+      return true;
+    }
+
+    const pedido = pedidos.find(item =>
+      url.pathname === `/api/pedidos/${item.id}`
+    );
+    if (pedido) {
+      await json(route, {
+        ok: true,
+        pedido: {
+          id: pedido.id,
+          protocolo: pedido.protocolo,
+          cliente: 'CLIENTE COMUNICACAO E2E',
+          servico: 'Senha GM',
+          marca: 'GM',
+          chassi: `9BG-E2E-${pedido.id}`,
+          fornecedor: 'Márcio',
+          fornecedor_id: 850001,
+          status: 'EM_CONSULTA',
+          valor_venda: 60,
+          custo: 22,
+          moeda: 'BRL',
+          criado_em: '2026-09-21T12:00:00Z'
+        },
+        partes: {},
+        resultados: [],
+        historico: [],
+        comunicacoes: [{
+          id: pedido.comunicacaoId,
+          finalidade: 'CONSULTA_FORNECEDOR',
+          fornecedor_id: 850001,
+          status: pedido.reagendada ? 'PENDENTE' : pedido.status,
+          tentativas: 1,
+          erro_codigo: pedido.reagendada
+            ? null
+            : pedido.status === 'INCERTA'
+              ? 'TIMEOUT'
+              : 'FALHA_TRANSPORTE',
+          atualizado_em: '2026-09-21T12:10:00Z'
+        }]
+      });
+      return true;
+    }
+
+    const comunicacao = pedidos.find(item =>
+      url.pathname === `/api/pedidos/${item.id}/comunicacoes/` +
+        `${item.comunicacaoId}/reprocessar`
+    );
+    if (comunicacao && route.request().method() === 'POST') {
+      comunicacao.requisicoes += 1;
+      comunicacao.corpo = route.request().postDataJSON();
+      comunicacao.reagendada = true;
+      await json(route, {
+        ok: true,
+        comunicacao: {
+          id: comunicacao.comunicacaoId,
+          status: 'PENDENTE'
+        }
+      });
+      return true;
+    }
+    return false;
+  });
+
+  const confirmacoes = [false, true];
+  page.on('dialog', async dialogo => {
+    expect(dialogo.type()).toBe('confirm');
+    const aceitar = confirmacoes.shift();
+    if (aceitar) await dialogo.accept();
+    else await dialogo.dismiss();
+  });
+
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Pedidos e senhas', exact: true }).click();
+
+  await page.locator('tr', { hasText: pedidos[0].protocolo }).click();
+  let detalhe = page.getByRole('dialog');
+  await expect(detalhe.getByText('Falha no envio', { exact: true })).toBeVisible();
+  await expect(detalhe.getByText('Verifique a configuração da integração.'))
+    .toBeVisible();
+  await detalhe.getByRole('button', { name: 'Tentar envio novamente' }).click();
+  await expect(detalhe.getByText('Aguardando envio', { exact: true })).toBeVisible();
+  expect(pedidos[0].requisicoes).toBe(1);
+  expect(pedidos[0].corpo).toEqual({ confirmar_nao_enviado: false });
+  await detalhe.getByRole('button', { name: 'Fechar' }).click();
+
+  await page.locator('tr', { hasText: pedidos[1].protocolo }).click();
+  detalhe = page.getByRole('dialog');
+  await expect(detalhe.getByText('Envio incerto', { exact: true })).toBeVisible();
+  await expect(detalhe.getByText(
+    'Confirme manualmente antes de tentar novo envio.'
+  )).toBeVisible();
+  const tentarNovamente = detalhe.getByRole('button', {
+    name: 'Tentar envio novamente'
+  });
+  await tentarNovamente.click();
+  expect(pedidos[1].requisicoes).toBe(0);
+  await expect(tentarNovamente).toBeVisible();
+
+  await tentarNovamente.click();
+  await expect(detalhe.getByText('Aguardando envio', { exact: true })).toBeVisible();
+  expect(pedidos[1].requisicoes).toBe(1);
+  expect(pedidos[1].corpo).toEqual({ confirmar_nao_enviado: true });
+  expect(confirmacoes).toHaveLength(0);
+});
+
 test('bloqueio de cliente só ocorre depois da confirmação', async ({ page }) => {
   let bloqueado = false;
   let alteracoes = 0;

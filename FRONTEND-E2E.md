@@ -27,6 +27,8 @@ A suíte cobre inicialmente:
   simulada e ausência de encaminhamento ao fornecedor;
 - indisponibilidade da API explicada ao operador, custo e fornecedor zerados,
   reprocessamento único e conclusão posterior;
+- retentativa direta após falha confirmada e confirmação obrigatória antes de
+  repetir um envio incerto;
 - bloqueio de cliente somente depois da confirmação;
 - menu móvel e ausência de rolagem horizontal em 390 × 844 pixels.
 
