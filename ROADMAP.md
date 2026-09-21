@@ -178,7 +178,7 @@ O próximo marco deve ser **o contrato da máquina de estados GM junto com o tes
 
 Na branch `feature/pagamento-manual-idempotente`, ainda não publicada:
 
-- ficou documentado que `api.joelpires.com.br` é uma API externa já existente; a Central MyKey mantém somente o cliente de integração e não deve construir ou publicar uma segunda API Joel Pires;
+- ficou documentado e coberto por regressão que `api.joelpires.com.br` é uma API externa já existente; a Central MyKey mantém somente o cliente de integração e não deve construir ou publicar uma segunda API Joel Pires;
 - a confirmação manual foi tornada idempotente por pedido, meio e referência/comprovante;
 - foi adicionado teste funcional da rota HTTP com MySQL e rollback;
 - foi criada uma outbox transacional para consultas a fornecedores;

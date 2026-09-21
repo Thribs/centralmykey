@@ -51,6 +51,27 @@ async function executar() {
     'centralmykey'
   );
 
+  process.env.AMBIENTE_API_JOELPIRES = 'publico';
+  delete process.env.URL_API_JOELPIRES_PUBLICO;
+  let urlPublica;
+  await chamarBuscaApi({
+    montadoraId: 1,
+    chassi: '9BGJP7520MB197925',
+    fetchImpl: async url => {
+      urlPublica = url;
+      return {
+        ok: true,
+        status: 200,
+        text: async () => '[]'
+      };
+    }
+  });
+  assert.strictEqual(
+    new URL(urlPublica).origin,
+    'https://api.joelpires.com.br'
+  );
+  process.env.AMBIENTE_API_JOELPIRES = 'teste';
+
   const senha = mapearSenhaApi(resposta[0], {
     montadoraId: 1,
     chassi: '9BGJP7520MB197925',
