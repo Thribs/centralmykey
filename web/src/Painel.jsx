@@ -10,6 +10,7 @@ import OpenAILab from './OpenAILab';
 import Auditoria from './Auditoria';
 import Monitoramento from './Monitoramento';
 import {
+  buscarGlobal,
   buscarResumoNotificacoes,
   listarNotificacoes,
   marcarNotificacaoLida,
@@ -350,6 +351,20 @@ export default function Painel({
 }) {
   const [moduloAtivo, setModuloAtivo] = useState('DASHBOARD');
   const [menuAberto, setMenuAberto] = useState(false);
+  const [buscaGlobal, setBuscaGlobal] = useState('');
+  const [resultadosBusca, setResultadosBusca] = useState([]);
+  const [buscando, setBuscando] = useState(false);
+  const [erroBusca, setErroBusca] = useState('');
+  const [buscaAberta, setBuscaAberta] = useState(false);
+  const [destinoBusca, setDestinoBusca] = useState({
+    modulo: '',
+    busca: '',
+    chave: 0
+  });
+  const token = useMemo(
+    () => localStorage.getItem('central_mykey_token') || '',
+    []
+  );
 
   const modulosPermitidos = useMemo(() => {
     const permitidos = new Set(
@@ -383,6 +398,60 @@ export default function Painel({
       setModuloAtivo(codigo);
       setMenuAberto(false);
     }
+  }
+
+  useEffect(() => {
+    const termo = buscaGlobal.trim();
+    if (termo.length < 2) return undefined;
+
+    let ativo = true;
+    const atraso = window.setTimeout(async () => {
+      setBuscando(true);
+      setErroBusca('');
+      try {
+        const resposta = await buscarGlobal(token, termo);
+        if (ativo) {
+          setResultadosBusca(resposta.dados || []);
+          setBuscaAberta(true);
+        }
+      } catch (falha) {
+        if (ativo) {
+          setResultadosBusca([]);
+          setErroBusca(falha.message);
+          setBuscaAberta(true);
+        }
+      } finally {
+        if (ativo) setBuscando(false);
+      }
+    }, 300);
+
+    return () => {
+      ativo = false;
+      window.clearTimeout(atraso);
+    };
+  }, [buscaGlobal, token]);
+
+  function alterarBuscaGlobal(evento) {
+    const valor = evento.target.value;
+    setBuscaGlobal(valor);
+    if (valor.trim().length < 2) {
+      setResultadosBusca([]);
+      setErroBusca('');
+      setBuscaAberta(false);
+      setBuscando(false);
+    }
+  }
+
+  function abrirResultadoBusca(item) {
+    if (!modulosPermitidos.some(modulo => modulo.codigo === item.modulo)) return;
+    setDestinoBusca(atual => ({
+      modulo: item.modulo,
+      busca: item.busca,
+      chave: atual.chave + 1
+    }));
+    setModuloAtivo(item.modulo);
+    setBuscaAberta(false);
+    setMenuAberto(false);
   }
 
   return (
@@ -465,13 +534,50 @@ export default function Painel({
           </div>
 
           <div className="topbar-actions">
-            <label className="global-search">
-              <Search size={18} />
-              <input
-                type="search"
-                placeholder="Buscar na Central"
-              />
-            </label>
+            <div className="global-search-wrap">
+              <label className="global-search">
+                <Search size={18} />
+                <input
+                  type="search"
+                  value={buscaGlobal}
+                  onChange={alterarBuscaGlobal}
+                  onFocus={() => {
+                    if (buscaGlobal.trim().length >= 2) setBuscaAberta(true);
+                  }}
+                  onBlur={() => {
+                    window.setTimeout(() => setBuscaAberta(false), 150);
+                  }}
+                  onKeyDown={evento => {
+                    if (evento.key === 'Escape') setBuscaAberta(false);
+                  }}
+                  placeholder="Pedido, cliente ou fornecedor"
+                  aria-label="Buscar na Central"
+                  aria-expanded={buscaAberta}
+                />
+              </label>
+              {buscaAberta && (
+                <div className="global-search-results" role="listbox">
+                  {buscando && <p>Buscando...</p>}
+                  {!buscando && erroBusca && <p className="search-error">{erroBusca}</p>}
+                  {!buscando && !erroBusca && resultadosBusca.length === 0 && (
+                    <p>Nenhum resultado encontrado.</p>
+                  )}
+                  {!buscando && !erroBusca && resultadosBusca.map(item => (
+                    <button
+                      type="button"
+                      key={`${item.tipo}-${item.id}`}
+                      onClick={() => abrirResultadoBusca(item)}
+                      role="option"
+                      aria-selected="false"
+                    >
+                      <span>{item.tipo}</span>
+                      <strong>{item.titulo}</strong>
+                      <small>{item.descricao || item.estado}</small>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
 
             <CaixaNotificacoes
               modulos={modulosPermitidos}
@@ -502,16 +608,25 @@ export default function Painel({
               permissoes={permissoes}
             />
           ) : atual?.codigo === 'PEDIDOS_SENHAS' ? (
-            <Pedidos />
+            <Pedidos
+              key={`pedidos-${destinoBusca.modulo === 'PEDIDOS_SENHAS' ? destinoBusca.chave : 0}`}
+              buscaInicial={destinoBusca.modulo === 'PEDIDOS_SENHAS' ? destinoBusca.busca : ''}
+            />
           ) : atual?.codigo === 'BANCO_SENHAS' ? (
             <BancoSenhas
               usuario={usuario}
               permissoes={permissoes}
             />
           ) : atual?.codigo === 'CLIENTES' ? (
-            <Clientes />
+            <Clientes
+              key={`clientes-${destinoBusca.modulo === 'CLIENTES' ? destinoBusca.chave : 0}`}
+              buscaInicial={destinoBusca.modulo === 'CLIENTES' ? destinoBusca.busca : ''}
+            />
           ) : atual?.codigo === 'FORNECEDORES' ? (
-            <Fornecedores />
+            <Fornecedores
+              key={`fornecedores-${destinoBusca.modulo === 'FORNECEDORES' ? destinoBusca.chave : 0}`}
+              buscaInicial={destinoBusca.modulo === 'FORNECEDORES' ? destinoBusca.busca : ''}
+            />
           ) : atual?.codigo === 'FINANCEIRO' ? (
             <Financeiro />
           ) : atual?.codigo === 'RELATORIOS' ? (

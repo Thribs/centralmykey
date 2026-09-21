@@ -625,6 +625,10 @@
   gap: 13px;
 }
 
+.global-search-wrap {
+  position: relative;
+}
+
 .global-search {
   width: min(25vw, 290px);
   height: 42px;
@@ -636,6 +640,62 @@
   border-radius: 12px;
   color: #9a9daf;
   background: #f8f9fc;
+}
+
+.global-search-results {
+  position: absolute;
+  z-index: 50;
+  top: calc(100% + 8px);
+  right: 0;
+  width: min(430px, 90vw);
+  max-height: 420px;
+  overflow-y: auto;
+  padding: 6px;
+  border: 1px solid #e1e4ee;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 16px 38px rgba(27, 31, 55, .18);
+}
+
+.global-search-results > p {
+  margin: 0;
+  padding: 16px 14px;
+  color: #777e94;
+  font-size: 12px;
+}
+
+.global-search-results > p.search-error { color: #b52d21 }
+
+.global-search-results > button {
+  display: grid;
+  grid-template-columns: 78px 1fr;
+  width: 100%;
+  gap: 3px 9px;
+  padding: 10px 11px;
+  border: 0;
+  border-radius: 8px;
+  color: #25293d;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.global-search-results > button:hover,
+.global-search-results > button:focus-visible { background: #f5f3ff }
+.global-search-results > button > span {
+  grid-row: 1 / span 2;
+  color: #6b5de7;
+  font-size: 9px;
+  font-weight: 850;
+  letter-spacing: .04em;
+}
+.global-search-results > button > strong { font-size: 12px }
+.global-search-results > button > small {
+  overflow: hidden;
+  color: #7c8297;
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .global-search input {

@@ -81,6 +81,7 @@ app.get('/api/configuracoes', autenticarToken, exigirPermissao('CONFIGURACOES', 
 });
 
 require('./rotas-clientes')(app, pool);
+require('./rotas-busca-global')(app, pool);
 require('./rotas-financeiro')(app, pool);
 require('./rotas-fechamentos-fornecedores')(app, pool);
 require('./rotas-estornos')(app, pool);

@@ -774,14 +774,14 @@ function Indicadores({ tipo, resumo }) {
   );
 }
 
-function TelaCadastro({ tipo }) {
+function TelaCadastro({ tipo, buscaInicial = '' }) {
   const cliente = tipo === 'cliente';
   const token = useMemo(() => obterToken(), []);
   const [dados, setDados] = useState([]);
   const [resumo, setResumo] = useState({});
-  const [busca, setBusca] = useState('');
-  const [filtro, setFiltro] = useState('');
-  const [status, setStatus] = useState('1');
+  const [busca, setBusca] = useState(buscaInicial);
+  const [filtro, setFiltro] = useState(buscaInicial);
+  const [status, setStatus] = useState(buscaInicial ? '' : '1');
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState('');
   const [erroModal, setErroModal] = useState('');
@@ -1103,10 +1103,10 @@ function TelaCadastro({ tipo }) {
   );
 }
 
-export function Clientes() {
-  return <TelaCadastro tipo="cliente" />;
+export function Clientes({ buscaInicial = '' }) {
+  return <TelaCadastro tipo="cliente" buscaInicial={buscaInicial} />;
 }
 
-export function Fornecedores() {
-  return <TelaCadastro tipo="fornecedor" />;
+export function Fornecedores({ buscaInicial = '' }) {
+  return <TelaCadastro tipo="fornecedor" buscaInicial={buscaInicial} />;
 }

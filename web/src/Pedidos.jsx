@@ -415,13 +415,13 @@ function DetalhePedido({
   );
 }
 
-export default function Pedidos() {
+export default function Pedidos({ buscaInicial = '' }) {
   const token = localStorage.getItem('central_mykey_token');
   const [resumo, setResumo] = useState(null);
   const [pedidos, setPedidos] = useState([]);
   const [total, setTotal] = useState(0);
   const [status, setStatus] = useState('');
-  const [busca, setBusca] = useState('');
+  const [busca, setBusca] = useState(buscaInicial);
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState('');
   const [detalhe, setDetalhe] = useState(null);

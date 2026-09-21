@@ -127,7 +127,7 @@ Os testes integrados criaram registros somente dentro das transações e executa
 | Estados intermediários | PARCIAL | UI mostra estados de pedidos/atendimentos e bloqueia botões durante ações | Build/lint apenas | Causa da indisponibilidade/reprocessamento não é explícita nem testada | Modelar estados operacionais e testes E2E | Operador toma ação errada sobre pedido em retentativa |
 | Responsividade | PARCIAL | `App.css` tem media queries entre 520px e 1120px | Nenhum teste visual | Não há matriz de dispositivos ou regressão visual | Validar fluxos críticos em celular/tablet/desktop | Ação crítica inacessível em tela pequena |
 | Confirmação de ações destrutivas | PARCIAL | Confirmações em cancelamento/finalização de atendimento e bloqueio de cliente/fornecedor | Nenhum funcional | Não há política comum; cancelamento de pedido/estorno nem existem | Mapear ações destrutivas e testar confirmação | Exclusão/bloqueio acidental ou experiência inconsistente |
-| Correspondência frontend/backend | PARCIAL | `Painel.jsx` liga módulos reais a componentes e `api.js` chama rotas existentes | Build/lint apenas | Sem teste de contrato/E2E; sino e busca global são visuais sem função; integrações exibem configuração sem operação | Teste de contrato e E2E dos fluxos críticos | Interface promete capacidade inexistente ou quebra após mudança de API |
+| Correspondência frontend/backend | PARCIAL | `Painel.jsx` liga módulos reais a componentes; a busca global consulta pedidos, clientes e fornecedores conforme permissões e abre o módulo filtrado | `teste-busca-global.js` cobre contrato HTTP, isolamento por permissão e rollback; build/lint cobrem a interface | Ainda não há teste de navegador dos fluxos críticos; integrações externas permanecem condicionadas à homologação | Adicionar E2E dos fluxos críticos e ampliar a busca somente quando houver destino operacional | Interface pode quebrar após mudança de contrato não coberta pelo teste de navegador |
 
 ## Divergências entre regra documentada e código atual
 
@@ -185,6 +185,7 @@ Na branch `feature/pagamento-manual-idempotente`, ainda não publicada:
 - o relatório operacional agora separa moedas, valida datas e períodos e limita o padrão até o dia atual; um dataset transacional reconcilia vendas, custos, resultado, clientes, status, fornecedor, origem e evolução diária;
 - o painel financeiro agora filtra BRL, USD e PYG em faturas, lançamentos e fechamentos; faturas explicitamente vencidas entram no valor em aberto e pagamentos ligados a lançamentos cancelados não entram no recebido do dia;
 - administradores agora possuem uma tela de monitoramento atualizada a cada minuto com severidade, pedidos atrasados, reprocessamento GM, outbox, eventos de integração e alertas internos, sem exposição de payloads ou destinatários;
+- a busca do cabeçalho agora localiza pedidos, clientes e fornecedores apenas nos módulos autorizados e abre o destino já filtrado; o teste HTTP confirma isolamento por permissão e rollback;
 - a confirmação manual foi tornada idempotente por pedido, meio e referência/comprovante;
 - foi adicionado teste funcional da rota HTTP com MySQL e rollback;
 - foi criada uma outbox transacional para consultas a fornecedores;

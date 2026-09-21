@@ -41,6 +41,15 @@ export async function buscarSessao(token) {
   return lerResposta(resposta);
 }
 
+export async function buscarGlobal(token, termo) {
+  const parametros = new URLSearchParams({ termo });
+  const resposta = await requisitar(
+    `${API_URL}/api/busca-global?${parametros.toString()}`,
+    { headers: cabecalhoAutenticado(token) }
+  );
+  return lerResposta(resposta);
+}
+
 export async function buscarResumoNotificacoes(token) {
   const resposta = await requisitar(`${API_URL}/api/notificacoes/resumo`, {
     headers: cabecalhoAutenticado(token)
