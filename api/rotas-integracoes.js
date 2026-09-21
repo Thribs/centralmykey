@@ -39,4 +39,31 @@ module.exports = function registrarRotasIntegracoes(app, pool) {
         return res.status(500).json({ ok: false, error: 'Erro ao consultar eventos de integração' });
       }
     });
+
+  app.get('/api/integracoes/referencias-pagamento', autenticarToken,
+    exigirPermissao('CONFIGURACOES', 'visualizar'), async (req, res) => {
+      const provedor = String(req.query.provedor || '').trim().toUpperCase();
+      const limite = Math.min(Math.max(Number(req.query.limite) || 50, 1), 200);
+      if (provedor && !['SICOOB', 'PLUGPAY', 'WBUY'].includes(provedor)) {
+        return res.status(400).json({ ok: false, error: 'Provedor inválido' });
+      }
+      try {
+        const params = [];
+        const filtro = provedor ? 'WHERE provedor=?' : '';
+        if (provedor) params.push(provedor);
+        params.push(limite);
+        const [dados] = await pool.query(
+          `SELECT id, provedor, entidade, entidade_id, referencia_provedor,
+                  valor, moeda, status, identificador_pagamento, erro_codigo,
+                  erro_detalhe, criada_em, registrada_em, paga_em, atualizada_em
+             FROM integracao_referencias_pagamento ${filtro}
+            ORDER BY id DESC LIMIT ?`,
+          params
+        );
+        return res.json({ ok: true, total: dados.length, dados });
+      } catch (error) {
+        console.error('Erro ao listar referências de pagamento:', error);
+        return res.status(500).json({ ok: false, error: 'Erro ao consultar referências de pagamento' });
+      }
+    });
 };

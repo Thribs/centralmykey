@@ -1,0 +1,23 @@
+CREATE TABLE IF NOT EXISTS integracao_referencias_pagamento (
+  id BIGINT NOT NULL AUTO_INCREMENT,
+  provedor VARCHAR(40) NOT NULL,
+  entidade VARCHAR(40) NOT NULL,
+  entidade_id BIGINT NOT NULL,
+  referencia_provedor VARCHAR(120) NOT NULL,
+  valor DECIMAL(12,2) NOT NULL,
+  moeda CHAR(3) NOT NULL DEFAULT 'BRL',
+  status ENUM('PREPARADA','REGISTRADA','PAGA','CANCELADA','EXPIRADA','FALHOU')
+    NOT NULL DEFAULT 'PREPARADA',
+  identificador_pagamento VARCHAR(160) DEFAULT NULL,
+  erro_codigo VARCHAR(80) DEFAULT NULL,
+  erro_detalhe VARCHAR(500) DEFAULT NULL,
+  criada_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  registrada_em DATETIME DEFAULT NULL,
+  paga_em DATETIME DEFAULT NULL,
+  atualizada_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_integracao_referencia_provedor (provedor, referencia_provedor),
+  KEY idx_integracao_referencia_entidade (provedor, entidade, entidade_id),
+  KEY idx_integracao_referencia_status (provedor, status, criada_em),
+  KEY idx_integracao_referencia_pagamento (provedor, identificador_pagamento)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

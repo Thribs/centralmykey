@@ -122,6 +122,13 @@ async function processarEventoPagamentoPedido(pool, dados, opcoes = {}) {
         evento.payloadHash, JSON.stringify(evento.payload)]
     );
     const eventoBancoId = insercaoEvento.insertId;
+    if (opcoes.forcarPedidoNaoEncontrado) {
+      const resultado = await marcarFalha(connection, eventoBancoId,
+        opcoes.pedidoNaoEncontradoCodigo || 'PEDIDO_NAO_ENCONTRADO',
+        opcoes.pedidoNaoEncontradoDetalhe || 'Pedido informado pelo evento não encontrado');
+      await connection.commit();
+      return resultado;
+    }
     const parametrosPedido = evento.pedidoId > 0
       ? [evento.pedidoId]
       : [evento.protocolo];
@@ -137,7 +144,8 @@ async function processarEventoPagamentoPedido(pool, dados, opcoes = {}) {
     );
     if (!pedidos.length) {
       const resultado = await marcarFalha(connection, eventoBancoId,
-        'PEDIDO_NAO_ENCONTRADO', 'Pedido informado pelo evento não encontrado');
+        opcoes.pedidoNaoEncontradoCodigo || 'PEDIDO_NAO_ENCONTRADO',
+        opcoes.pedidoNaoEncontradoDetalhe || 'Pedido informado pelo evento não encontrado');
       await connection.commit();
       return resultado;
     }

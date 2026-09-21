@@ -30,12 +30,23 @@ O conector está implementado para o fluxo GM, com cache local, classificação 
 erros e reprocessamento. A ampliação para outros produtos depende dos contratos
 de cada consulta.
 
-## Sicoob, PlugPay, WBuy e Bling
+## Sicoob
 
-Esses conectores ainda não estão implementados. Cadastrar credenciais não muda
-esse estado e não confirma pagamentos ou importa pedidos. Antes de desenvolver
-cada adaptador, é necessário identificar o produto/conta exato, obter a
-documentação oficial e mapear identificadores externos para pedidos, clientes,
+A branch de desenvolvimento contém a correlação local entre `txid` e pedido, o
+parser do webhook Pix, deduplicação pelo `endToEndId`, validação exata de valor e
+registro de `txid` desconhecido sem gerar efeito financeiro. A rota
+administrativa lista somente metadados da referência.
+
+O endpoint público permanece desativado. O contrato oficial do Sicoob exige
+mTLS na entrega do webhook, e o proxy atual deste VPS não valida certificado de
+cliente. A ativação depende da cadeia de certificados, configuração do Nginx,
+credenciais de homologação e criação remota da cobrança por `PUT /cob/{txid}`.
+
+## PlugPay, WBuy e Bling
+
+Esses conectores ainda não estão implementados. Cadastrar credenciais não
+confirma pagamentos nem importa pedidos. Cada adaptador precisa do contrato
+oficial e do mapeamento de identificadores externos para pedidos, clientes,
 faturas, pagamentos e estornos da Central MyKey.
 
 ## Eventos financeiros externos
