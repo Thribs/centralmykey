@@ -1,0 +1,11 @@
+[Unit]
+Description=Agenda diária do backup da Central MyKey
+
+[Timer]
+OnCalendar=*-*-* 03:15:00 America/Sao_Paulo
+RandomizedDelaySec=30m
+Persistent=true
+Unit=central-mykey-backup.service
+
+[Install]
+WantedBy=timers.target

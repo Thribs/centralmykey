@@ -39,3 +39,24 @@ O teste `api/teste-backup.js` usa apenas diretórios e conteúdo fictícios em
 `/tmp`. Ele cria o pacote, confere os hashes, restaura API, frontend e o dump
 simulado e comprova que uma corrupção deliberada é rejeitada. Nenhum arquivo ou
 dado de produção participa do teste.
+
+## Agenda e retenção
+
+O comando `api/executar-backup-agendado.js` acrescenta uma trava contra duas
+execuções simultâneas, verifica o pacote recém-criado e só depois aplica a
+retenção. Por padrão, preserva todos os pacotes dos últimos 30 dias e sempre
+mantém ao menos os 7 mais recentes. Diretórios manuais, incompletos ou com nome
+fora do padrão gerado pelo utilitário não são removidos automaticamente.
+
+Os limites podem ser ajustados por `BACKUP_RETENCAO_DIAS`,
+`BACKUP_RETENCAO_MINIMO` e `BACKUP_LOCK_LIMITE_HORAS`. A trava é recuperada
+automaticamente somente depois do limite configurado.
+
+Os arquivos em `deploy/systemd/central-mykey-backup.service` e
+`deploy/systemd/central-mykey-backup.timer` preparam uma execução diária às
+03h15, com atraso aleatório de até 30 minutos. Eles são apenas artefatos de
+publicação: criar os arquivos não instala nem ativa o timer no VPS.
+
+`api/teste-backup-agendado.js` usa somente `/tmp` e comprova retenção mínima,
+preservação de diretórios desconhecidos, bloqueio concorrente, recuperação de
+trava antiga e limpeza da trava em caso de erro.

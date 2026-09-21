@@ -1,0 +1,19 @@
+[Unit]
+Description=Backup verificável da Central MyKey
+Documentation=https://github.com/Thribs/centralmykey
+After=network-online.target mysql.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+WorkingDirectory=/opt/central-mykey-api
+ExecStart=/usr/bin/node /opt/central-mykey-api/executar-backup-agendado.js
+UMask=0077
+Nice=10
+IOSchedulingClass=idle
+TimeoutStartSec=2h
+SyslogIdentifier=central-mykey-backup
+StandardOutput=journal
+StandardError=journal
