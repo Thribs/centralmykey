@@ -1527,6 +1527,8 @@ test('visualizador não vê ações de usuário e recebe 403 ao forçar criaçã
   );
 
   await page.getByRole('button', { name: 'Integrações', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Laboratório OpenAI' }))
+    .toHaveCount(0);
   await expect(page.getByPlaceholder('ID externo')).toHaveCount(0);
   await expect(page.getByLabel('Nome do modelo')).toHaveCount(0);
   await expect(page.getByLabel(/Status do modelo/)).toHaveCount(0);

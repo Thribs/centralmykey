@@ -14,7 +14,7 @@ import {
   testarOpenAI
 } from './api';
 
-export default function OpenAILab() {
+export default function OpenAILab({ permissoes = [] }) {
   const [pergunta, setPergunta] = useState(
     'Um cliente pediu uma senha automotiva, mas não informou o chassi. Como devo responder?'
   );
@@ -28,6 +28,17 @@ export default function OpenAILab() {
 
   const token = localStorage.getItem('central_mykey_token');
   const carregando = Boolean(acaoAtual);
+  const podeConfigurar = Number(
+    permissoes.find(item => item.codigo === 'CONFIGURACOES')?.editar
+  ) === 1;
+  const podeAnalisar = Number(
+    permissoes.find(item => item.codigo === 'ATENDIMENTO')?.editar
+  ) === 1;
+  const podeConsultarBanco = podeAnalisar && Number(
+    permissoes.find(item => item.codigo === 'BANCO_SENHAS')?.visualizar
+  ) === 1;
+
+  if (!podeConfigurar && !podeAnalisar) return null;
 
   async function verificarConexao() {
     try {
@@ -181,7 +192,7 @@ export default function OpenAILab() {
           </p>
         </div>
 
-        <button
+        {podeConfigurar && <button
           type="button"
           className="openai-status-button"
           onClick={verificarConexao}
@@ -194,7 +205,7 @@ export default function OpenAILab() {
             }
           />
           Verificar conexão
-        </button>
+        </button>}
       </header>
 
       <div className="openai-security">
@@ -215,7 +226,10 @@ export default function OpenAILab() {
         )}
       </div>
 
-      <form className="openai-form" onSubmit={enviarPergunta}>
+      <form
+        className="openai-form"
+        onSubmit={podeConfigurar ? enviarPergunta : evento => evento.preventDefault()}
+      >
         <label htmlFor="openai-pergunta">
           Mensagem ou pergunta para a inteligência artificial
         </label>
@@ -232,7 +246,7 @@ export default function OpenAILab() {
           <span>{pergunta.length}/2000 caracteres</span>
 
           <div className="openai-actions">
-            <button
+            {podeAnalisar && <button
               type="button"
               className="openai-analysis-button"
               onClick={analisarAtendimento}
@@ -242,14 +256,14 @@ export default function OpenAILab() {
               {acaoAtual === 'analise'
                 ? 'Analisando...'
                 : 'Analisar atendimento'}
-            </button>
+            </button>}
 
-            <button type="submit" disabled={carregando}>
+            {podeConfigurar && <button type="submit" disabled={carregando}>
               <Send size={17} />
               {acaoAtual === 'pergunta'
                 ? 'Perguntando...'
                 : 'Perguntar à OpenAI'}
-            </button>
+            </button>}
           </div>
         </div>
       </form>
@@ -334,7 +348,7 @@ export default function OpenAILab() {
             <p>{analise.resposta_sugerida}</p>
           </div>
 
-          {analise.pronto_para_consulta &&
+          {podeConsultarBanco && analise.pronto_para_consulta &&
             analise.dados_identificados?.chassi && (
               <div className="openai-bank-action">
                 <button
