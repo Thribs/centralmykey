@@ -12,7 +12,7 @@
 
 ## Comportamento aprovado pelo Thiago
 
-Ao ativar, a Central verificará a cada 5 minutos até 10 pedidos GM cujo último evento seja indisponibilidade da API Joel Pires e que estejam aguardando há pelo menos 5 minutos.
+Ao ativar, a Central verificará a cada 5 minutos até 10 pedidos GM cujo último evento seja indisponibilidade da API Joel Pires ou ausência de fornecedor no horário e que estejam aguardando há pelo menos 5 minutos.
 
 Cada pedido é revalidado com bloqueio de linha e processado em transação própria:
 
@@ -20,6 +20,7 @@ Cada pedido é revalidado com bloqueio de linha e processado em transação pró
 - `SenhaNotFoundError`/404: encaminha ao fornecedor GM disponível de menor custo;
 - 400, 417 ou 422: mantém em `AGUARDANDO_DADOS` e não aciona fornecedor;
 - rede, timeout ou 5xx: continua `ABERTO` e volta a ficar elegível depois da espera;
+- 404 fora do horário dos fornecedores: continua `ABERTO`, com custo zero, e volta a ser tentado até que um fornecedor esteja disponível;
 - pedido alterado por outro processo antes do bloqueio: é ignorado.
 
 ## Parâmetros propostos

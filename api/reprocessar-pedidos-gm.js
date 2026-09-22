@@ -3,6 +3,10 @@
 const processarPedidoPago = require('./processar-pedido-pago');
 
 const NOME_BLOQUEIO = 'central_mykey_reprocessamento_gm';
+const HISTORICOS_ELEGIVEIS = [
+  'API_JOELPIRES_INDISPONIVEL',
+  'FORNECEDOR_GM_INDISPONIVEL'
+];
 
 function inteiroConfigurado(valor, padrao, minimo, maximo) {
   const numero = Number(valor);
@@ -48,7 +52,8 @@ async function listarCandidatos(connection, configuracao) {
         AND p.fornecedor_id IS NULL
         AND p.origem_id IS NULL
         AND s.codigo = 'GM_SENHA'
-        AND h.tipo = 'API_JOELPIRES_INDISPONIVEL'
+        AND h.tipo IN ('API_JOELPIRES_INDISPONIVEL',
+                       'FORNECEDOR_GM_INDISPONIVEL')
         AND h.criado_em <= DATE_SUB(NOW(), INTERVAL ? SECOND)
       ORDER BY h.criado_em ASC, p.id ASC
       LIMIT ?`,
@@ -86,18 +91,22 @@ async function processarCandidato(
     pedido.codigo_servico === 'GM_SENHA' &&
     pedido.fornecedor_id === null &&
     pedido.origem_id === null &&
-    pedido.ultimo_historico === 'API_JOELPIRES_INDISPONIVEL';
+    HISTORICOS_ELEGIVEIS.includes(pedido.ultimo_historico);
 
   if (!elegivel) {
     return { processado: false, motivo: 'PEDIDO_NAO_ELEGIVEL' };
   }
 
+  const motivo = pedido.ultimo_historico === 'FORNECEDOR_GM_INDISPONIVEL'
+    ? 'Nova tentativa automática após indisponibilidade de fornecedor GM'
+    : 'Nova tentativa automática na API Joel Pires';
+
   await connection.query(
     `INSERT INTO pedido_historico
        (pedido_id, usuario_id, tipo, descricao, dados)
      VALUES (?, NULL, 'REPROCESSAMENTO_AUTOMATICO_GM', ?, ?)`,
-    [pedidoId, 'Nova tentativa automática na API Joel Pires',
-      JSON.stringify({ origem: 'AGENDADOR' })]
+    [pedidoId, motivo,
+      JSON.stringify({ origem: 'AGENDADOR', motivo: pedido.ultimo_historico })]
   );
 
   const resultado = await processar(connection, pedidoId, null);
@@ -174,6 +183,7 @@ async function reprocessarPedidosGm(pool, opcoes = {}) {
 }
 
 module.exports = {
+  HISTORICOS_ELEGIVEIS,
   NOME_BLOQUEIO,
   listarCandidatos,
   obterConfiguracao,

@@ -13,6 +13,7 @@ const {
 const {
   criarTabelaOutboxTemporaria
 } = require('./teste-suporte-outbox');
+const processarPedidoPago = require('./processar-pedido-pago');
 
 dotenv.config({
   path: process.env.CENTRALMYKEY_ENV_PATH || path.join(__dirname, '.env'),
@@ -188,6 +189,83 @@ async function testarIndisponivelNovamente() {
   console.log('OK: nova indisponibilidade permanece elegível (rollback confirmado)');
 }
 
+async function testarFornecedorDisponivelDepois() {
+  const fetchOriginal = global.fetch;
+  try {
+    await emTransacao('PAGAMENTO_CONFIRMADO', async (connection, contexto) => {
+      await connection.query("SET timestamp=UNIX_TIMESTAMP('2026-09-18 23:00:00')");
+      global.fetch = async () => respostaHttp(404, {
+        error: {
+          name: 'SenhaNotFoundError',
+          message: 'Senha não encontrada no teste'
+        }
+      });
+
+      const espera = await processarPedidoPago(connection, contexto.pedidoId, null);
+      assert.strictEqual(espera.status, 'ABERTO');
+      assert.strictEqual(espera.aguardando_fornecedor, true);
+
+      const [[estadoEspera]] = await connection.query(
+        `SELECT p.status, p.fornecedor_id, p.custo,
+          (SELECT h.tipo FROM pedido_historico h
+            WHERE h.pedido_id=p.id ORDER BY h.id DESC LIMIT 1) ultimo_historico,
+          (SELECT COUNT(*) FROM comunicacoes_outbox o
+            WHERE o.pedido_id=p.id) comunicacoes
+         FROM pedidos_senha p WHERE p.id=?`,
+        [contexto.pedidoId]
+      );
+      assert.strictEqual(estadoEspera.status, 'ABERTO');
+      assert.strictEqual(estadoEspera.fornecedor_id, null);
+      assert.strictEqual(Number(estadoEspera.custo), 0);
+      assert.strictEqual(
+        estadoEspera.ultimo_historico,
+        'FORNECEDOR_GM_INDISPONIVEL'
+      );
+      assert.strictEqual(Number(estadoEspera.comunicacoes), 0);
+
+      await connection.query("SET timestamp=UNIX_TIMESTAMP('2026-09-19 12:00:00')");
+      const candidatos = await listarCandidatos(connection, {
+        esperaSegundos: 0,
+        limite: 10
+      });
+      assert.ok(candidatos.includes(Number(contexto.pedidoId)));
+
+      const tentativa = await processarCandidato(connection, contexto.pedidoId);
+      assert.strictEqual(tentativa.processado, true);
+      assert.strictEqual(tentativa.resultado.status, 'EM_CONSULTA');
+      assert.strictEqual(tentativa.resultado.origem, 'FORNECEDOR');
+      assert.ok(tentativa.resultado.fornecedor_id);
+      assert.ok(Number(tentativa.resultado.custo) > 0);
+
+      const [[estado]] = await connection.query(
+        `SELECT p.status, p.fornecedor_id, p.custo,
+          (SELECT COUNT(*) FROM pedido_historico h
+            WHERE h.pedido_id=p.id
+              AND h.tipo='REPROCESSAMENTO_AUTOMATICO_GM') tentativas,
+          (SELECT COUNT(*) FROM comunicacoes_outbox o
+            WHERE o.pedido_id=p.id
+              AND o.finalidade='CONSULTA_FORNECEDOR') consultas
+         FROM pedidos_senha p WHERE p.id=?`,
+        [contexto.pedidoId]
+      );
+      assert.strictEqual(estado.status, 'EM_CONSULTA');
+      assert.ok(estado.fornecedor_id);
+      assert.ok(Number(estado.custo) > 0);
+      assert.strictEqual(Number(estado.tentativas), 1);
+      assert.strictEqual(Number(estado.consultas), 1);
+
+      const candidatosDepois = await listarCandidatos(connection, {
+        esperaSegundos: 0,
+        limite: 10
+      });
+      assert.ok(!candidatosDepois.includes(Number(contexto.pedidoId)));
+    });
+  } finally {
+    global.fetch = fetchOriginal;
+  }
+  console.log('OK: pedido sem fornecedor é retomado no próximo horário disponível (rollback confirmado)');
+}
+
 async function testarNaoElegivel() {
   let fetchChamado = false;
   const fetchOriginal = global.fetch;
@@ -225,6 +303,7 @@ async function executar() {
 
   await testarEncontrado();
   await testarIndisponivelNovamente();
+  await testarFornecedorDisponivelDepois();
   await testarNaoElegivel();
 }
 

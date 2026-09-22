@@ -93,7 +93,7 @@ async function executar() {
     await connection.query(
       `INSERT INTO pedido_historico
          (pedido_id, tipo, descricao, criado_em)
-       VALUES (?, 'API_JOELPIRES_INDISPONIVEL', 'Falha simulada',
+       VALUES (?, 'FORNECEDOR_GM_INDISPONIVEL', 'Espera simulada',
                DATE_SUB(NOW(), INTERVAL 30 MINUTE))`,
       [pedidoId]
     );

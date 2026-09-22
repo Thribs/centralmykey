@@ -187,9 +187,16 @@ function DetalhePedido({
   const entregasCliente = comunicacoes.filter(
     item => item.finalidade === 'ENTREGA_CLIENTE'
   );
+  const motivoReprocessamento = historico.find(item =>
+    ['API_JOELPIRES_INDISPONIVEL', 'FORNECEDOR_GM_INDISPONIVEL']
+      .includes(item.tipo)
+  )?.tipo;
   const apiJoelPiresIndisponivel =
     ['ABERTO', 'ERRO'].includes(pedido.status) &&
-    historico.some(item => item.tipo === 'API_JOELPIRES_INDISPONIVEL');
+    motivoReprocessamento === 'API_JOELPIRES_INDISPONIVEL';
+  const fornecedorGmIndisponivel =
+    pedido.status === 'ABERTO' &&
+    motivoReprocessamento === 'FORNECEDOR_GM_INDISPONIVEL';
   const resultadoPendente = resultados.find(item =>
     item.status === 'ENCONTRADO' && item.fornecedor_id
   );
@@ -279,6 +286,20 @@ function DetalhePedido({
                   Nenhum fornecedor foi acionado e o custo permanece zero.
                   A Central tentará novamente automaticamente; use a ação
                   manual somente quando precisar antecipar a tentativa.
+                </span>
+              </div>
+            </div>
+          )}
+
+          {fornecedorGmIndisponivel && (
+            <div className="order-operational-alert">
+              <Clock3 size={20} />
+              <div>
+                <strong>Nenhum fornecedor GM está no horário de atendimento</strong>
+                <span>
+                  A consulta externa não encontrou a senha. O custo permanece
+                  zero e a Central tentará novamente até encaminhar a um
+                  fornecedor disponível.
                 </span>
               </div>
             </div>
@@ -611,7 +632,7 @@ export default function Pedidos({ buscaInicial = '', permissoes = [] }) {
   const cards = [
     ['Total hoje', indicadores.total || 0, KeyRound, 'blue'],
     ['Em consulta', indicadores.em_consulta || 0, Search, 'purple'],
-    ['API indisponível', indicadores.aguardando_reprocessamento_gm || 0, ShieldX, 'red'],
+    ['Reprocessamento GM', indicadores.aguardando_reprocessamento_gm || 0, ShieldX, 'red'],
     ['Aguardando envio', indicadores.aguardando_envio_fornecedor || 0, Truck, 'orange'],
     ['Falhas de envio', indicadores.falhas_envio_fornecedor || 0, ShieldX, 'red'],
     ['Aguardando entrega', indicadores.aguardando_entrega_cliente || 0, Clock3, 'orange'],
@@ -734,7 +755,7 @@ export default function Pedidos({ buscaInicial = '', permissoes = [] }) {
                       </span>
                       {Number(pedido.aguardando_reprocessamento_gm) === 1 && (
                         <small className="communication-state communication-FALHOU">
-                          API indisponível · aguardando reprocessamento
+                          Aguardando reprocessamento automático
                         </small>
                       )}
                       {pedido.comunicacao_fornecedor_status && (

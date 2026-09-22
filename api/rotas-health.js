@@ -101,7 +101,8 @@ module.exports = function registrarRotasHealth(app, pool) {
                        FROM pedido_historico h2
                       WHERE h2.pedido_id = pedidos_senha.id
                    )
-                   AND h.tipo = 'API_JOELPIRES_INDISPONIVEL'
+                   AND h.tipo IN ('API_JOELPIRES_INDISPONIVEL',
+                                  'FORNECEDOR_GM_INDISPONIVEL')
                    AND h.criado_em <= DATE_SUB(NOW(), INTERVAL ? MINUTE)
               )
             ) AS aguardando_reprocessamento_gm

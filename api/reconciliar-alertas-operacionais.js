@@ -80,7 +80,8 @@ async function reconciliarAlertasOperacionais(pool, opcoes = {}) {
           AND p.fornecedor_id IS NULL
           AND p.origem_id IS NULL
           AND s.codigo = 'GM_SENHA'
-          AND h.tipo = 'API_JOELPIRES_INDISPONIVEL'
+          AND h.tipo IN ('API_JOELPIRES_INDISPONIVEL',
+                         'FORNECEDOR_GM_INDISPONIVEL')
           AND h.criado_em <= DATE_SUB(NOW(), INTERVAL ? MINUTE)`,
       [limites.pedidoMinutos]
     );
@@ -116,7 +117,7 @@ async function reconciliarAlertasOperacionais(pool, opcoes = {}) {
         tipo: 'GM_REPROCESSAMENTO_ATRASADO',
         nivel: 'CRITICA',
         modulo: 'PEDIDOS_SENHAS',
-        titulo: 'Pedidos GM aguardando a API',
+        titulo: 'Pedidos GM aguardando reprocessamento',
         mensagem: `${totais.gm} pedido(s) GM aguardam reprocessamento além do limite.`,
         entidade: 'pedidos_senha',
         dados: { total: totais.gm, limite_minutos: limites.pedidoMinutos }

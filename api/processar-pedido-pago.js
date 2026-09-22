@@ -179,8 +179,9 @@ module.exports = async function processarPedidoPago(connection, pedidoId, usuari
     `UPDATE pedidos_senha SET status='ABERTO',custo=0,fornecedor_id=NULL,origem_id=NULL WHERE id=?`,
     [pedido.id]
   );
-  await registrarHistorico(connection, pedido.id, usuarioId, 'PROCESSADO_APOS_PAGAMENTO',
+  await registrarHistorico(connection, pedido.id, usuarioId, 'FORNECEDOR_GM_INDISPONIVEL',
     'Pagamento confirmado, mas nenhum fornecedor esta disponivel',
-    { status: 'ABERTO', aguardando_fornecedor: true });
+    { status: 'ABERTO', aguardando_fornecedor: true,
+      origem_consulta: consulta.origem || 'API_JOELPIRES' });
   return { status: 'ABERTO', origem: null, aguardando_fornecedor: true };
 };

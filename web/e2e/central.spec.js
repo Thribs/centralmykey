@@ -862,11 +862,11 @@ test('navegador reprocessa HTTP 503 real sem acionar fornecedor', async ({ page 
   ).aguardando_reprocessamento_gm)).toBe(1);
 
   await detalhe.getByRole('button', { name: 'Fechar' }).click();
-  await expect(page.getByText('API indisponível', { exact: true })).toBeVisible();
+  await expect(page.getByText('Reprocessamento GM', { exact: true })).toBeVisible();
   await page.getByLabel('Status do pedido')
     .selectOption('AGUARDANDO_REPROCESSAMENTO');
   await expect(linha).toBeVisible();
-  await expect(linha).toContainText('API indisponível · aguardando reprocessamento');
+  await expect(linha).toContainText('Aguardando reprocessamento automático');
   await linha.click();
   await expect(detalhe).toBeVisible();
 

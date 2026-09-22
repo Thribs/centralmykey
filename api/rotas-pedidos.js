@@ -1786,7 +1786,8 @@ if (bancoProprio.length) {
                 WHERE h.pedido_id = p.id
                 ORDER BY h.id DESC
                 LIMIT 1
-             ) = 'API_JOELPIRES_INDISPONIVEL'
+             ) IN ('API_JOELPIRES_INDISPONIVEL',
+                   'FORNECEDOR_GM_INDISPONIVEL')
            ) AS aguardando_reprocessamento_gm,
            SUM(p.origem_id = 1) AS atendidos_base_propria,
            SUM(p.origem_id = 2) AS atribuidos_fornecedor,
@@ -1958,7 +1959,8 @@ if (bancoProprio.length) {
              WHERE h.pedido_id = p.id
              ORDER BY h.id DESC
              LIMIT 1
-          ) = 'API_JOELPIRES_INDISPONIVEL'
+          ) IN ('API_JOELPIRES_INDISPONIVEL',
+                'FORNECEDOR_GM_INDISPONIVEL')
         )`);
       } else if (status) {
         filtros.push('p.status = ?');
@@ -2052,7 +2054,8 @@ if (bancoProprio.length) {
                 WHERE h.pedido_id = p.id
                 ORDER BY h.id DESC
                 LIMIT 1
-             ) = 'API_JOELPIRES_INDISPONIVEL'
+             ) IN ('API_JOELPIRES_INDISPONIVEL',
+                   'FORNECEDOR_GM_INDISPONIVEL')
            THEN 1 ELSE 0 END AS aguardando_reprocessamento_gm,
            p.criado_em,
            p.atualizado_em,
