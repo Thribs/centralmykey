@@ -347,6 +347,9 @@ export function Usuarios({ permissoes: permissoesSessao = [] }) {
   }
 
   async function salvarPermissoes(lista) {
+    if (!window.confirm(
+      `Confirma substituir as permissões de ${permissoes.usuario.nome}?`
+    )) return;
     setSalvando(true);
     setErroModal('');
 

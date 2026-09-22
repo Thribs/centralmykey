@@ -227,6 +227,7 @@ async function prepararFixture() {
   const chassiEstorno = `9BGE2E7A0${String(Date.now() + 6).slice(-8)}`;
   const protocoloFechamento = `FF${process.pid}${String(Date.now()).slice(-7)}`;
   const chassiFechamento = `9BGE2E8A0${String(Date.now() + 7).slice(-8)}`;
+  const chassiBancoSenhas = `9BGE2E9A0${String(Date.now() + 8).slice(-8)}`;
   const telefone = `5594${String(Date.now()).slice(-8)}`;
   const nomeCliente = `CLIENTE E2E INTEGRADO ${marcador}`;
   const nomeFornecedor = `FORNECEDOR E2E INTEGRADO ${marcador}`;
@@ -318,7 +319,9 @@ async function prepararFixture() {
      VALUES (?, ?, 1, 0, 0, 0, 0)`,
     [visualizador.insertId, moduloIntegracoes.id]
   );
-  for (const codigo of ['CLIENTES', 'FORNECEDORES', 'FINANCEIRO', 'PEDIDOS_SENHAS']) {
+  for (const codigo of [
+    'CLIENTES', 'FORNECEDORES', 'FINANCEIRO', 'PEDIDOS_SENHAS', 'BANCO_SENHAS'
+  ]) {
     const modulo = modulos.find(item => item.codigo === codigo);
     if (!modulo) throw new Error(`Módulo ${codigo} ativo é obrigatório para o E2E`);
     await connection.query(
@@ -370,6 +373,17 @@ async function prepararFixture() {
         tipo_cobranca, credito_status)
      VALUES (?, ?, ?, 'COMPLETO', 1, 'ANTECIPADO', 'LIBERADO')`,
     [nomeCliente, telefone, telefone]
+  );
+  const [[origemSenha]] = await connection.query(
+    'SELECT id FROM origens_senha WHERE ativo = 1 ORDER BY id LIMIT 1'
+  );
+  const [senhaAdministrativa] = await connection.query(
+    `INSERT INTO banco_senhas
+       (tipo, marca, modelo, ano_inicio, chassi, codigo_mecanico,
+        origem_id, confiabilidade, ativo)
+     VALUES ('GM_SENHA', 'GM', 'BANCO E2E', 2026, ?, 'MEC-BANCO-E2E',
+             ?, 'CONFIRMADA', 1)`,
+    [chassiBancoSenhas, origemSenha?.id || null]
   );
   const [atendimento] = await connection.query(
     `INSERT INTO atendimentos
@@ -656,6 +670,10 @@ async function prepararFixture() {
       valorInicial: valorConfiguracaoInicial,
       valorFinal: valorConfiguracaoFinal
     },
+    bancoSenhas: {
+      id: senhaAdministrativa.insertId,
+      chassi: chassiBancoSenhas
+    },
     cadastros: {
       clienteNome: nomeClienteCadastro,
       clienteTelefone: telefoneClienteCadastro,
@@ -833,6 +851,10 @@ async function iniciar() {
       valor_inicial: contexto.configuracao.valorInicial,
       valor_final: contexto.configuracao.valorFinal
     },
+    banco_senhas: {
+      id: contexto.bancoSenhas.id,
+      chassi: contexto.bancoSenhas.chassi
+    },
     cadastros: {
       cliente_nome: contexto.cadastros.clienteNome,
       cliente_telefone: contexto.cadastros.clienteTelefone,
@@ -853,6 +875,18 @@ async function iniciar() {
     cliente: contexto.nomeCliente
   }));
   app.get('/api/e2e/verificacao', async (req, res) => {
+    if (req.query.cenario === 'banco_senhas') {
+      const [[estado]] = await connection.query(
+        `SELECT bs.id, bs.ativo,
+                (SELECT COUNT(*) FROM auditoria a
+                  WHERE a.modulo = 'BANCO_SENHAS'
+                    AND a.acao = 'ALTERAR_STATUS'
+                    AND a.entidade_id = CAST(bs.id AS CHAR)) AS auditorias
+           FROM banco_senhas bs WHERE bs.id = ? LIMIT 1`,
+        [contexto.bancoSenhas.id]
+      );
+      return res.json({ ok: true, estado: estado || null });
+    }
     if (req.query.cenario === 'integracoes') {
       const [[mapeamento]] = await connection.query(
         `SELECT m.id, m.provedor, m.produto_externo_id, m.sku, m.servico_id,
@@ -1154,7 +1188,7 @@ async function encerrar(codigo = 0) {
              WHERE nome = ?) AS modelos_whatsapp,
            (SELECT COUNT(*) FROM banco_senhas
              WHERE JSON_UNQUOTE(JSON_EXTRACT(dados_extras, '$.api_senha_id'))
-               IN (?, ?, ?) OR chassi = ?) AS cache`,
+               IN (?, ?, ?) OR chassi IN (?, ?)) AS cache`,
         [
           contexto?.encontrado?.protocolo,
           contexto?.naoEncontrado?.protocolo,
@@ -1190,7 +1224,8 @@ async function encerrar(codigo = 0) {
           String(contexto?.encontrado?.apiSenhaId),
           String(contexto?.dadosInvalidos?.apiSenhaId),
           String(contexto?.indisponivel?.apiSenhaId),
-          contexto?.resultadoFornecedor?.chassi
+          contexto?.resultadoFornecedor?.chassi,
+          contexto?.bancoSenhas?.chassi
         ]
       );
       if (Object.values(residuos).some(Number)) {

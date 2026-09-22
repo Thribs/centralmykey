@@ -304,14 +304,13 @@ function ModalSenha({
   );
 }
 
-export default function BancoSenhas({ usuario, permissoes = [] }) {
+export default function BancoSenhas({ permissoes = [] }) {
   const token = useMemo(() => obterToken(), []);
   const permissao = permissoes.find(
     item => item.codigo === 'BANCO_SENHAS'
   );
   const acessoCompleto =
-    Number(permissao?.aprovar) === 1 &&
-    [1, 3].includes(Number(usuario?.id));
+    Number(permissao?.aprovar) === 1;
   const podeCriar = Number(permissao?.criar) === 1;
   const podeEditar = Number(permissao?.editar) === 1;
   const [dados, setDados] = useState([]);
@@ -454,6 +453,10 @@ export default function BancoSenhas({ usuario, permissoes = [] }) {
   }
 
   async function alternarStatus(registro) {
+    const acao = registro.ativo ? 'bloquear' : 'ativar';
+    if (!window.confirm(
+      `Confirma ${acao} a senha do chassi ${registro.chassi}?`
+    )) return;
     setErro('');
 
     try {
@@ -581,6 +584,7 @@ export default function BancoSenhas({ usuario, permissoes = [] }) {
           </select>
 
           <select
+            aria-label="Status da senha"
             value={ativo}
             onChange={evento => {
               setAtivo(evento.target.value);

@@ -518,6 +518,10 @@ function ModalServicosFornecedor({ token, fornecedor, podeEditar, aoFechar }) {
   }
 
   async function alternar(regra) {
+    const acao = regra.ativo ? 'desativar' : 'ativar';
+    if (!window.confirm(
+      `Confirma ${acao} a regra do serviço ${regra.codigo_servico}?`
+    )) return;
     setErro('');
     try {
       await atualizarServicoFornecedor(token, fornecedor.id, regra.id, {

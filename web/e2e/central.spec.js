@@ -1126,8 +1126,14 @@ test('clientes VIP e fornecedores são cadastrados pelas rotas reais', async ({ 
   await servicos.getByLabel('Custo').fill('17.50');
   await servicos.getByLabel('Prazo estimado (minutos)').fill('30');
   await servicos.getByRole('button', { name: 'Adicionar regra' }).click();
-  await expect(servicos.locator('tr', { hasText: contexto.servico_codigo }))
-    .toContainText('BRL 17.50');
+  const regraServico = servicos.locator('tr', { hasText: contexto.servico_codigo });
+  await expect(regraServico).toContainText('BRL 17.50');
+  page.once('dialog', dialogo => dialogo.dismiss());
+  await regraServico.getByTitle('Desativar regra').click();
+  await expect(regraServico).toContainText('Ativo');
+  page.once('dialog', dialogo => dialogo.accept());
+  await regraServico.getByTitle('Desativar regra').click();
+  await expect(regraServico).toContainText('Inativo');
   await servicos.getByRole('button', { name: 'Fechar' }).click();
 
   linha = page.locator('tr', { hasText: contexto.fornecedor_nome });
@@ -1153,9 +1159,49 @@ test('clientes VIP e fornecedores são cadastrados pelas rotas reais', async ({ 
   expect(Number(verificacao.cliente.auditorias)).toBeGreaterThanOrEqual(2);
   expect(Number(verificacao.fornecedor.ativo)).toBe(0);
   expect(verificacao.fornecedor.tipo).toBe('PESSOA');
-  expect(Number(verificacao.fornecedor.servicos)).toBe(1);
+  expect(Number(verificacao.fornecedor.servicos)).toBe(0);
   expect(Number(verificacao.fornecedor.auditorias)).toBeGreaterThanOrEqual(2);
-  expect(Number(verificacao.fornecedor.auditorias_servicos)).toBe(1);
+  expect(Number(verificacao.fornecedor.auditorias_servicos)).toBe(2);
+});
+
+test('administrador gerencia banco de senhas por permissão e confirmação', async ({ page }) => {
+  const respostaContexto = await page.request.get(`${API}/api/e2e/contexto`);
+  expect(respostaContexto.ok()).toBe(true);
+  const contextoCompleto = await respostaContexto.json();
+  const contexto = contextoCompleto.banco_senhas;
+  await autenticarIntegrado(page, contextoCompleto.autenticacao.administrador);
+
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Banco de senhas', exact: true }).click();
+  await expect(page.getByRole('main').getByRole('heading', {
+    name: 'Banco de senhas'
+  })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Atualizar' })).toBeVisible();
+  await page.getByLabel('Status da senha').selectOption('');
+  await page.getByPlaceholder('Chassi, mecânico, rádio, imobilizador ou alarme')
+    .fill(contexto.chassi);
+  await page.getByRole('button', { name: 'Pesquisar' }).click();
+  const linha = page.locator('tr', { hasText: contexto.chassi });
+  await expect(linha).toContainText('Ativo');
+
+  page.once('dialog', dialogo => dialogo.dismiss());
+  await linha.getByTitle('Bloquear').click();
+  let verificacao = await page.request.get(
+    `${API}/api/e2e/verificacao?cenario=banco_senhas`
+  );
+  let estado = (await verificacao.json()).estado;
+  expect(Number(estado.ativo)).toBe(1);
+  expect(Number(estado.auditorias)).toBe(0);
+
+  page.once('dialog', dialogo => dialogo.accept());
+  await linha.getByTitle('Bloquear').click();
+  await expect(linha).toContainText('Bloqueado');
+  verificacao = await page.request.get(
+    `${API}/api/e2e/verificacao?cenario=banco_senhas`
+  );
+  estado = (await verificacao.json()).estado;
+  expect(Number(estado.ativo)).toBe(0);
+  expect(Number(estado.auditorias)).toBe(1);
 });
 
 test('relatório no navegador reconcilia a resposta real da API', async ({ page }) => {
@@ -1304,6 +1350,10 @@ test('administrador cria usuário e define permissões pelas rotas reais', async
   await permissoes.getByRole('checkbox', { name: 'visualizar Usuários' }).check();
   await expect(permissoes.getByRole('button', { name: 'Salvar permissões' }))
     .toBeVisible();
+  page.once('dialog', dialogo => dialogo.dismiss());
+  await permissoes.getByRole('button', { name: 'Salvar permissões' }).click();
+  await expect(permissoes).toBeVisible();
+  page.once('dialog', dialogo => dialogo.accept());
   await permissoes.getByRole('button', { name: 'Salvar permissões' }).click();
   await expect(permissoes).toBeHidden({ timeout: 10000 });
 
@@ -1628,6 +1678,10 @@ test('visualizador não vê ações de usuário e recebe 403 ao forçar criaçã
   await page.getByRole('button', { name: 'Pedidos e senhas', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Novo pedido' })).toHaveCount(0);
 
+  await page.getByRole('button', { name: 'Banco de senhas', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Nova senha' })).toHaveCount(0);
+  await expect(page.getByTitle('Editar')).toHaveCount(0);
+
   const mutacoesNegadas = await Promise.all([
     page.request.post(`${API}/api/clientes`, {
       headers: { Authorization: `Bearer ${token}` }, data: {}
@@ -1640,10 +1694,20 @@ test('visualizador não vê ações de usuário e recebe 403 ao forçar criaçã
     }),
     page.request.post(`${API}/api/pedidos`, {
       headers: { Authorization: `Bearer ${token}` }, data: {}
-    })
+    }),
+    page.request.post(`${API}/api/banco-senhas`, {
+      headers: { Authorization: `Bearer ${token}` }, data: {}
+    }),
+    page.request.patch(
+      `${API}/api/banco-senhas/${contextoCompleto.banco_senhas.id}/status`,
+      {
+        headers: { Authorization: `Bearer ${token}` },
+        data: { ativo: 1 }
+      }
+    )
   ]);
   expect(mutacoesNegadas.map(resposta => resposta.status()))
-    .toEqual([403, 403, 403, 403]);
+    .toEqual([403, 403, 403, 403, 403, 403]);
 });
 
 test('navegador estorna pagamento real e cancela na transação', async ({ page }) => {
