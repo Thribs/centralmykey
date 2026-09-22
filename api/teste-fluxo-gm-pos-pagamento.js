@@ -209,6 +209,12 @@ function mockErroHttp(status, nome = 'ErroDeTeste') {
   });
 }
 
+function mockErroHttpSemNome(status) {
+  return () => async () => respostaHttp(status, {
+    error: { message: `HTTP ${status} sem nome simulado` }
+  });
+}
+
 async function validarEncontrado({ connection, contexto, pedidoId, processamento }) {
   assert.strictEqual(processamento.status, 'CONCLUIDO');
   assert.strictEqual(processamento.origem, 'API_JOELPIRES');
@@ -320,6 +326,12 @@ async function executar() {
     'NAO_ENCONTRADO',
     validarNaoEncontrado
   );
+  await executarEmTransacao(
+    'HTTP 404 sem nome encaminha ao fornecedor',
+    mockErroHttpSemNome(404),
+    'NAO_ENCONTRADO',
+    validarNaoEncontrado
+  );
 
   for (const status of [400, 417, 422]) {
     await executarEmTransacao(
@@ -329,6 +341,12 @@ async function executar() {
       validarDadosInvalidos
     );
   }
+  await executarEmTransacao(
+    'HTTP 422 prevalece como DADOS_INVALIDOS mesmo com nome divergente',
+    mockErroHttp(422, 'SenhaNotFoundError'),
+    'DADOS_INVALIDOS',
+    validarDadosInvalidos
+  );
 
   await executarEmTransacao(
     'falha de rede aguarda reprocessamento',

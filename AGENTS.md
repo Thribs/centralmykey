@@ -32,7 +32,7 @@ O fluxo GM obrigatório é:
 1. Consultar o cache local da API Joel Pires.
 2. Se não houver entrada válida, consultar a API Joel Pires.
 3. Quando houver resultado, concluir automaticamente o pedido e alimentar ou atualizar o cache local.
-4. Tratar HTTP 404 com `SenhaNotFoundError` como `NAO_ENCONTRADO` e então encaminhar ao fornecedor GM disponível.
+4. Tratar HTTP 404, inclusive quando identificado no corpo como `SenhaNotFoundError`, como `NAO_ENCONTRADO` e então encaminhar ao fornecedor GM disponível; nunca classificar esse caso como indisponibilidade.
 5. Tratar HTTP 400, 417 e 422 como `DADOS_INVALIDOS`: manter o pedido em `AGUARDANDO_DADOS` e não acionar fornecedor.
 6. Em indisponibilidade real da API, manter o pedido aguardando reprocessamento e não acionar fornecedor.
 7. Selecionar o fornecedor ativo e disponível de menor custo: Márcio das 08h às 22h, custo R$ 22; Emerson das 08h às 19h, custo R$ 25.

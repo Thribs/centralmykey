@@ -331,10 +331,7 @@ async function buscarSenhaFonteVerdade(connection, entrada, opcoes = {}) {
       erro.resposta?.erro?.message ||
       erro.message;
 
-    if (
-      erro.httpStatus === 404 &&
-      nomeErroApi === 'SenhaNotFoundError'
-    ) {
+    if (erro.httpStatus === 404) {
       return {
         status: 'NAO_ENCONTRADO',
         origem: 'API_JOELPIRES',
