@@ -183,6 +183,7 @@ Na branch `feature/pagamento-manual-idempotente`, publicada internamente no
 commit `188c864` em 21/09/2026, sem merge ou nova tag:
 
 - o monitoramento passou a verificar o pacote de backup gerenciado mais recente, incluindo hashes, idade configurável e resposta minimizada; estados ausente, atrasado ou inválido criam uma notificação crítica estável e a recuperação a resolve automaticamente; testes isolado, HTTP/MySQL com rollback e Playwright cobrem o ciclo sem tocar dados reais;
+- o monitoramento de backup foi publicado no commit `29a2ac6` após um novo backup integral verificado, suíte completa da API, 31 cenários Playwright, lint, build e migrações idempotentes; systemd e readiness permaneceram ativos, o frontend servido corresponde ao build e a leitura pós-publicação confirmou integridade `OK` sem alerta ativo;
 
 - cobranças Sicoob `PREPARADA` ou `REGISTRADA` cujo prazo terminou agora passam a `EXPIRADA` dentro da criação transacional, recebem histórico e auditoria minimizados e permitem um novo `txid`; o teste prova uma única referência ativa e pagamento posterior da referência renovada;
 - operadores com permissão financeira agora podem gerar a cobrança Sicoob no pedido e copiar o código Pix; a opção só aparece quando cobrança e webhook mTLS estão habilitados, ambos continuam desligados por padrão e o navegador comprova o fluxo em três tamanhos de tela com API simulada;
