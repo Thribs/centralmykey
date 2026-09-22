@@ -22,6 +22,7 @@ const {
   registrarContextoRequisicao,
   registrarTratamentoFinal
 } = require('./middleware-erros');
+const { mascararConfiguracao } = require('./seguranca-configuracoes');
 
 const app = express();
 
@@ -75,7 +76,7 @@ app.get('/api/configuracoes', autenticarToken, exigirPermissao('CONFIGURACOES', 
     res.json({
       ok: true,
       total: rows.length,
-      dados: rows
+      dados: rows.map(mascararConfiguracao)
     });
 
   } catch (error) {

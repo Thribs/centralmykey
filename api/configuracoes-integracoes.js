@@ -143,10 +143,15 @@ function resumirIntegracoes(config) {
     {
       codigo: 'BLING',
       nome: 'Bling',
-      ...estadoConector({
-        implementado: false,
-        requisitos: [Boolean(config.blingClientId), Boolean(config.blingClientSecret)]
-      })
+      implementado: true,
+      configurado: Boolean(config.blingClientSecret),
+      habilitado: null,
+      status: config.blingClientSecret ? 'PARCIAL' : 'PENDENTE',
+      componentes: {
+        webhook_assinado: true,
+        oauth: false,
+        sincronizacao: false
+      }
     }
   ];
 }
@@ -188,8 +193,17 @@ async function obterConfiguracaoSicoob(pool) {
   };
 }
 
+async function obterConfiguracaoBling(pool) {
+  const config = await carregarConfiguracoesIntegracoes(pool);
+  return {
+    clientId: config.blingClientId,
+    clientSecret: config.blingClientSecret
+  };
+}
+
 module.exports = {
   carregarConfiguracoesIntegracoes,
+  obterConfiguracaoBling,
   obterConfiguracaoWhatsapp,
   obterConfiguracaoSicoob,
   resumirIntegracoes,

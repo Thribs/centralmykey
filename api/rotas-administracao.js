@@ -2,6 +2,10 @@ const {
   carregarConfiguracoesIntegracoes,
   resumirIntegracoes
 } = require('./configuracoes-integracoes');
+const {
+  chaveSensivel,
+  mascararConfiguracao
+} = require('./seguranca-configuracoes');
 
 module.exports = function(app, pool) {
   const autenticarToken = app.locals.autenticarToken;
@@ -28,10 +32,6 @@ module.exports = function(app, pool) {
       depois ? JSON.stringify(depois) : null,
       req.ip || null]);
   };
-
-  const chaveSensivel = chave =>
-    /(TOKEN|SECRET|PASSWORD|SENHA|API_KEY|ACCESS_KEY|PRIVATE_KEY)/i
-      .test(chave);
 
   // ============================================================
   // USUÁRIOS
@@ -456,17 +456,7 @@ module.exports = function(app, pool) {
         return res.json({
           ok: true,
           total: dados.length,
-          dados: dados.map(item => ({
-            id: item.id,
-            chave: item.chave,
-            valor: chaveSensivel(item.chave)
-              ? (item.valor ? '••••••••' : '')
-              : item.valor,
-            configurado: Boolean(item.valor),
-            sensivel: chaveSensivel(item.chave),
-            descricao: item.descricao,
-            atualizado_em: item.atualizado_em
-          }))
+          dados: dados.map(mascararConfiguracao)
         });
       } catch (error) {
         console.error('Erro ao listar configurações:', error);

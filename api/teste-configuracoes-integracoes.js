@@ -8,6 +8,10 @@ const {
   obterConfiguracaoWhatsapp,
   resumirIntegracoes
 } = require('./configuracoes-integracoes');
+const {
+  chaveSensivel,
+  mascararConfiguracao
+} = require('./seguranca-configuracoes');
 
 const CHAVES_TESTE = [
   'WHATSAPP_ACCESS_TOKEN', 'WHATSAPP_PHONE_NUMBER_ID', 'WHATSAPP_API_VERSION',
@@ -65,6 +69,20 @@ async function executar() {
   };
   let servidor;
   try {
+    for (const chave of [
+      'CHAVE_API_JOELPIRES', 'JWT_SECRET', 'WBUY_SENHA',
+      'WHATSAPP_ACCESS_TOKEN', 'SICOOB_KEY_PATH'
+    ]) {
+      assert.strictEqual(chaveSensivel(chave), true, `${chave} deve ser sensível`);
+      const mascarada = mascararConfiguracao({ chave, valor: 'nao-expor' });
+      assert.strictEqual(mascarada.valor, '••••••••');
+      assert.strictEqual(mascarada.configurado, true);
+      assert.strictEqual(mascarada.sensivel, true);
+    }
+    assert.deepStrictEqual(
+      mascararConfiguracao({ chave: 'LIMITE_LOTE', valor: '10' }),
+      { chave: 'LIMITE_LOTE', valor: '10', configurado: true, sensivel: false }
+    );
     for (const chave of CHAVES_TESTE) delete process.env[chave];
     process.env.WHATSAPP_API_VERSION = 'v98.0';
     const pool = poolFalso(valores);
@@ -86,6 +104,7 @@ async function executar() {
     assert.strictEqual(itemWbuy.status, 'CREDENCIAIS_SEM_CONECTOR');
     assert.strictEqual(itemWbuy.componentes.credencial_legada, true);
     assert.strictEqual(itemBling.status, 'PENDENTE');
+    assert.strictEqual(itemBling.componentes.webhook_assinado, true);
     assert.ok(resumo.every(item => !JSON.stringify(item).includes('ficticio')),
       'O resumo nunca pode expor valores de configuração');
 

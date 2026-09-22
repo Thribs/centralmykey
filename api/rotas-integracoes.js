@@ -1,11 +1,38 @@
 'use strict';
 
-const { obterConfiguracaoSicoob } = require('./configuracoes-integracoes');
+const {
+  obterConfiguracaoSicoob,
+  obterConfiguracaoBling
+} = require('./configuracoes-integracoes');
 const { criarCobrancaPedidoSicoob } = require('./sicoob-pix');
+const { receberEventoBling } = require('./webhook-bling');
 
 module.exports = function registrarRotasIntegracoes(app, pool, opcoes = {}) {
   const autenticarToken = app.locals.autenticarToken;
   const exigirPermissao = app.locals.exigirPermissao;
+
+  app.post('/webhooks/bling', async (req, res) => {
+    try {
+      const config = opcoes.configuracaoBling || await obterConfiguracaoBling(pool);
+      const resultado = await receberEventoBling(pool, {
+        payload: req.body,
+        corpoBruto: req.rawBody || Buffer.from(''),
+        assinatura: req.get('x-bling-signature-256'),
+        segredo: config.clientSecret
+      });
+      return res.status(resultado.idempotente ? 200 : 202).json(resultado);
+    } catch (error) {
+      const status = Number(error.status) || 500;
+      if (status >= 500) {
+        console.error('Erro ao receber webhook Bling:', error.codigo || error.message);
+      }
+      return res.status(status).json({
+        ok: false,
+        codigo: error.codigo || 'ERRO_WEBHOOK_BLING',
+        error: status >= 500 ? 'Webhook Bling indisponível' : error.message
+      });
+    }
+  });
 
   app.post('/api/pedidos/:id/pagamentos/sicoob', autenticarToken,
     exigirPermissao('FINANCEIRO', 'editar'), async (req, res) => {
@@ -37,7 +64,7 @@ module.exports = function registrarRotasIntegracoes(app, pool, opcoes = {}) {
       const provedor = String(req.query.provedor || '').trim().toUpperCase();
       const status = String(req.query.status || '').trim().toUpperCase();
       const limite = Math.min(Math.max(Number(req.query.limite) || 50, 1), 200);
-      const provedores = ['SICOOB', 'PLUGPAY', 'WBUY'];
+      const provedores = ['SICOOB', 'PLUGPAY', 'WBUY', 'BLING'];
       const estados = ['RECEBIDO', 'PROCESSADO', 'IGNORADO', 'FALHOU'];
       if (provedor && !provedores.includes(provedor)) {
         return res.status(400).json({ ok: false, error: 'Provedor inválido' });
