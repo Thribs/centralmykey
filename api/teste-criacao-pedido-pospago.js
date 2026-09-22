@@ -107,7 +107,7 @@ async function executar() {
          (nome, telefone, telefone_normalizado, cadastro_status, ativo,
           tipo_cobranca, dia_fechamento, prazo_pagamento_dias, credito_status)
        VALUES (?, ?, ?, 'COMPLETO', 1,
-               'FATURAMENTO_SEMANAL', 0, 3, 'LIBERADO')`,
+               'FATURAMENTO_SEMANAL', 3, 3, 'LIBERADO')`,
       [
         `CLIENTE TESTE ${process.pid}-${sufixo}`,
         telefoneTeste,
@@ -399,6 +399,20 @@ async function executar() {
       Object.values(estado).map(Number),
       [1, 1, 1, 1, 1, 3]
     );
+    const [[periodoFatura]] = await connection.query(
+      `SELECT DATE_FORMAT(f.periodo_inicio, '%Y-%m-%d') AS inicio,
+              DATE_FORMAT(f.periodo_fim, '%Y-%m-%d') AS fim,
+              DATE_FORMAT(f.vencimento, '%Y-%m-%d') AS vencimento
+         FROM fatura_itens fi
+         INNER JOIN faturas_clientes f ON f.id=fi.fatura_id
+        WHERE fi.pedido_senha_id=?`,
+      [corpo.pedido.id]
+    );
+    assert.deepStrictEqual(periodoFatura, {
+      inicio: '2026-09-17',
+      fim: '2026-09-23',
+      vencimento: '2026-09-26'
+    });
   } catch (falha) {
     erro = falha;
   } finally {

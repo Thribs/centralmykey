@@ -6,8 +6,14 @@ repetir. Criação, edição, bloqueio, reativação e mudanças no plano VIP ge
 registros na auditoria.
 
 O faturamento semanal usa **dia da semana**, de 0 (domingo) a 6 (sábado), e
-prazo de pagamento entre 0 e 60 dias. No modo antecipado, dia de fechamento e
-prazo semanal são removidos.
+prazo de pagamento entre 0 e 60 dias. A semana da fatura termina no próximo dia
+de fechamento, incluindo o próprio dia quando o pedido é criado nele, começa
+seis dias antes e vence após o prazo configurado. No modo antecipado, dia de
+fechamento e prazo semanal são removidos.
+
+O limite de crédito é cadastrado e exibido, mas ainda não bloqueia pedidos. A
+política precisa definir quais faturas entram no saldo e como comparar serviços
+em BRL, USD e PYG antes dessa automação ser ativada.
 
 Cada cliente pode ter um único plano VIP. Os estados disponíveis são:
 

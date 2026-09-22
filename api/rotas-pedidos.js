@@ -23,6 +23,9 @@ const {
   registrarPartesPedido,
   listarPartesPedido
 } = require('./identidades-pedido');
+const {
+  calcularPeriodoFaturamentoSemanal
+} = require('./periodo-faturamento-semanal');
 
 module.exports = function (app, pool) {
   const autenticarToken = app.locals.autenticarToken;
@@ -441,6 +444,15 @@ if (bancoProprio.length) {
       // Vincular pedido do cliente pos-pago a fatura semanal
       // --------------------------------------------------------
 
+      const [[relogioBanco]] = await connection.query(
+        "SELECT DATE_FORMAT(CURDATE(), '%Y-%m-%d') AS hoje"
+      );
+      const periodoFatura = calcularPeriodoFaturamentoSemanal(
+        relogioBanco.hoje,
+        cliente.dia_fechamento ?? 0,
+        cliente.prazo_pagamento_dias ?? 3
+      );
+
       const [fatura] = await connection.query(
         `INSERT INTO faturas_clientes (
            cliente_id,
@@ -453,15 +465,9 @@ if (bancoProprio.length) {
          )
          VALUES (
            ?,
-           DATE_SUB(CURDATE(), INTERVAL WEEKDAY(CURDATE()) DAY),
-           DATE_ADD(
-             DATE_SUB(CURDATE(), INTERVAL WEEKDAY(CURDATE()) DAY),
-             INTERVAL 6 DAY
-           ),
-           DATE_ADD(
-             DATE_SUB(CURDATE(), INTERVAL WEEKDAY(CURDATE()) DAY),
-             INTERVAL (6 + ?) DAY
-           ),
+           ?,
+           ?,
+           ?,
            ?,
            ?,
            'ABERTA'
@@ -472,7 +478,9 @@ if (bancoProprio.length) {
            atualizado_em = NOW()`,
         [
           cliente.id,
-          Number(cliente.prazo_pagamento_dias || 3),
+          periodoFatura.inicio,
+          periodoFatura.fim,
+          periodoFatura.vencimento,
           servico.moeda || 'BRL',
           Number(servico.preco_base || 0)
         ]
@@ -524,9 +532,11 @@ if (bancoProprio.length) {
           'Pedido adicionado ao faturamento semanal',
           JSON.stringify({
             fatura_id: fatura.insertId,
-            periodo: 'SEGUNDA_A_DOMINGO',
+            periodo_inicio: periodoFatura.inicio,
+            periodo_fim: periodoFatura.fim,
+            dia_fechamento: periodoFatura.diaFechamento,
             prazo_pagamento_dias:
-              Number(cliente.prazo_pagamento_dias || 3),
+              periodoFatura.prazoPagamentoDias,
             valor: Number(servico.preco_base || 0),
             moeda: servico.moeda || 'BRL'
           })
