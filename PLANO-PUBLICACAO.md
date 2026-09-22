@@ -8,10 +8,10 @@ da aprovação dos testes.
 ## Estado comprovado
 
 - A produção permanece na `v0.4.1`, com o serviço ativo e `/health` HTTP 200.
-- As oito migrações adicionadas depois da tag ainda não estão aplicadas no
+- As nove migrações adicionadas depois da tag ainda não estão aplicadas no
   banco publicado.
 - `api/validar-migracoes-descartaveis.js` copia somente a estrutura atual para
-  uma instância MySQL local sem rede, aplica as oito migrações duas vezes,
+  uma instância MySQL local sem rede, aplica as nove migrações duas vezes,
   verifica dez tabelas, comprova o backfill das três partes de um pedido
   inteiramente sintético e apaga integralmente a instância.
 - A validação descartável não lê linhas de negócio e não grava no banco real.
@@ -58,7 +58,7 @@ O script recusa working tree sujo e executa, nesta ordem:
 4. preparação local da API e do frontend fora dos diretórios publicados;
 5. backup integral verificado da API, frontend e banco;
 6. parada do serviço;
-7. aplicação das oito migrações;
+7. aplicação das nove migrações;
 8. cópia local dos artefatos, preservando `.env` e `storage`;
 9. reinício e validação de `/health` e `/health/ready`.
 

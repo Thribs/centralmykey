@@ -14,7 +14,7 @@ Publicação não executada. Este comando apenas mostra o procedimento.
 
 Ao usar --confirmar-publicacao, ele valida Git/testes/build, prepara os
 artefatos fora da produção, cria e verifica um backup integral, para o serviço,
-aplica as oito migrações, copia os artefatos localmente, reinicia e valida
+aplica as nove migrações, copia os artefatos localmente, reinicia e valida
 /health e /health/ready. Qualquer falha após a primeira alteração restaura
 automaticamente API, frontend e banco a partir do backup criado.
 EOF

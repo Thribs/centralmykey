@@ -172,7 +172,7 @@ async function chamarBuscaApi({ montadoraId, chassi, fetchImpl = global.fetch })
   }
 }
 
-async function buscarCache(connection, contexto, { permitirVencido = false } = {}) {
+async function buscarCache(connection, contexto) {
   const ttlSegundos = Math.max(0, Number(
     process.env.CACHE_SENHAS_JOELPIRES_TTL_SEGUNDOS || 3600
   ));
@@ -193,7 +193,7 @@ async function buscarCache(connection, contexto, { permitirVencido = false } = {
     parametros.push(chassi);
   }
 
-  if (!permitirVencido) parametros.push(ttlSegundos);
+  parametros.push(ttlSegundos);
 
   const [linhas] = await connection.query(
     `SELECT
@@ -207,7 +207,7 @@ async function buscarCache(connection, contexto, { permitirVencido = false } = {
        AND CAST(JSON_UNQUOTE(JSON_EXTRACT(bs.dados_extras, '$.montadora_id')) AS UNSIGNED) = ?
        AND ${filtroChassi}
        AND bs.ativo = 1
-       ${permitirVencido ? '' : 'AND bs.atualizado_em >= DATE_SUB(NOW(), INTERVAL ? SECOND)'}
+       AND bs.atualizado_em >= DATE_SUB(NOW(), INTERVAL ? SECOND)
      ORDER BY bs.atualizado_em DESC, bs.id DESC
      LIMIT 1`,
     parametros
@@ -253,7 +253,17 @@ async function salvarCache(connection, senha) {
      (tipo,marca,modelo,chassi,codigo_mecanico,codigo_radio,
       codigo_imobilizador,codigo_alarme,pin,dados_extras,origem_id,
       fornecedor_id,confiabilidade,ativo)
-     VALUES (?,?,?,?,?,?,?,?,?,?,3,NULL,'CONFIRMADA',1)`,
+     VALUES (?,?,?,?,?,?,?,?,?,?,3,NULL,'CONFIRMADA',1)
+     ON DUPLICATE KEY UPDATE
+       id=LAST_INSERT_ID(id), tipo=VALUES(tipo), marca=VALUES(marca),
+       modelo=VALUES(modelo), chassi=VALUES(chassi),
+       codigo_mecanico=VALUES(codigo_mecanico),
+       codigo_radio=VALUES(codigo_radio),
+       codigo_imobilizador=VALUES(codigo_imobilizador),
+       codigo_alarme=VALUES(codigo_alarme), pin=VALUES(pin),
+       dados_extras=VALUES(dados_extras), origem_id=3,
+       fornecedor_id=NULL, confiabilidade='CONFIRMADA', ativo=1,
+       atualizado_em=NOW()`,
     [senha.tipo, senha.marca, senha.modelo, senha.chassi,
      senha.codigo_mecanico, senha.codigo_radio, senha.codigo_imobilizador,
      senha.codigo_alarme, senha.pin, JSON.stringify(dadosExtras)]
@@ -342,14 +352,6 @@ async function buscarSenhaFonteVerdade(connection, entrada, opcoes = {}) {
       };
     }
 
-    const cacheVencido = await buscarCache(connection, contexto, { permitirVencido: true });
-    if (cacheVencido) {
-      return {
-        ...formatarCache(cacheVencido, 'CACHE_JOELPIRES_CONTINGENCIA'),
-        contingencia: true,
-        erro_api: erro.codigo
-      };
-    }
     return {
       status: 'INDISPONIVEL',
       origem: 'API_JOELPIRES',

@@ -16,7 +16,8 @@ const MIGRACOES = [
   '20260920_eventos_integracoes.sql',
   '20260920_partes_pedido.sql',
   '20260921_mapeamentos_produtos_externos.sql',
-  '20260921_referencias_pagamento.sql'
+  '20260921_referencias_pagamento.sql',
+  '20260921_identidade_cache_joelpires.sql'
 ];
 
 const TABELAS_ESPERADAS = [
@@ -235,6 +236,53 @@ async function executarValidacao() {
     `);
     if (partes !== '3\t3\t3\t3') {
       throw new Error(`Backfill de partes divergente: ${partes || 'sem resultado'}`);
+    }
+    const colunasCache = await executarConsulta(socket, banco, `
+      SELECT COUNT(*)
+        FROM information_schema.columns
+       WHERE table_schema = DATABASE()
+         AND table_name = 'banco_senhas'
+         AND column_name IN ('cache_fonte', 'cache_api_senha_id')
+         AND extra LIKE '%STORED GENERATED%'
+    `);
+    if (colunasCache !== '2') {
+      throw new Error(`Colunas de identidade do cache divergentes: ${colunasCache || 'ausentes'}`);
+    }
+    const indiceCache = await executarConsulta(socket, banco, `
+      SELECT GROUP_CONCAT(column_name ORDER BY seq_in_index SEPARATOR ','),
+             MIN(non_unique)
+        FROM information_schema.statistics
+       WHERE table_schema = DATABASE()
+         AND table_name = 'banco_senhas'
+         AND index_name = 'uk_banco_senhas_cache_api'
+    `);
+    if (indiceCache !== 'cache_fonte,cache_api_senha_id\t0') {
+      throw new Error(`Índice único do cache divergente: ${indiceCache || 'ausente'}`);
+    }
+    const cacheUnico = await executarConsulta(socket, banco, `
+      INSERT INTO banco_senhas
+        (tipo, marca, chassi, codigo_mecanico, dados_extras,
+         confiabilidade, ativo)
+      VALUES
+        ('GM_SENHA', 'GM', 'CACHEMIGRACAO0001', 'PRIMEIRO',
+         JSON_OBJECT('fonte', 'API_JOELPIRES', 'api_senha_id', 'MIGRACAO-1'),
+         'CONFIRMADA', 1)
+      ON DUPLICATE KEY UPDATE codigo_mecanico = VALUES(codigo_mecanico);
+      INSERT INTO banco_senhas
+        (tipo, marca, chassi, codigo_mecanico, dados_extras,
+         confiabilidade, ativo)
+      VALUES
+        ('GM_SENHA', 'GM', 'CACHEMIGRACAO0001', 'RENOVADO',
+         JSON_OBJECT('fonte', 'API_JOELPIRES', 'api_senha_id', 'MIGRACAO-1'),
+         'CONFIRMADA', 1)
+      ON DUPLICATE KEY UPDATE codigo_mecanico = VALUES(codigo_mecanico);
+      SELECT COUNT(*), MAX(codigo_mecanico)
+        FROM banco_senhas
+       WHERE cache_fonte = 'API_JOELPIRES'
+         AND cache_api_senha_id = 'MIGRACAO-1'
+    `);
+    if (cacheUnico !== '1\tRENOVADO') {
+      throw new Error(`Unicidade do cache divergente: ${cacheUnico || 'sem resultado'}`);
     }
     console.log(
       `OK: ${MIGRACOES.length} migrações aplicadas duas vezes em MySQL descartável; ` +
