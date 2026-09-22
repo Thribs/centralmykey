@@ -1,15 +1,16 @@
-# Plano de publicação interna
+# Registro da publicação interna
 
-Este plano prepara a primeira publicação posterior à `v0.4.1`. Ele não ativa
+Este plano registrou a primeira publicação posterior à `v0.4.1`. Ele não ativou
 WhatsApp, Sicoob, PlugPay, WBuy ou Bling e não altera o ambiente configurado da
 API Joel Pires. A publicação só deve ocorrer depois da apresentação do diff e
 da aprovação dos testes.
 
 ## Estado comprovado
 
-- A produção permanece na `v0.4.1`, com o serviço ativo e `/health` HTTP 200.
-- As nove migrações adicionadas depois da tag ainda não estão aplicadas no
-  banco publicado.
+- O commit `f200ba5` foi publicado em 21/09/2026, sem merge ou nova tag, com o
+  serviço ativo e `/health` e `/health/ready` HTTP 200.
+- As nove migrações adicionadas depois da tag estão aplicadas e as dez tabelas
+  esperadas foram verificadas.
 - `api/validar-migracoes-descartaveis.js` copia somente a estrutura atual para
   uma instância MySQL local sem rede, aplica as nove migrações duas vezes,
   verifica dez tabelas, comprova o backfill das três partes de um pedido
@@ -73,6 +74,8 @@ backup é preservado mesmo quando a publicação termina com sucesso.
 - Transportes e webhooks externos continuam desabilitados até homologação.
 - Não será criada tag enquanto a publicação e os testes pós-publicação não
   estiverem concluídos.
-- O timer de backup não será instalado nesta publicação sem aprovação própria.
+- O timer de backup foi instalado, habilitado e teve a primeira execução
+  observada com sucesso em 21/09/2026.
 - A restauração integral já foi ensaiada em uma instância MySQL descartável,
-  sem acessar produção; o timer ainda exige instalação e observação separadas.
+  sem acessar produção; a primeira execução real também produziu e verificou
+  quatro artefatos no formato 2.

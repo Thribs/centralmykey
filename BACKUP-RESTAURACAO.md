@@ -57,8 +57,9 @@ automaticamente somente depois do limite configurado.
 
 Os arquivos em `deploy/systemd/central-mykey-backup.service` e
 `deploy/systemd/central-mykey-backup.timer` preparam uma execução diária às
-03h15, com atraso aleatório de até 30 minutos. Eles são apenas artefatos de
-publicação: criar os arquivos não instala nem ativa o timer no VPS.
+03h15, com atraso aleatório de até 30 minutos. As unidades foram instaladas e
+habilitadas em 21/09/2026; a primeira execução observada terminou com sucesso e
+criou um pacote formato 2 com quatro artefatos verificados.
 
 `api/teste-backup-agendado.js` usa somente `/tmp` e comprova retenção mínima,
 preservação de diretórios desconhecidos, bloqueio concorrente, recuperação de
