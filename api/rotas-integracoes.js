@@ -135,17 +135,20 @@ module.exports = function registrarRotasIntegracoes(app, pool, opcoes = {}) {
       try {
         const filtros = [];
         const params = [];
-        if (provedor) { filtros.push('provedor = ?'); params.push(provedor); }
-        if (status) { filtros.push('status = ?'); params.push(status); }
+        if (provedor) { filtros.push('e.provedor = ?'); params.push(provedor); }
+        if (status) { filtros.push('e.status = ?'); params.push(status); }
         params.push(limite);
         const [dados] = await pool.query(
-          `SELECT id, provedor, evento_externo_id, tipo, referencia_externa,
-                  entidade, entidade_id, lancamento_id, pagamento_id, status,
-                  tentativas, erro_codigo, erro_detalhe, recebido_em,
-                  processado_em, atualizado_em
-             FROM integracao_eventos
+          `SELECT e.id, e.provedor, e.evento_externo_id, e.tipo,
+                  e.referencia_externa, e.entidade, e.entidade_id,
+                  e.lancamento_id, e.pagamento_id, e.status, e.tentativas,
+                  e.erro_codigo, e.erro_detalhe, e.recebido_em,
+                  e.processado_em, e.atualizado_em,
+                  pg.valor AS valor_pagamento, pg.moeda AS moeda_pagamento
+             FROM integracao_eventos e
+             LEFT JOIN pagamentos pg ON pg.id = e.pagamento_id
              ${filtros.length ? `WHERE ${filtros.join(' AND ')}` : ''}
-            ORDER BY id DESC LIMIT ?`,
+            ORDER BY e.id DESC LIMIT ?`,
           params
         );
         return res.json({ ok: true, total: dados.length, dados });

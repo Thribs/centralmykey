@@ -252,6 +252,9 @@ async function executar() {
     assert.strictEqual(corpo.total, 4);
     assert.ok(corpo.dados.every(item => !Object.hasOwn(item, 'payload')),
       'Consulta administrativa não deve expor payload');
+    const eventoProcessado = corpo.dados.find(item => item.pagamento_id);
+    assert.strictEqual(Number(eventoProcessado.valor_pagamento), valor);
+    assert.strictEqual(eventoProcessado.moeda_pagamento, 'BRL');
   } catch (falha) {
     erro = falha;
   } finally {

@@ -1441,6 +1441,7 @@ test('integrações administram modelos e mapeamentos sem chamar serviços exter
   });
   await expect(linhaPagamentoTardio)
     .toContainText('PAGAMENTO_APOS_CANCELAMENTO_REQUER_ESTORNO');
+  await expect(linhaPagamentoTardio).toContainText('R$');
   const respostasDevolucao = [
     'SICOOB',
     `DEVOLUCAO-${contexto.referencia_pagamento_tardio}`,

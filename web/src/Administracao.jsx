@@ -66,6 +66,14 @@ function dataHora(valor) {
   }).format(new Date(valor));
 }
 
+function dinheiro(valor, moeda = 'BRL') {
+  if (valor === null || valor === undefined) return '—';
+  return Number(valor).toLocaleString('pt-BR', {
+    style: 'currency',
+    currency: moeda || 'BRL'
+  });
+}
+
 function ModalUsuario({ registro, perfis, erro, salvando, fechar, salvar }) {
   const [form, setForm] = useState({
     nome: registro?.nome || '',
@@ -635,7 +643,8 @@ export function Integracoes({ permissoes: permissoesSessao = [] }) {
     )?.trim();
     if (!motivo) return;
     if (!window.confirm(
-      'Confirma que o valor já foi devolvido e deseja registrar o estorno?'
+      `Confirma que ${dinheiro(evento.valor_pagamento, evento.moeda_pagamento)} ` +
+      'já foi devolvido e deseja registrar o estorno?'
     )) return;
 
     setSalvando(true);
@@ -791,10 +800,10 @@ export function Integracoes({ permissoes: permissoesSessao = [] }) {
         </div>
         <div className="admin-table-wrap">
           <table className="admin-table">
-            <thead><tr><th>Provedor</th><th>Evento</th><th>Referência</th><th>Entidade</th><th>Status</th><th>Tentativas</th><th>Falha</th><th>Recebido</th><th>Ação</th></tr></thead>
+            <thead><tr><th>Provedor</th><th>Evento</th><th>Referência</th><th>Entidade</th><th>Valor</th><th>Status</th><th>Tentativas</th><th>Falha</th><th>Recebido</th><th>Ação</th></tr></thead>
             <tbody>
               {eventos.length === 0 && (
-                <tr><td colSpan="9" className="admin-empty">Nenhum evento encontrado.</td></tr>
+                <tr><td colSpan="10" className="admin-empty">Nenhum evento encontrado.</td></tr>
               )}
               {eventos.map(evento => (
                 <tr key={evento.id}>
@@ -804,6 +813,7 @@ export function Integracoes({ permissoes: permissoesSessao = [] }) {
                   <td>{evento.entidade
                     ? `${evento.entidade}${evento.entidade_id ? ` · ${evento.entidade_id}` : ''}`
                     : '—'}</td>
+                  <td>{dinheiro(evento.valor_pagamento, evento.moeda_pagamento)}</td>
                   <td><span className={`admin-status status-${evento.status}`}>{evento.status}</span></td>
                   <td>{Number(evento.tentativas || 0)}</td>
                   <td>{evento.erro_codigo || '—'}</td>
