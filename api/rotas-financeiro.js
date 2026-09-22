@@ -490,12 +490,6 @@ module.exports = function (app, pool) {
           [pedido.id]
         );
 
-        const processamento = await processarPedidoPago(
-          connection,
-          pedido.id,
-          req.usuario.id
-        );
-
         await connection.query(
           `INSERT INTO pedido_historico (
              pedido_id,
@@ -517,6 +511,12 @@ module.exports = function (app, pool) {
               referencia_externa: referenciaExterna
             })
           ]
+        );
+
+        const processamento = await processarPedidoPago(
+          connection,
+          pedido.id,
+          req.usuario.id
         );
 
         await connection.query(

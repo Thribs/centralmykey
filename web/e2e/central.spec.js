@@ -803,7 +803,10 @@ test('navegador reprocessa HTTP 503 real sem acionar fornecedor', async ({ page 
   const contextoCompleto = await respostaContexto.json();
   const contexto = contextoCompleto.indisponivel;
 
-  await autenticarIntegrado(page, contextoCompleto.autenticacao.administrador);
+  const token = await autenticarIntegrado(
+    page,
+    contextoCompleto.autenticacao.administrador
+  );
   await page.goto('/');
   await page.getByRole('button', { name: 'Pedidos e senhas', exact: true }).click();
   const busca = page.getByPlaceholder('Protocolo, cliente, chassi ou serviço');
@@ -838,6 +841,34 @@ test('navegador reprocessa HTTP 503 real sem acionar fornecedor', async ({ page 
   expect(Number(verificacao.estado.pagamentos)).toBe(1);
   expect(Number(verificacao.estado.cache)).toBe(0);
   expect(Number(verificacao.estado.consultas_fornecedor || 0)).toBe(0);
+
+  const resumoFila = await page.request.get(`${API}/api/fila-pedidos/resumo`, {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  expect(resumoFila.ok()).toBe(true);
+  const corpoResumoFila = await resumoFila.json();
+  expect(Number(corpoResumoFila.indicadores.aguardando_reprocessamento_gm))
+    .toBeGreaterThanOrEqual(1);
+  const filaReprocessamento = await page.request.get(
+    `${API}/api/fila-pedidos?status=AGUARDANDO_REPROCESSAMENTO`,
+    { headers: { Authorization: `Bearer ${token}` } }
+  );
+  expect(filaReprocessamento.ok()).toBe(true);
+  const corpoFilaReprocessamento = await filaReprocessamento.json();
+  expect(corpoFilaReprocessamento.dados.map(item => Number(item.id)))
+    .toContain(Number(contexto.pedido_id));
+  expect(Number(corpoFilaReprocessamento.dados.find(
+    item => Number(item.id) === Number(contexto.pedido_id)
+  ).aguardando_reprocessamento_gm)).toBe(1);
+
+  await detalhe.getByRole('button', { name: 'Fechar' }).click();
+  await expect(page.getByText('API indisponível', { exact: true })).toBeVisible();
+  await page.getByLabel('Status do pedido')
+    .selectOption('AGUARDANDO_REPROCESSAMENTO');
+  await expect(linha).toBeVisible();
+  await expect(linha).toContainText('API indisponível · aguardando reprocessamento');
+  await linha.click();
+  await expect(detalhe).toBeVisible();
 
   await detalhe.getByRole('button', { name: 'Tentar novamente' }).click();
   await expect(page.getByRole('status')).toContainText(

@@ -611,6 +611,7 @@ export default function Pedidos({ buscaInicial = '', permissoes = [] }) {
   const cards = [
     ['Total hoje', indicadores.total || 0, KeyRound, 'blue'],
     ['Em consulta', indicadores.em_consulta || 0, Search, 'purple'],
+    ['API indisponível', indicadores.aguardando_reprocessamento_gm || 0, ShieldX, 'red'],
     ['Aguardando envio', indicadores.aguardando_envio_fornecedor || 0, Truck, 'orange'],
     ['Falhas de envio', indicadores.falhas_envio_fornecedor || 0, ShieldX, 'red'],
     ['Aguardando entrega', indicadores.aguardando_entrega_cliente || 0, Clock3, 'orange'],
@@ -669,10 +670,14 @@ export default function Pedidos({ buscaInicial = '', permissoes = [] }) {
           </label>
 
           <select
+            aria-label="Status do pedido"
             value={status}
             onChange={evento => setStatus(evento.target.value)}
           >
             <option value="">Todos os status</option>
+            <option value="AGUARDANDO_REPROCESSAMENTO">
+              Aguardando reprocessamento
+            </option>
             {Object.entries(STATUS).map(([codigo, nome]) => (
               <option key={codigo} value={codigo}>{nome}</option>
             ))}
@@ -727,6 +732,11 @@ export default function Pedidos({ buscaInicial = '', permissoes = [] }) {
                       <span className={`order-status status-order-${pedido.status}`}>
                         {STATUS[pedido.status] || pedido.status}
                       </span>
+                      {Number(pedido.aguardando_reprocessamento_gm) === 1 && (
+                        <small className="communication-state communication-FALHOU">
+                          API indisponível · aguardando reprocessamento
+                        </small>
+                      )}
                       {pedido.comunicacao_fornecedor_status && (
                         <small className={`communication-state communication-${pedido.comunicacao_fornecedor_status}`}>
                           {STATUS_COMUNICACAO[pedido.comunicacao_fornecedor_status] ||

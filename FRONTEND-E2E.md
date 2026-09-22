@@ -27,7 +27,8 @@ A suíte cobre inicialmente:
 - resposta 422 persistida como dados inválidos, seguida de correção pela rota
   real, nova consulta, conclusão, cache e entrega sem fornecedor;
 - HTTP 503 persistido como indisponibilidade, alerta operacional mesmo após o
-  histórico de pagamento e reprocessamento posterior sem fornecedor;
+  histórico de pagamento, indicador e filtro próprios na fila, e
+  reprocessamento posterior sem fornecedor;
 - resultado de fornecedor registrado e confirmado pelas rotas reais, com
   consulta cancelada, cache alimentado e entrega preparada;
 - fechamento semanal gerado pela tela financeira contra API e MySQL reais,

@@ -224,7 +224,6 @@ async function processarEventoPagamentoPedido(pool, dados, opcoes = {}) {
         evento.referencia, `Evento externo ${evento.eventoId}`]
     );
     await connection.query("UPDATE pedidos_senha SET status='PAGO' WHERE id=?", [pedido.id]);
-    const processamento = await processarPedidoPago(connection, pedido.id, null);
     await connection.query(
       `INSERT INTO pedido_historico
          (pedido_id, usuario_id, tipo, descricao, dados)
@@ -234,6 +233,7 @@ async function processarEventoPagamentoPedido(pool, dados, opcoes = {}) {
           pagamento_id: pagamento.insertId, referencia_externa: evento.referencia,
           valor, moeda: evento.moeda })]
     );
+    const processamento = await processarPedidoPago(connection, pedido.id, null);
     await connection.query(
       `INSERT INTO auditoria
          (usuario_id, modulo, acao, entidade, entidade_id, descricao,

@@ -148,6 +148,16 @@ async function executar() {
     assert.strictEqual(primeira.ok, true);
     assert.strictEqual(primeira.status, 'PROCESSADO');
     assert.strictEqual(primeira.processamento.status, 'CONCLUIDO');
+    const [[ultimoHistorico]] = await connection.query(
+      `SELECT tipo FROM pedido_historico
+        WHERE pedido_id = ? ORDER BY id DESC LIMIT 1`,
+      [pedidoId]
+    );
+    assert.strictEqual(
+      ultimoHistorico.tipo,
+      'PROCESSADO_APOS_PAGAMENTO',
+      'O resultado deve suceder o histórico do pagamento externo'
+    );
 
     const repetida = await processarEventoPagamentoPedido(pool, dados);
     assert.strictEqual(repetida.idempotente, true);

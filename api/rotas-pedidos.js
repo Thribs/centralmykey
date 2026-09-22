@@ -1981,6 +1981,19 @@ if (bancoProprio.length) {
            SUM(p.status = 'CONCLUIDO') AS concluidos,
            SUM(p.status = 'CANCELADO') AS cancelados,
            SUM(p.status = 'ERRO') AS com_erro,
+           SUM(
+             p.status = 'ABERTO'
+             AND p.fornecedor_id IS NULL
+             AND p.origem_id IS NULL
+             AND s.codigo = 'GM_SENHA'
+             AND (
+               SELECT h.tipo
+                 FROM pedido_historico h
+                WHERE h.pedido_id = p.id
+                ORDER BY h.id DESC
+                LIMIT 1
+             ) = 'API_JOELPIRES_INDISPONIVEL'
+           ) AS aguardando_reprocessamento_gm,
            SUM(p.origem_id = 1) AS atendidos_base_propria,
            SUM(p.origem_id = 2) AS atribuidos_fornecedor,
            SUM(COALESCE(com.enviada_fornecedor, 0)) AS enviados_fornecedor,
@@ -1989,6 +2002,7 @@ if (bancoProprio.length) {
            SUM(COALESCE(com.pendente_cliente, 0)) AS aguardando_entrega_cliente,
            SUM(COALESCE(com.falha_cliente, 0)) AS falhas_entrega_cliente
          FROM pedidos_senha p
+         INNER JOIN servicos s ON s.id = p.servico_id
          LEFT JOIN (
            SELECT
              pedido_id,
@@ -2044,6 +2058,9 @@ if (bancoProprio.length) {
           concluidos: Number(resumo.concluidos || 0),
           cancelados: Number(resumo.cancelados || 0),
           com_erro: Number(resumo.com_erro || 0),
+          aguardando_reprocessamento_gm: Number(
+            resumo.aguardando_reprocessamento_gm || 0
+          ),
           atendidos_base_propria: Number(
             resumo.atendidos_base_propria || 0
           ),
@@ -2121,7 +2138,8 @@ if (bancoProprio.length) {
         'PAGO',
         'CONCLUIDO',
         'CANCELADO',
-        'ERRO'
+        'ERRO',
+        'AGUARDANDO_REPROCESSAMENTO'
       ];
 
       if (status && !statusPermitidos.includes(status)) {
@@ -2134,7 +2152,21 @@ if (bancoProprio.length) {
       const filtros = [];
       const parametros = [];
 
-      if (status) {
+      if (status === 'AGUARDANDO_REPROCESSAMENTO') {
+        filtros.push(`(
+          p.status = 'ABERTO'
+          AND p.fornecedor_id IS NULL
+          AND p.origem_id IS NULL
+          AND s.codigo = 'GM_SENHA'
+          AND (
+            SELECT h.tipo
+              FROM pedido_historico h
+             WHERE h.pedido_id = p.id
+             ORDER BY h.id DESC
+             LIMIT 1
+          ) = 'API_JOELPIRES_INDISPONIVEL'
+        )`);
+      } else if (status) {
         filtros.push('p.status = ?');
         parametros.push(status);
       }
@@ -2215,6 +2247,19 @@ if (bancoProprio.length) {
            com.comunicacao_fornecedor_erro,
            com.entrega_cliente_status,
            com.entrega_cliente_erro,
+           CASE WHEN
+             p.status = 'ABERTO'
+             AND p.fornecedor_id IS NULL
+             AND p.origem_id IS NULL
+             AND s.codigo = 'GM_SENHA'
+             AND (
+               SELECT h.tipo
+                 FROM pedido_historico h
+                WHERE h.pedido_id = p.id
+                ORDER BY h.id DESC
+                LIMIT 1
+             ) = 'API_JOELPIRES_INDISPONIVEL'
+           THEN 1 ELSE 0 END AS aguardando_reprocessamento_gm,
            p.criado_em,
            p.atualizado_em,
            p.concluido_em

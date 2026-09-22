@@ -214,6 +214,16 @@ async function executar() {
       historicos: 1,
       referencias: 1
     });
+    const [[ultimoHistorico]] = await connection.query(
+      `SELECT tipo FROM pedido_historico
+        WHERE pedido_id = ? ORDER BY id DESC LIMIT 1`,
+      [pedidoId]
+    );
+    assert.strictEqual(
+      ultimoHistorico.tipo,
+      'PROCESSADO_APOS_PAGAMENTO',
+      'O resultado do processamento deve permanecer como último histórico'
+    );
 
     const repetida = await postPagamento(
       global.fetch,
