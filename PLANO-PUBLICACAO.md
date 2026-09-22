@@ -7,7 +7,7 @@ da aprovação dos testes.
 
 ## Estado comprovado
 
-- O commit `998ef66` foi publicado em 22/09/2026, sem merge ou nova tag, com o
+- O commit `c545876` foi publicado em 22/09/2026, sem merge ou nova tag, com o
   serviço ativo e `/health` e `/health/ready` HTTP 200.
 - A publicação criou e verificou o backup integral
   `/opt/centralmykey-backups/20260922T025627Z`. O diagnóstico de prontidão do
@@ -34,6 +34,11 @@ da aprovação dos testes.
   da API, 31 cenários Playwright, lint, build e as onze migrações idempotentes.
   A leitura posterior confirmou zero autoridades, estados confirmados, produtos
   mapeados e snapshots recebidos; o conversor permanece bloqueado.
+- A publicação da reanálise local de snapshots WBuy criou e verificou o backup
+  `/opt/centralmykey-backups/20260922T033939Z`, repetiu a suíte completa da API,
+  31 cenários Playwright, lint, build e as onze migrações idempotentes. A rota
+  publicada exige autenticação, omite os dados pessoais do payload e não cria
+  pedido, pagamento ou cliente.
 - A instalação publicada usa `qs 6.16.0` e `npm audit --omit=dev` informa zero
   vulnerabilidades conhecidas.
 - As onze migrações adicionadas depois da tag estão aplicadas e as doze tabelas
