@@ -7,7 +7,7 @@ da aprovação dos testes.
 
 ## Estado comprovado
 
-- O commit `5214833` foi publicado em 22/09/2026, sem merge ou nova tag, com o
+- O commit `c067355` foi publicado em 22/09/2026, sem merge ou nova tag, com o
   serviço ativo e `/health` e `/health/ready` HTTP 200.
 - A publicação criou e verificou o backup integral
   `/opt/centralmykey-backups/20260922T025627Z`. O diagnóstico de prontidão do
@@ -25,6 +25,10 @@ da aprovação dos testes.
   `/opt/centralmykey-backups/20260922T031849Z`, aplicou dez migrações e confirmou
   onze tabelas. A tabela da matriz foi publicada vazia, com zero auditorias:
   nenhuma decisão de Joel foi inferida.
+- A publicação do mapa de estados criou e verificou o backup
+  `/opt/centralmykey-backups/20260922T032608Z`, aplicou onze migrações e
+  confirmou doze tabelas. O mapa foi publicado com zero linhas e zero
+  auditorias; nenhum código fictício dos testes chegou à produção.
 - A instalação publicada usa `qs 6.16.0` e `npm audit --omit=dev` informa zero
   vulnerabilidades conhecidas.
 - As onze migrações adicionadas depois da tag estão aplicadas e as doze tabelas
