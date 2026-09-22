@@ -7,7 +7,7 @@ da aprovação dos testes.
 
 ## Estado comprovado
 
-- O commit `c545876` foi publicado em 22/09/2026, sem merge ou nova tag, com o
+- O commit `045bea9` foi publicado em 22/09/2026, sem merge ou nova tag, com o
   serviço ativo e `/health` e `/health/ready` HTTP 200.
 - A publicação criou e verificou o backup integral
   `/opt/centralmykey-backups/20260922T025627Z`. O diagnóstico de prontidão do
@@ -39,11 +39,16 @@ da aprovação dos testes.
   31 cenários Playwright, lint, build e as onze migrações idempotentes. A rota
   publicada exige autenticação, omite os dados pessoais do payload e não cria
   pedido, pagamento ou cliente.
+- A publicação da base OAuth Bling criou e verificou o backup
+  `/opt/centralmykey-backups/20260922T035131Z`, aplicou doze migrações e
+  confirmou quatorze tabelas após a suíte completa da API, 31 cenários
+  Playwright, lint e build. As tabelas OAuth permaneceram vazias e todas as
+  configurações reais ficaram ausentes/desabilitadas; nenhuma autorização ou
+  chamada ao Bling ocorreu.
 - A instalação publicada usa `qs 6.16.0` e `npm audit --omit=dev` informa zero
   vulnerabilidades conhecidas.
-- As doze migrações adicionadas depois da tag foram validadas e as quatorze
-  tabelas esperadas foram verificadas; a décima segunda aguarda a publicação
-  deste marco OAuth.
+- As doze migrações adicionadas depois da tag estão aplicadas e as quatorze
+  tabelas esperadas foram verificadas.
 - `api/validar-migracoes-descartaveis.js` copia somente a estrutura atual para
   uma instância MySQL local sem rede, aplica as doze migrações duas vezes,
   verifica quatorze tabelas, comprova o backfill das três partes de um pedido
