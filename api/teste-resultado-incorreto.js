@@ -172,17 +172,32 @@ async function executar() {
              AND finalidade = 'CONSULTA_FORNECEDOR'
              AND status = 'PENDENTE') AS consultas,
          (SELECT COUNT(*) FROM pedido_historico
-           WHERE pedido_id = ? AND tipo = 'RESULTADO_INCORRETO') AS historicos`,
+           WHERE pedido_id = ? AND tipo = 'RESULTADO_INCORRETO') AS historicos,
+         (SELECT COUNT(*) FROM auditoria
+           WHERE entidade = 'pedidos_senha' AND entidade_id = ?
+             AND acao = 'REJEITAR_RESULTADO') AS auditorias,
+         (SELECT COUNT(*) FROM auditoria
+           WHERE entidade = 'pedidos_senha' AND entidade_id = ?
+             AND acao = 'REJEITAR_RESULTADO'
+             AND (CAST(dados_antes AS CHAR) LIKE ?
+               OR CAST(dados_depois AS CHAR) LIKE ?)) AS codigos_na_auditoria`,
       [
         resultado.insertId,
         pedido.insertId,
         fornecedorProximo.insertId,
         pedido.insertId,
         fornecedorProximo.insertId,
-        pedido.insertId
+        pedido.insertId,
+        String(pedido.insertId),
+        String(pedido.insertId),
+        '%MC-INCORRETO%',
+        '%Código mecânico não funcionou%'
       ]
     );
-    assert.deepStrictEqual(Object.values(estado).map(Number), [1, 1, 1, 1]);
+    assert.deepStrictEqual(
+      Object.values(estado).map(Number),
+      [1, 1, 1, 1, 1, 0]
+    );
   } catch (falha) {
     erro = falha;
   } finally {

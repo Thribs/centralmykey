@@ -42,6 +42,34 @@ module.exports = function (app, pool) {
     }
   }
 
+  async function auditarOperacaoPedido(connection, {
+    usuarioId,
+    acao,
+    entidade = 'pedidos_senha',
+    entidadeId,
+    descricao,
+    antes = null,
+    depois = null,
+    ip = null
+  }) {
+    await connection.query(
+      `INSERT INTO auditoria
+         (usuario_id, modulo, acao, entidade, entidade_id,
+          descricao, dados_antes, dados_depois, ip)
+       VALUES (?, 'PEDIDOS_SENHAS', ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        usuarioId,
+        acao,
+        entidade,
+        String(entidadeId),
+        descricao,
+        antes === null ? null : JSON.stringify(antes),
+        depois === null ? null : JSON.stringify(depois),
+        ip
+      ]
+    );
+  }
+
   // ============================================================
   // CENTRAL MYKEY - PEDIDOS DE SENHA
   // ============================================================
@@ -262,6 +290,21 @@ if (cliente.tipo_cobranca === 'ANTECIPADO') {
     ]
   );
 
+  await auditarOperacaoPedido(connection, {
+    usuarioId: req.usuario.id,
+    acao: 'CRIAR',
+    entidadeId: pedidoAguardando.insertId,
+    descricao: `Pedido ${protocoloPagamento} criado`,
+    depois: {
+      status: 'AGUARDANDO_PAGAMENTO',
+      servico_id: Number(servico_id),
+      tipo_cobranca: cliente.tipo_cobranca,
+      valor: Number(servico.preco_base || 0),
+      moeda: servico.moeda || 'BRL'
+    },
+    ip: req.ip || null
+  });
+
   await connection.commit();
 
   return res.status(201).json({
@@ -307,6 +350,13 @@ const apiIndisponivel = consultaBanco.status === 'INDISPONIVEL';
 const dadosInvalidos = consultaBanco.status === 'DADOS_INVALIDOS';
 const montadoraNaoConfigurada =
   consultaBanco.status === 'MONTADORA_NAO_CONFIGURADA';
+const statusPedidoCriado = bancoProprio.length
+  ? 'CONCLUIDO'
+  : conflitoBanco || dadosInvalidos
+    ? 'AGUARDANDO_DADOS'
+    : apiIndisponivel || montadoraNaoConfigurada
+      ? 'ABERTO'
+      : null;
 
 // --------------------------------------------------------
 // 3.2 Se encontrou no banco próprio, custo é zero
@@ -413,15 +463,7 @@ if (bancoProprio.length) {
           marca || servico.marca || null,
           modelo || null,
           ano || null,
-          conflitoBanco
-            ? 'AGUARDANDO_DADOS'
-            : dadosInvalidos
-              ? 'AGUARDANDO_DADOS'
-            : apiIndisponivel
-              ? 'ABERTO'
-            : fornecedorId
-              ? 'EM_CONSULTA'
-              : 'ABERTO',
+          statusPedidoCriado || (fornecedorId ? 'EM_CONSULTA' : 'ABERTO'),
           Number(servico.preco_base || 0),
           custo,
           fornecedorId,
@@ -668,6 +710,24 @@ if (bancoProprio.length) {
           JSON.stringify({ marca: marca || servico.marca || null })]
       );
     }
+      const statusFinalPedido = statusPedidoCriado ||
+        (fornecedorId ? 'EM_CONSULTA' : 'ABERTO');
+      await auditarOperacaoPedido(connection, {
+        usuarioId: req.usuario.id,
+        acao: 'CRIAR',
+        entidadeId: resultado.insertId,
+        descricao: `Pedido ${protocolo} criado`,
+        depois: {
+          status: statusFinalPedido,
+          servico_id: Number(servico_id),
+          tipo_cobranca: cliente.tipo_cobranca,
+          valor: Number(servico.preco_base || 0),
+          moeda: servico.moeda || 'BRL',
+          fornecedor_atribuido: Boolean(fornecedorId),
+          resultado_automatico: Boolean(bancoProprio.length)
+        },
+        ip: req.ip || null
+      });
       await connection.commit();
 
       return res.status(201).json({
@@ -683,15 +743,7 @@ if (bancoProprio.length) {
           envio_fornecedor: envioFornecedor,
           entrega_cliente: entregaCliente,
           valor_venda: Number(servico.preco_base || 0),
-          status: bancoProprio.length
-            ? 'CONCLUIDO'
-            : conflitoBanco
-              ? 'AGUARDANDO_DADOS'
-              : apiIndisponivel
-                ? 'ABERTO'
-              : fornecedorId
-                ? 'EM_CONSULTA'
-                : 'ABERTO',
+          status: statusFinalPedido,
             resultado_automatico: bancoProprio.length
               ? {
                   encontrado: true,
@@ -1135,6 +1187,23 @@ if (bancoProprio.length) {
         usuarioId: req.usuario.id
       });
 
+      if (!registrado.idempotente) {
+        await auditarOperacaoPedido(connection, {
+          usuarioId: req.usuario.id,
+          acao: 'REGISTRAR_RESULTADO',
+          entidadeId: registrado.pedido.id,
+          descricao:
+            `Resultado do pedido ${registrado.pedido.protocolo} registrado`,
+          antes: { status: 'EM_CONSULTA' },
+          depois: {
+            status: registrado.pedido.status,
+            resultado_id: registrado.resultado.id,
+            fornecedor_id: registrado.pedido.fornecedor_id
+          },
+          ip: req.ip || null
+        });
+      }
+
       await connection.commit();
 
       return res.status(registrado.idempotente ? 200 : 201).json({
@@ -1413,6 +1482,24 @@ if (bancoProprio.length) {
         ]
       );
 
+      await auditarOperacaoPedido(connection, {
+        usuarioId,
+        acao: 'CONFIRMAR_RESULTADO',
+        entidadeId: pedido.id,
+        descricao: `Resultado do pedido ${pedido.protocolo} confirmado`,
+        antes: {
+          resultado_id: resultadoEncontrado.id,
+          status_resultado: 'ENCONTRADO'
+        },
+        depois: {
+          resultado_id: resultadoEncontrado.id,
+          status_resultado: 'CONFIRMADO',
+          acao_base: acaoBase,
+          entrega_status: entrega.status
+        },
+        ip: req.ip || null
+      });
+
       await connection.commit();
 
       return res.json({
@@ -1624,6 +1711,25 @@ if (bancoProprio.length) {
           })
         ]
       );
+
+      await auditarOperacaoPedido(connection, {
+        usuarioId,
+        acao: 'REJEITAR_RESULTADO',
+        entidadeId: pedido.id,
+        descricao: `Resultado do pedido ${pedido.protocolo} rejeitado`,
+        antes: {
+          status: pedido.status,
+          resultado_id: resultadoIncorreto.id
+        },
+        depois: {
+          status: statusNovo,
+          resultado_id: resultadoIncorreto.id,
+          banco_bloqueado: bancoBloqueado,
+          fornecedor_id: fornecedor?.fornecedor_id || null,
+          comunicacao_status: comunicacao?.status || null
+        },
+        ip: req.ip || null
+      });
 
       await connection.commit();
 

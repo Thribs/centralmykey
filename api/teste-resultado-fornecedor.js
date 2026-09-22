@@ -224,18 +224,30 @@ async function executar() {
          (SELECT COUNT(*) FROM pedido_resultados
            WHERE pedido_id = ? AND custo = 22 AND status = 'ENCONTRADO') AS custo_correto,
          (SELECT COUNT(*) FROM pedido_resultados
-           WHERE pedido_id = ?) AS resultados_invalidos`,
+           WHERE pedido_id = ?) AS resultados_invalidos,
+         (SELECT COUNT(*) FROM auditoria
+           WHERE entidade = 'pedidos_senha' AND entidade_id = ?
+             AND acao = 'REGISTRAR_RESULTADO') AS auditorias,
+         (SELECT COUNT(*) FROM auditoria
+           WHERE entidade = 'pedidos_senha' AND entidade_id = ?
+             AND acao = 'REGISTRAR_RESULTADO'
+             AND (CAST(dados_antes AS CHAR) LIKE ?
+               OR CAST(dados_depois AS CHAR) LIKE ?)) AS codigos_na_auditoria`,
       [
         pedido.insertId,
         pedido.insertId,
         pedido.insertId,
         pedido.insertId,
-        pedidoInvalido.insertId
+        pedidoInvalido.insertId,
+        String(pedido.insertId),
+        String(pedido.insertId),
+        '%MC-123%',
+        '%IM-456%'
       ]
     );
     assert.deepStrictEqual(
       Object.values(estado).map(Number),
-      [1, 1, 1, 1, 0]
+      [1, 1, 1, 1, 0, 1, 0]
     );
   } catch (falha) {
     erro = falha;

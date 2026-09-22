@@ -84,6 +84,7 @@ async function executar() {
   let servidor;
   let protocolo;
   let protocoloAntecipado;
+  let protocoloDadosInvalidos;
   let erro;
 
   try {
@@ -223,6 +224,62 @@ async function executar() {
     assert.strictEqual(
       fila.dados[0].comunicacao_fornecedor_status,
       'PENDENTE'
+    );
+
+    global.fetch = async (url, opcoes) => {
+      if (String(url).startsWith(api.url)) return fetchOriginal(url, opcoes);
+      return {
+        ok: false,
+        status: 422,
+        text: async () => JSON.stringify({
+          error: {
+            name: 'ValidationError',
+            message: 'Dados inválidos simulados'
+          }
+        })
+      };
+    };
+    const respostaDadosInvalidos = await global.fetch(
+      `${api.url}/api/pedidos`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          cliente_id: cliente.insertId,
+          servico_id: servico.id,
+          chassi: `9BGDI11A1${sufixo}`,
+          marca: 'GM',
+          modelo: 'TESTE DADOS INVALIDOS',
+          ano: 2026
+        })
+      }
+    );
+    const dadosInvalidos = await respostaDadosInvalidos.json();
+    assert.strictEqual(respostaDadosInvalidos.status, 201);
+    assert.strictEqual(dadosInvalidos.pedido.status, 'AGUARDANDO_DADOS');
+    assert.strictEqual(dadosInvalidos.pedido.fornecedor_id, null);
+    protocoloDadosInvalidos = dadosInvalidos.pedido.protocolo;
+    const [[estadoDadosInvalidos]] = await connection.query(
+      `SELECT p.status, p.custo, p.fornecedor_id,
+              (SELECT COUNT(*) FROM pedido_historico
+                WHERE pedido_id = p.id
+                  AND tipo = 'DADOS_INVALIDOS_API_JOELPIRES') AS historicos,
+              (SELECT COUNT(*) FROM comunicacoes_outbox
+                WHERE pedido_id = p.id
+                  AND finalidade = 'CONSULTA_FORNECEDOR') AS consultas
+         FROM pedidos_senha p
+        WHERE p.id = ?`,
+      [dadosInvalidos.pedido.id]
+    );
+    assert.deepStrictEqual(
+      [
+        estadoDadosInvalidos.status,
+        Number(estadoDadosInvalidos.custo),
+        estadoDadosInvalidos.fornecedor_id,
+        Number(estadoDadosInvalidos.historicos),
+        Number(estadoDadosInvalidos.consultas)
+      ],
+      ['AGUARDANDO_DADOS', 0, null, 1, 0]
     );
 
     await connection.query(
@@ -385,19 +442,36 @@ async function executar() {
          (SELECT COUNT(*) FROM pedido_historico
            WHERE pedido_id = ? AND tipo = 'CONSULTA_FORNECEDOR_REAGENDADA')
            AS reagendamentos,
-         (SELECT COUNT(*) FROM pedido_partes WHERE pedido_id = ?) AS partes`,
+         (SELECT COUNT(*) FROM pedido_partes WHERE pedido_id = ?) AS partes,
+         (SELECT COUNT(*) FROM auditoria
+           WHERE entidade = 'pedidos_senha'
+             AND entidade_id IN (?, ?, ?)
+             AND acao = 'CRIAR') AS auditorias_criacao,
+         (SELECT COUNT(*) FROM auditoria
+           WHERE entidade = 'pedidos_senha'
+             AND entidade_id IN (?, ?, ?)
+             AND (CAST(dados_antes AS CHAR) LIKE ?
+               OR CAST(dados_depois AS CHAR) LIKE ?)) AS dados_sensiveis_auditoria`,
       [
         corpo.pedido.id,
         corpo.pedido.id,
         corpo.pedido.id,
         corpo.pedido.id,
         corpo.pedido.id,
-        corpo.pedido.id
+        corpo.pedido.id,
+        String(corpo.pedido.id),
+        String(dadosInvalidos.pedido.id),
+        String(antecipada.pedido.id),
+        String(corpo.pedido.id),
+        String(dadosInvalidos.pedido.id),
+        String(antecipada.pedido.id),
+        `%${sufixo}%`,
+        '%00987654321%'
       ]
     );
     assert.deepStrictEqual(
       Object.values(estado).map(Number),
-      [1, 1, 1, 1, 1, 3]
+      [1, 1, 1, 1, 1, 3, 3, 0]
     );
     const [[periodoFatura]] = await connection.query(
       `SELECT DATE_FORMAT(f.periodo_inicio, '%Y-%m-%d') AS inicio,
@@ -422,7 +496,7 @@ async function executar() {
       await connection.rollback();
       const [[residuos]] = await connection.query(
         `SELECT
-           (SELECT COUNT(*) FROM pedidos_senha WHERE protocolo IN (?, ?)) AS pedidos,
+           (SELECT COUNT(*) FROM pedidos_senha WHERE protocolo IN (?, ?, ?)) AS pedidos,
            (SELECT COUNT(*) FROM clientes WHERE nome LIKE ?) AS clientes,
            (SELECT COUNT(*) FROM fornecedores WHERE nome LIKE ?) AS fornecedores,
            (SELECT COUNT(*) FROM pagamentos
@@ -433,6 +507,7 @@ async function executar() {
         [
           protocolo || '',
           protocoloAntecipado || '',
+          protocoloDadosInvalidos || '',
           `CLIENTE TESTE ${process.pid}-${sufixo}%`,
           `FORNECEDOR TESTE ${process.pid}-${sufixo}%`,
           `PIX-GM-E2E-${process.pid}-${sufixo}%`,

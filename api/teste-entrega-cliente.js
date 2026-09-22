@@ -303,7 +303,12 @@ async function executar() {
              AND entidade_id = ?
              AND acao = 'REPROCESSAR') AS auditorias_reprocessamento,
          (SELECT COUNT(*) FROM auditoria
-           WHERE entidade_id IN (?, ?)
+           WHERE entidade = 'pedidos_senha'
+             AND entidade_id = ?
+             AND acao = 'CONFIRMAR_RESULTADO') AS auditorias_confirmacao,
+         (SELECT COUNT(*) FROM auditoria
+           WHERE modulo = 'PEDIDOS_SENHAS'
+             AND entidade_id IN (?, ?, ?)
              AND (CAST(dados_antes AS CHAR) LIKE ?
                OR CAST(dados_depois AS CHAR) LIKE ?)) AS codigos_na_auditoria`,
       [
@@ -318,15 +323,17 @@ async function executar() {
         `%${telefone}%`,
         '%MC-ENTREGA%',
         String(pedidoReprocessamento.insertId),
+        String(pedido.insertId),
         String(comunicacao.id),
         String(pedidoReprocessamento.insertId),
+        String(pedido.insertId),
         '%MC-ENTREGA%',
         '%MC-AUDITORIA-TESTE%'
       ]
     );
     assert.deepStrictEqual(
       Object.values(estado).map(Number),
-      [1, 1, 1, 1, 1, 1, 1, 0, 1, 0]
+      [1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 0]
     );
   } catch (falha) {
     erro = falha;
