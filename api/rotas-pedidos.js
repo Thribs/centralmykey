@@ -873,7 +873,7 @@ if (bancoProprio.length) {
       await connection.beginTransaction();
 
       const [pedidos] = await connection.query(
-        `SELECT p.id, p.status, s.codigo AS codigo_servico
+        `SELECT p.id, p.protocolo, p.status, s.codigo AS codigo_servico
            FROM pedidos_senha p
            INNER JOIN servicos s ON s.id = p.servico_id
           WHERE p.id = ? LIMIT 1 FOR UPDATE`,
@@ -906,6 +906,25 @@ if (bancoProprio.length) {
         connection,
         pedidoId,
         req.usuario.id
+      );
+
+      await connection.query(
+        `INSERT INTO auditoria
+           (usuario_id, modulo, acao, entidade, entidade_id,
+            descricao, dados_antes, dados_depois, ip)
+         VALUES (?, 'PEDIDOS_SENHAS', 'REPROCESSAR', 'pedidos_senha',
+                 ?, ?, ?, ?, ?)`,
+        [
+          req.usuario.id,
+          String(pedido.id),
+          `Pedido ${pedido.protocolo} reprocessado manualmente`,
+          JSON.stringify({ status: pedido.status }),
+          JSON.stringify({
+            status: processamento.status || null,
+            origem: processamento.origem || null
+          }),
+          req.ip || null
+        ]
       );
 
       await connection.commit();
@@ -948,9 +967,10 @@ if (bancoProprio.length) {
       try {
         await connection.beginTransaction();
         const [[registroComunicacao]] = await connection.query(
-          `SELECT finalidade
-             FROM comunicacoes_outbox
-            WHERE id = ? AND pedido_id = ?
+          `SELECT co.finalidade, co.status, p.protocolo
+             FROM comunicacoes_outbox co
+             INNER JOIN pedidos_senha p ON p.id = co.pedido_id
+            WHERE co.id = ? AND co.pedido_id = ?
             LIMIT 1`,
           [comunicacaoId, pedidoId]
         );
@@ -968,6 +988,29 @@ if (bancoProprio.length) {
           usuarioId: req.usuario.id,
           confirmarIncerto: req.body?.confirmar_nao_enviado === true
         });
+        await connection.query(
+          `INSERT INTO auditoria
+             (usuario_id, modulo, acao, entidade, entidade_id,
+              descricao, dados_antes, dados_depois, ip)
+           VALUES (?, 'PEDIDOS_SENHAS', 'REAGENDAR_COMUNICACAO',
+                   'comunicacoes_outbox', ?, ?, ?, ?, ?)`,
+          [
+            req.usuario.id,
+            String(comunicacaoId),
+            `Comunicação do pedido ${registroComunicacao.protocolo} reagendada`,
+            JSON.stringify({
+              pedido_id: pedidoId,
+              finalidade: registroComunicacao.finalidade,
+              status: registroComunicacao.status
+            }),
+            JSON.stringify({
+              pedido_id: pedidoId,
+              finalidade: registroComunicacao.finalidade,
+              status: comunicacao.status
+            }),
+            req.ip || null
+          ]
+        );
         await connection.commit();
         return res.json({
           ok: true,

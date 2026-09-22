@@ -31,6 +31,12 @@ const configBanco = {
   database: process.env.DB_NAME
 };
 
+process.env.AMBIENTE_API_JOELPIRES = 'teste';
+process.env.URL_API_JOELPIRES_TESTE = 'https://mock-auditoria.joelpires.invalid';
+process.env.CHAVE_API_JOELPIRES = 'credencial-ficticia';
+process.env.ID_USUARIO_API_JOELPIRES = '-1';
+process.env.APIJOELPIRES_ID_DISPOSITIVO = 'centralmykey';
+
 function poolTransacional(connection) {
   return {
     getConnection: async () => ({
@@ -74,8 +80,14 @@ async function executar() {
   const connection = await mysql.createConnection(configBanco);
   const marcador = `${process.pid}-${String(Date.now()).slice(-8)}`;
   const protocolo = `TE${process.pid}${String(Date.now()).slice(-6)}`;
+  const protocoloReprocessamento = `TR${process.pid}${String(Date.now()).slice(-6)}`;
   const finalChassi = String(Date.now()).slice(-8);
+  const finalChassiReprocessamento = (
+    (Number(finalChassi) + 1) % 100000000
+  ).toString().padStart(8, '0');
   const chassi = `9BGEC11A0${finalChassi}`;
+  const chassiReprocessamento = `9BGKR48U0${finalChassiReprocessamento}`;
+  const fetchOriginal = global.fetch;
   let servidor;
   let erro;
 
@@ -129,6 +141,46 @@ async function executar() {
 
     const api = await iniciarApi(connection, usuario);
     servidor = api.servidor;
+
+    const [pedidoReprocessamento] = await connection.query(
+      `INSERT INTO pedidos_senha
+         (protocolo, cliente_id, servico_id, chassi, marca, modelo, ano,
+          status, valor_venda, custo, moeda, fornecedor_id, origem_id)
+       VALUES (?, ?, ?, ?, 'GM', 'TESTE REPROCESSAMENTO', 2026,
+               'ABERTO', 50, 0, 'BRL', NULL, NULL)`,
+      [
+        protocoloReprocessamento,
+        cliente.insertId,
+        servico.id,
+        chassiReprocessamento
+      ]
+    );
+    global.fetch = async (url, opcoes) => {
+      if (String(url).startsWith('https://mock-auditoria.joelpires.invalid/')) {
+        return {
+          ok: true,
+          status: 200,
+          text: async () => JSON.stringify([{
+            id: Number(String(Date.now()).slice(-9)),
+            id_montadora: 1,
+            chassis: chassiReprocessamento,
+            cod_mecanico: 'MC-AUDITORIA-TESTE'
+          }])
+        };
+      }
+      return fetchOriginal(url, opcoes);
+    };
+    const respostaReprocessamento = await fetch(
+      `${api.url}/api/pedidos/${pedidoReprocessamento.insertId}/reprocessar`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{}'
+      }
+    );
+    const reprocessamento = await respostaReprocessamento.json();
+    assert.strictEqual(respostaReprocessamento.status, 200);
+    assert.strictEqual(reprocessamento.processamento.status, 'CONCLUIDO');
     const respostaConfirmacao = await fetch(
       `${api.url}/api/pedidos/${pedido.insertId}/resultado/confirmar`,
       {
@@ -237,35 +289,63 @@ async function executar() {
          (SELECT COUNT(*) FROM pedido_historico
            WHERE pedido_id = ? AND tipo = 'RESULTADO_ENVIADO_CLIENTE') AS envios,
          (SELECT COUNT(*) FROM pedido_historico
-           WHERE pedido_id = ? AND tipo = 'ENTREGA_CLIENTE_REAGENDADA') AS reagendamentos`,
+           WHERE pedido_id = ? AND tipo = 'ENTREGA_CLIENTE_REAGENDADA') AS reagendamentos,
+         (SELECT COUNT(*) FROM auditoria
+           WHERE entidade = 'comunicacoes_outbox'
+             AND entidade_id = ?
+             AND acao = 'REAGENDAR_COMUNICACAO') AS auditorias_reagendamento,
+         (SELECT COUNT(*) FROM auditoria
+           WHERE entidade_id = ?
+             AND (CAST(dados_antes AS CHAR) LIKE ?
+               OR CAST(dados_depois AS CHAR) LIKE ?)) AS dados_sensiveis_auditoria,
+         (SELECT COUNT(*) FROM auditoria
+           WHERE entidade = 'pedidos_senha'
+             AND entidade_id = ?
+             AND acao = 'REPROCESSAR') AS auditorias_reprocessamento,
+         (SELECT COUNT(*) FROM auditoria
+           WHERE entidade_id IN (?, ?)
+             AND (CAST(dados_antes AS CHAR) LIKE ?
+               OR CAST(dados_depois AS CHAR) LIKE ?)) AS codigos_na_auditoria`,
       [
         resultado.insertId,
         chassi,
         pedido.insertId,
         pedido.insertId,
         pedido.insertId,
-        pedido.insertId
+        pedido.insertId,
+        String(comunicacao.id),
+        String(comunicacao.id),
+        `%${telefone}%`,
+        '%MC-ENTREGA%',
+        String(pedidoReprocessamento.insertId),
+        String(comunicacao.id),
+        String(pedidoReprocessamento.insertId),
+        '%MC-ENTREGA%',
+        '%MC-AUDITORIA-TESTE%'
       ]
     );
     assert.deepStrictEqual(
       Object.values(estado).map(Number),
-      [1, 1, 1, 1, 1, 1]
+      [1, 1, 1, 1, 1, 1, 1, 0, 1, 0]
     );
   } catch (falha) {
     erro = falha;
   } finally {
+    global.fetch = fetchOriginal;
     try {
       await fecharServidor(servidor);
       await connection.rollback();
       const [[residuos]] = await connection.query(
         `SELECT
-           (SELECT COUNT(*) FROM pedidos_senha WHERE protocolo = ?) AS pedidos,
-           (SELECT COUNT(*) FROM banco_senhas WHERE chassi = ?) AS cache,
+           (SELECT COUNT(*) FROM pedidos_senha WHERE protocolo IN (?, ?)) AS pedidos,
+           (SELECT COUNT(*) FROM banco_senhas WHERE chassi IN (?, ?)) AS cache,
            (SELECT COUNT(*) FROM clientes WHERE nome = ?) AS clientes,
            (SELECT COUNT(*) FROM fornecedores WHERE nome = ?) AS fornecedores`,
         [
           protocolo,
+          protocoloReprocessamento,
           chassi,
+          chassiReprocessamento,
           `CLIENTE ENTREGA ${marcador}`,
           `FORNECEDOR ENTREGA ${marcador}`
         ]
