@@ -16,6 +16,14 @@ fornecedores e sistemas externos. Um serviço desativado permanece no histórico
 e no catálogo administrativo, mas deixa de aparecer na criação de novos
 pedidos e na lista de novos vínculos de fornecedor.
 
-Cadastrar um item no catálogo não torna uma nova vertical pronta. Cada produto
-ainda precisa de regra comercial, fonte de consulta ou fornecedor, fluxo de
-pagamento, entrega e teste funcional próprio.
+Cadastrar ou ativar um item no catálogo não o torna disponível para pedidos. O
+serviço também precisa de um processador registrado em
+`api/servicos-implementados.js`; atualmente apenas `GM_SENHA` possui fluxo
+comprovado. A rota de criação rejeita IDs sem processador mesmo que sejam
+enviados diretamente, impedindo que outro produto caia por engano no fluxo GM.
+
+Cada produto novo ainda precisa de regra comercial, fonte de consulta ou
+fornecedor, fluxo de pagamento, entrega, interface e teste funcional próprio.
+Quando o processador é registrado, o formulário usa os indicadores do catálogo
+para exigir placa, chassi e documento do comprador. Placa é transitória e não é
+persistida.

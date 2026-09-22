@@ -26,6 +26,7 @@ const {
 const {
   calcularPeriodoFaturamentoSemanal
 } = require('./periodo-faturamento-semanal');
+const { servicoImplementado } = require('./servicos-implementados');
 
 module.exports = function (app, pool) {
   const autenticarToken = app.locals.autenticarToken;
@@ -127,11 +128,29 @@ module.exports = function (app, pool) {
 
       const servico = servicos[0];
 
+      if (!servicoImplementado(servico.codigo)) {
+        await connection.rollback();
+        return res.status(409).json({
+          ok: false,
+          codigo: 'SERVICO_NAO_SUPORTADO',
+          error: 'Este serviço ainda não possui fluxo operacional implementado'
+        });
+      }
+
       // --------------------------------------------------------
       // 2. Validar dados exigidos pelo serviço
       // --------------------------------------------------------
 
-      if (servico.exige_placa && !placa) {
+      const placaInformada = String(placa || '').trim().toUpperCase();
+      let chassiNormalizado = null;
+      try {
+        chassiNormalizado = normalizarChassi(chassi);
+      } catch (erro) {
+        await connection.rollback();
+        return res.status(400).json({ ok: false, error: erro.message });
+      }
+
+      if (servico.exige_placa && !placaInformada) {
         await connection.rollback();
 
         return res.status(400).json({
@@ -140,7 +159,7 @@ module.exports = function (app, pool) {
         });
       }
 
-      if (servico.exige_chassi && !chassi) {
+      if (servico.exige_chassi && !chassiNormalizado) {
         await connection.rollback();
 
         return res.status(400).json({
@@ -209,6 +228,16 @@ try {
   });
 }
 
+const parteComprador = partesPedido.find(parte => parte.papel === 'COMPRADOR');
+if (servico.exige_documento && !parteComprador?.documento) {
+  await connection.rollback();
+  return res.status(400).json({
+    ok: false,
+    codigo: 'DOCUMENTO_OBRIGATORIO',
+    error: 'Documento do comprador obrigatório para este serviço'
+  });
+}
+
 if (
   cliente.tipo_cobranca === 'FATURAMENTO_SEMANAL' &&
   cliente.credito_status === 'BLOQUEADO'
@@ -254,7 +283,7 @@ if (cliente.tipo_cobranca === 'ANTECIPADO') {
       cliente_id,
       servico_id,
       null,
-      normalizarChassi(chassi),
+      chassiNormalizado,
       marca || servico.marca || null,
       modelo || null,
       ano || null,
@@ -336,7 +365,7 @@ let origemNome = null;
 // --------------------------------------------------------
 
 const consultaBanco = await buscarSenhaFonteVerdade(connection, {
-  chassi,
+  chassi: chassiNormalizado,
   codigoServico: servico.codigo,
   marca: marca || servico.marca,
   modelo,
@@ -459,7 +488,7 @@ if (bancoProprio.length) {
           cliente_id,
           servico_id,
           null,
-          normalizarChassi(chassi),
+          chassiNormalizado,
           marca || servico.marca || null,
           modelo || null,
           ano || null,
@@ -590,7 +619,7 @@ if (bancoProprio.length) {
             pedido: {
               id: resultado.insertId,
               protocolo,
-              chassi: normalizarChassi(chassi),
+              chassi: chassiNormalizado,
               marca: marca || servico.marca || null,
               modelo: modelo || null,
               ano: ano || null

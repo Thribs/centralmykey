@@ -250,6 +250,9 @@ test('formulários GM permanecem acessíveis em celular tablet e desktop', async
           nome: 'Senha GM',
           preco_base: 60,
           moeda: 'BRL',
+          exige_placa: 0,
+          exige_chassi: 1,
+          exige_documento: 0,
           ativo: 1
         }]
       });
@@ -334,6 +337,10 @@ test('formulários GM permanecem acessíveis em celular tablet e desktop', async
 
     await page.getByRole('button', { name: 'Novo pedido' }).click();
     let modal = page.getByRole('dialog', { name: 'Novo pedido' });
+    await modal.locator('select[name="cliente_id"]').selectOption('720001');
+    await modal.locator('select[name="servico_id"]').selectOption('730001');
+    await expect(modal.getByLabel('Chassi')).toHaveAttribute('required', '');
+    await expect(modal.getByLabel('Placa para consulta')).toHaveCount(0);
     await validarModal(modal, 'Criar pedido');
     await modal.getByRole('button', { name: 'Fechar' }).click();
 

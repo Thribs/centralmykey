@@ -85,6 +85,7 @@ async function executar() {
   let protocolo;
   let protocoloAntecipado;
   let protocoloDadosInvalidos;
+  const codigoNaoSuportado = `SERVICO_SEM_FLUXO_${process.pid}_${sufixo}`;
   let erro;
 
   try {
@@ -116,6 +117,15 @@ async function executar() {
       ]
     );
 
+    const [servicoNaoSuportado] = await connection.query(
+      `INSERT INTO servicos
+         (codigo, nome, categoria, marca, preco_base, moeda,
+          exige_placa, exige_chassi, exige_documento, ativo)
+       VALUES (?, 'Serviço sem fluxo funcional', 'TESTE', 'FICTICIA', 1,
+               'BRL', 0, 0, 0, 1)`,
+      [codigoNaoSuportado]
+    );
+
     const [fornecedor] = await connection.query(
       `INSERT INTO fornecedores
          (nome, whatsapp, tipo, horario_inicio, horario_fim, ativo)
@@ -142,6 +152,51 @@ async function executar() {
         })
       };
     };
+
+    const respostaNaoSuportada = await global.fetch(`${api.url}/api/pedidos`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        cliente_id: cliente.insertId,
+        servico_id: servicoNaoSuportado.insertId
+      })
+    });
+    const corpoNaoSuportado = await respostaNaoSuportada.json();
+    assert.strictEqual(respostaNaoSuportada.status, 409);
+    assert.strictEqual(corpoNaoSuportado.codigo, 'SERVICO_NAO_SUPORTADO');
+    const [[pedidoNaoSuportado]] = await connection.query(
+      'SELECT COUNT(*) AS total FROM pedidos_senha WHERE servico_id=?',
+      [servicoNaoSuportado.insertId]
+    );
+    assert.strictEqual(Number(pedidoNaoSuportado.total), 0);
+
+    const chassiAusente = await global.fetch(`${api.url}/api/pedidos`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ cliente_id: cliente.insertId, servico_id: servico.id })
+    });
+    assert.strictEqual(chassiAusente.status, 400);
+    const chassiInvalido = await global.fetch(`${api.url}/api/pedidos`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        cliente_id: cliente.insertId, servico_id: servico.id, chassi: '123'
+      })
+    });
+    assert.strictEqual(chassiInvalido.status, 400);
+
+    await connection.query('UPDATE servicos SET exige_documento=1 WHERE id=?', [servico.id]);
+    const documentoAusente = await global.fetch(`${api.url}/api/pedidos`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        cliente_id: cliente.insertId,
+        servico_id: servico.id,
+        chassi: `9BGDO11A0${sufixo}`,
+        marca: 'GM'
+      })
+    });
+    const corpoDocumentoAusente = await documentoAusente.json();
+    assert.strictEqual(documentoAusente.status, 400);
+    assert.strictEqual(corpoDocumentoAusente.codigo, 'DOCUMENTO_OBRIGATORIO');
+    await connection.query('UPDATE servicos SET exige_documento=0 WHERE id=?', [servico.id]);
 
     const respostaInvalida = await global.fetch(`${api.url}/api/pedidos`, {
       method: 'POST',
@@ -503,7 +558,8 @@ async function executar() {
              WHERE referencia_externa LIKE ?) AS pagamentos,
            (SELECT COUNT(*) FROM banco_senhas
              WHERE codigo_mecanico='MEC-GM-E2E'
-               AND chassi LIKE ?) AS cache`,
+               AND chassi LIKE ?) AS cache,
+           (SELECT COUNT(*) FROM servicos WHERE codigo=?) AS servicos_teste`,
         [
           protocolo || '',
           protocoloAntecipado || '',
@@ -511,12 +567,13 @@ async function executar() {
           `CLIENTE TESTE ${process.pid}-${sufixo}%`,
           `FORNECEDOR TESTE ${process.pid}-${sufixo}%`,
           `PIX-GM-E2E-${process.pid}-${sufixo}%`,
-          `%${sufixo}`
+          `%${sufixo}`,
+          codigoNaoSuportado
         ]
       );
       assert.deepStrictEqual(
         Object.values(residuos).map(Number),
-        [0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0, 0],
         'Rollback deve remover pedidos, cliente, fornecedor, pagamento e cache de teste'
       );
     } catch (falhaLimpeza) {

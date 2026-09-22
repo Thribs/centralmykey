@@ -1,3 +1,5 @@
+const { CODIGOS_SERVICOS_IMPLEMENTADOS } = require('./servicos-implementados');
+
 module.exports = function(app, pool) {
   const autenticarToken = app.locals.autenticarToken;
   const exigirPermissao = app.locals.exigirPermissao;
@@ -39,9 +41,9 @@ module.exports = function(app, pool) {
           exige_placa, exige_chassi,
           exige_documento, ativo
         FROM servicos
-        WHERE ativo = 1
+        WHERE ativo = 1 AND codigo IN (?)
         ORDER BY nome
-      `);
+      `, [CODIGOS_SERVICOS_IMPLEMENTADOS]);
 
       res.json({
         ok: true,

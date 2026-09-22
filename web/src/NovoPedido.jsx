@@ -37,6 +37,15 @@ export default function NovoPedido({
   const [erro, setErro] = useState('');
   const [compradorEhCliente, setCompradorEhCliente] = useState(true);
   const [pagadorEhComprador, setPagadorEhComprador] = useState(true);
+  const servicoSelecionado = servicos.find(
+    item => String(item.id) === String(formulario.servico_id)
+  ) || null;
+  const clienteSelecionado = clientes.find(
+    item => String(item.id) === String(formulario.cliente_id)
+  ) || null;
+  const exigeDocumento = Boolean(Number(servicoSelecionado?.exige_documento));
+  const documentoClienteAusente = exigeDocumento && compradorEhCliente &&
+    clienteSelecionado && !clienteSelecionado.cpf && !clienteSelecionado.cnpj;
 
   useEffect(() => {
     Promise.all([
@@ -57,7 +66,15 @@ export default function NovoPedido({
 
   function alterar(evento) {
     const { name, value } = evento.target;
-    setFormulario(atual => ({ ...atual, [name]: value }));
+    setFormulario(atual => {
+      const proximo = { ...atual, [name]: value };
+      if (name === 'servico_id') {
+        const servico = servicos.find(item => String(item.id) === String(value));
+        if (!Number(servico?.exige_placa)) proximo.placa = '';
+        if (!Number(servico?.exige_chassi)) proximo.chassi = '';
+      }
+      return proximo;
+    });
   }
 
   async function enviar(evento) {
@@ -66,6 +83,9 @@ export default function NovoPedido({
     setErro('');
 
     try {
+      if (documentoClienteAusente) {
+        throw new Error('O cliente selecionado não possui documento para este serviço');
+      }
       const {
         comprador_nome,
         comprador_documento,
@@ -180,7 +200,8 @@ export default function NovoPedido({
                   </label>
                   <label>
                     Documento do comprador
-                    <input name="comprador_documento" value={formulario.comprador_documento} onChange={alterar} maxLength="30" />
+                    <input name="comprador_documento" value={formulario.comprador_documento}
+                      onChange={alterar} maxLength="30" required={exigeDocumento} />
                   </label>
                   <label>
                     Telefone do comprador
@@ -225,57 +246,35 @@ export default function NovoPedido({
                 </>
               )}
 
-              <label>
-                Chassi
-                <input
-                  name="chassi"
-                  value={formulario.chassi}
-                  onChange={alterar}
-                  maxLength="30"
-                />
-              </label>
+              {documentoClienteAusente && <div className="wide vault-error">
+                O cliente selecionado não possui CPF/CNPJ, obrigatório para este serviço.
+              </div>}
 
-              <label>
-                Placa para consulta
-                <input
-                  name="placa"
-                  value={formulario.placa}
-                  onChange={alterar}
-                  maxLength="10"
-                  autoComplete="off"
-                />
-                <small>A placa não será armazenada.</small>
-              </label>
+              {servicoSelecionado && <>
+                {Boolean(Number(servicoSelecionado.exige_chassi)) && <label>
+                  Chassi
+                  <input name="chassi" value={formulario.chassi} onChange={alterar}
+                    minLength="8" maxLength="30" required />
+                </label>}
 
-              <label>
-                Marca
-                <input
-                  name="marca"
-                  value={formulario.marca}
-                  onChange={alterar}
-                />
-              </label>
+                {Boolean(Number(servicoSelecionado.exige_placa)) && <label>
+                  Placa para consulta
+                  <input name="placa" value={formulario.placa} onChange={alterar}
+                    maxLength="10" autoComplete="off" required />
+                  <small>A placa não será armazenada.</small>
+                </label>}
 
-              <label>
-                Modelo
-                <input
-                  name="modelo"
-                  value={formulario.modelo}
-                  onChange={alterar}
-                />
-              </label>
-
-              <label>
-                Ano
-                <input
-                  type="number"
-                  name="ano"
-                  value={formulario.ano}
-                  onChange={alterar}
-                  min="1900"
-                  max="2100"
-                />
-              </label>
+                <label>Marca
+                  <input name="marca" value={formulario.marca} onChange={alterar} />
+                </label>
+                <label>Modelo
+                  <input name="modelo" value={formulario.modelo} onChange={alterar} />
+                </label>
+                <label>Ano
+                  <input type="number" name="ano" value={formulario.ano}
+                    onChange={alterar} min="1900" max="2100" />
+                </label>
+              </>}
             </div>
           )}
 
@@ -290,7 +289,7 @@ export default function NovoPedido({
             <button
               type="submit"
               className="vault-primary"
-              disabled={carregando || salvando}
+              disabled={carregando || salvando || Boolean(documentoClienteAusente)}
             >
               {salvando ? 'Criando...' : 'Criar pedido'}
             </button>

@@ -141,6 +141,11 @@ async function executar() {
     assert.strictEqual(catalogo.resposta.status, 200);
     assert.ok(servico, 'Serviço criado deve aparecer no catálogo');
     assert.strictEqual(Number(servico.preco_base), 119.9);
+    const listaOperacional = await requisitar(`${api.url}/api/servicos`);
+    assert.strictEqual(listaOperacional.resposta.status, 200);
+    assert.ok(!listaOperacional.corpo.dados.some(
+      item => Number(item.id) === Number(servicoId)
+    ), 'Catálogo não deve anunciar serviço sem processador implementado');
 
     const criado = await requisitar(`${api.url}/api/fornecedores`, {
       metodo: 'POST',
