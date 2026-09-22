@@ -70,6 +70,12 @@ auditoria contém apenas IDs, estado e quantidade de produtos. Essa etapa ainda
 não cria pedido na Central, pois a regra que relaciona pagamento, comprador,
 cliente, produto e serviço precisa ser definida antes de produzir efeitos.
 
+Cada evento `ORDER.SNAPSHOT` possui uma prévia autenticada de somente leitura.
+Ela reprocessa localmente o snapshot com os produtos, estados e autoridades
+vigentes, sem nova chamada externa e sem mutação de negócio. A prévia não retorna
+o objeto de cliente nem qualquer nome, documento, telefone ou e-mail contido no
+payload e mantém a conversão desabilitada enquanto houver decisões pendentes.
+
 O webhook continua desativado. A documentação pública confirma os eventos
 `order` e `order_status`, mas não publica mecanismo verificável de assinatura.
 

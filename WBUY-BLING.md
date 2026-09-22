@@ -25,6 +25,13 @@ análise nunca declara o pedido pronto para conversão enquanto faltarem a fonte
 de autoridade, o mapeamento de status de pagamento, a moeda e a correspondência
 entre cliente, comprador e pagador.
 
+Snapshots já armazenados podem ser reanalisados em **Administração →
+Integrações → Eventos de integração**. Essa operação usa somente o banco local,
+reaplica as regras atuais e não consulta a WBuy, não grava auditoria de negócio
+e não cria cliente, pedido ou pagamento. A resposta omite integralmente o objeto
+de cliente do payload e mostra somente referência externa, status, produtos,
+SKU, serviço associado e pendências da conversão.
+
 A documentação pública confirma webhooks `order` e `order_status`, mas não
 define uma assinatura verificável. Por isso nenhum endpoint público WBuy foi
 ativado. A entrada atual é uma ação administrativa autenticada que consulta o
