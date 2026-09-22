@@ -19,6 +19,9 @@ const {
   reconciliarAlertasOperacionais
 } = require('./reconciliar-alertas-operacionais');
 const {
+  reconciliarVipsVencidos
+} = require('./reconciliar-vips-vencidos');
+const {
   registrarContextoRequisicao,
   registrarTratamentoFinal
 } = require('./middleware-erros');
@@ -266,6 +269,23 @@ async function executarAlertasOperacionais() {
   }
 }
 
+let reconciliacaoVipsEmAndamento = false;
+
+async function executarReconciliacaoVips() {
+  if (reconciliacaoVipsEmAndamento) return;
+  reconciliacaoVipsEmAndamento = true;
+  try {
+    const resultado = await reconciliarVipsVencidos(pool);
+    if (resultado.executado && resultado.atualizados > 0) {
+      console.log('Planos VIP vencidos reconciliados:', resultado.atualizados);
+    }
+  } catch (error) {
+    console.error('Erro ao reconciliar planos VIP:', error.message);
+  } finally {
+    reconciliacaoVipsEmAndamento = false;
+  }
+}
+
 require('./rotas-openai')(app, pool);
 registrarTratamentoFinal(app);
 
@@ -334,4 +354,16 @@ app.listen(port, '127.0.0.1', () => {
   );
 
   intervaloAlertasOperacionais.unref();
+
+  executarReconciliacaoVips();
+
+  const intervaloReconciliacaoVips = setInterval(
+    executarReconciliacaoVips,
+    inteiroConfiguradoIntervalo(
+      process.env.VIP_RECONCILIACAO_INTERVALO_MS,
+      60 * 60 * 1000
+    )
+  );
+
+  intervaloReconciliacaoVips.unref();
 });

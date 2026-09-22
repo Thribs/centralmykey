@@ -16,6 +16,11 @@ vencimento é nulo ou ainda não passou. Um plano vencido usa `preco_base` mesmo
 antes da reconciliação administrativa do estado, e o pedido registra a tabela
 de preço aplicada.
 
+Um reconciliador executado na inicialização e a cada hora muda para `VENCIDO`
+os planos `ATIVO` ou `AGUARDANDO_PAGAMENTO` cujo próximo vencimento já passou.
+A operação usa trava, transação e auditoria, preserva vencimentos do dia e não
+altera planos suspensos, cancelados ou sem data.
+
 O limite de crédito é cadastrado e exibido, mas ainda não bloqueia pedidos. A
 política precisa definir quais faturas entram no saldo e como comparar serviços
 em BRL, USD e PYG antes dessa automação ser ativada.
