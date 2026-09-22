@@ -130,14 +130,14 @@ function resumirIntegracoes(config) {
       codigo: 'WBUY',
       nome: 'WBuy',
       ...estadoConector({
-        implementado: false,
-        requisitos: [Boolean(config.wbuyUsuario), Boolean(config.wbuySenha),
-          Boolean(config.wbuyLojaUrl)]
+        implementado: true,
+        requisitos: [Boolean(config.wbuyUsuario), Boolean(config.wbuySenha)]
       }),
-      ...(config.wbuyCredencialLegada
+      ...(config.wbuyCredencialLegada && !(config.wbuyUsuario && config.wbuySenha)
         ? { configurado: false, status: 'CREDENCIAIS_SEM_CONECTOR' }
         : {}),
-      componentes: { mapeamento_produtos: true, pedidos: false, webhook: false,
+      componentes: { mapeamento_produtos: true, consulta_pedido: true,
+        conversao_pedido: false, webhook: false,
         credencial_legada: Boolean(config.wbuyCredencialLegada) }
     },
     {
@@ -201,11 +201,21 @@ async function obterConfiguracaoBling(pool) {
   };
 }
 
+async function obterConfiguracaoWBuy(pool) {
+  const config = await carregarConfiguracoesIntegracoes(pool);
+  return {
+    usuario: config.wbuyUsuario,
+    senha: config.wbuySenha,
+    apiUrl: 'https://sistema.sistemawbuy.com.br/api/v1'
+  };
+}
+
 module.exports = {
   carregarConfiguracoesIntegracoes,
   obterConfiguracaoBling,
   obterConfiguracaoWhatsapp,
   obterConfiguracaoSicoob,
+  obterConfiguracaoWBuy,
   resumirIntegracoes,
   verdadeiro
 };

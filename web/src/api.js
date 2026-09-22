@@ -939,6 +939,14 @@ export async function listarEventosIntegracao(token, filtros = {}) {
   return lerResposta(resposta);
 }
 
+export async function sincronizarPedidoWBuy(token, pedidoExternoId) {
+  const resposta = await requisitar(
+    `${API_URL}/api/integracoes/wbuy/pedidos/${encodeURIComponent(pedidoExternoId)}/sincronizar`,
+    { method: 'POST', headers: cabecalhoAutenticado(token) }
+  );
+  return lerResposta(resposta);
+}
+
 export async function listarMapeamentosIntegracoes(token, provedor = '') {
   const parametros = new URLSearchParams();
   if (provedor) parametros.set('provedor', provedor);

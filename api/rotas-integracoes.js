@@ -2,10 +2,12 @@
 
 const {
   obterConfiguracaoSicoob,
-  obterConfiguracaoBling
+  obterConfiguracaoBling,
+  obterConfiguracaoWBuy
 } = require('./configuracoes-integracoes');
 const { criarCobrancaPedidoSicoob } = require('./sicoob-pix');
 const { receberEventoBling } = require('./webhook-bling');
+const { sincronizarPedidoWBuy } = require('./wbuy-pedidos');
 
 module.exports = function registrarRotasIntegracoes(app, pool, opcoes = {}) {
   const autenticarToken = app.locals.autenticarToken;
@@ -120,6 +122,32 @@ module.exports = function registrarRotasIntegracoes(app, pool, opcoes = {}) {
       } catch (error) {
         console.error('Erro ao listar referências de pagamento:', error);
         return res.status(500).json({ ok: false, error: 'Erro ao consultar referências de pagamento' });
+      }
+    });
+
+  app.post('/api/integracoes/wbuy/pedidos/:id/sincronizar', autenticarToken,
+    exigirPermissao('INTEGRACOES', 'editar'), async (req, res) => {
+      try {
+        const config = opcoes.configuracaoWBuy || await obterConfiguracaoWBuy(pool);
+        const resultado = await sincronizarPedidoWBuy(pool, config, req.params.id, {
+          transporte: opcoes.transporteWBuy,
+          timeoutMs: opcoes.timeoutWBuyMs,
+          usuarioId: req.usuario?.id || null,
+          ip: req.ip || null
+        });
+        return res.status(resultado.idempotente ? 200 : 201).json(resultado);
+      } catch (error) {
+        const status = Number(error.status) || 500;
+        if (status >= 500) {
+          console.error('Erro ao sincronizar pedido WBuy:', error.codigo || error.message);
+        }
+        return res.status(status).json({
+          ok: false,
+          codigo: error.codigo || 'ERRO_WBUY',
+          error: status >= 500 && !error.codigo
+            ? 'Integração WBuy indisponível'
+            : error.message
+        });
       }
     });
 };

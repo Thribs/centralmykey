@@ -32,7 +32,8 @@ import {
   salvarMapeamentoIntegracao,
   salvarConfiguracao,
   salvarPermissoesUsuario,
-  alterarStatusMapeamentoIntegracao
+  alterarStatusMapeamentoIntegracao,
+  sincronizarPedidoWBuy
 } from './api';
 
 function tokenLocal() {
@@ -500,6 +501,8 @@ export function Integracoes({ permissoes: permissoesSessao = [] }) {
   const [novoMapeamento, setNovoMapeamento] = useState({
     provedor: 'WBUY', produto_externo_id: '', sku: '', nome_externo: '', servico_id: ''
   });
+  const [pedidoWBuyId, setPedidoWBuyId] = useState('');
+  const [resultadoWBuy, setResultadoWBuy] = useState('');
   const permissaoIntegracoes = permissoesSessao.find(
     item => item.codigo === 'INTEGRACOES'
   ) || {};
@@ -588,6 +591,25 @@ export function Integracoes({ permissoes: permissoesSessao = [] }) {
     }
   }
 
+  async function sincronizarWBuy(evento) {
+    evento.preventDefault();
+    setSalvando(true);
+    setErro('');
+    setResultadoWBuy('');
+    try {
+      const resultado = await sincronizarPedidoWBuy(token, pedidoWBuyId.trim());
+      setResultadoWBuy(resultado.idempotente
+        ? `Pedido ${resultado.pedido_externo_id} já estava sincronizado.`
+        : `Pedido ${resultado.pedido_externo_id} recebido na fila.`);
+      setPedidoWBuyId('');
+      await carregar();
+    } catch (falha) {
+      setErro(falha.message);
+    } finally {
+      setSalvando(false);
+    }
+  }
+
   return (
     <section className="admin-page">
       <div className="admin-heading">
@@ -629,6 +651,15 @@ export function Integracoes({ permissoes: permissoesSessao = [] }) {
             <span>Mapeados: <strong>{mapeamentos.length}</strong></span>
           </div>
         </header>
+        {podeEditar && <form className="integration-form" onSubmit={sincronizarWBuy}>
+          <input aria-label="ID do pedido WBuy" inputMode="numeric" pattern="[0-9]+"
+            value={pedidoWBuyId} onChange={e => setPedidoWBuyId(e.target.value)}
+            placeholder="ID do pedido WBuy" required />
+          <button type="submit" disabled={salvando || !pedidoWBuyId.trim()}>
+            <RefreshCw size={15} /> Sincronizar pedido WBuy
+          </button>
+          {resultadoWBuy && <span role="status">{resultadoWBuy}</span>}
+        </form>}
         {podeEditar && <form className="integration-form" onSubmit={salvarMapeamento}>
           <select aria-label="Provedor do mapeamento" value={novoMapeamento.provedor}
             onChange={e => setNovoMapeamento({ ...novoMapeamento, provedor: e.target.value })}>

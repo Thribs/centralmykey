@@ -370,6 +370,7 @@ async function prepararFixture() {
   );
   const referenciaEventoBling = `BLING-E2E-${marcador}`;
   const referenciaEventoSicoob = `SICOOB-E2E-${marcador}`;
+  const pedidoWBuyId = String(Date.now()).slice(-10);
   await connection.query(
     `INSERT INTO integracao_eventos
        (provedor, evento_externo_id, tipo, referencia_externa, entidade,
@@ -733,7 +734,8 @@ async function prepararFixture() {
       servicoId: servico.id,
       servicoCodigo: servico.codigo,
       referenciaEventoBling,
-      referenciaEventoSicoob
+      referenciaEventoSicoob,
+      pedidoWBuyId
     },
     nomeCliente,
     nomeFornecedor,
@@ -923,7 +925,8 @@ async function iniciar() {
       servico_id: contexto.integracoes.servicoId,
       servico_codigo: contexto.integracoes.servicoCodigo,
       referencia_evento_bling: contexto.integracoes.referenciaEventoBling,
-      referencia_evento_sicoob: contexto.integracoes.referenciaEventoSicoob
+      referencia_evento_sicoob: contexto.integracoes.referenciaEventoSicoob,
+      pedido_wbuy_id: contexto.integracoes.pedidoWBuyId
     },
     cliente: contexto.nomeCliente
   }));
@@ -1234,7 +1237,26 @@ async function iniciar() {
   require('./rotas-fechamentos-fornecedores')(app, pool);
   require('./rotas-auditoria')(app, pool);
   require('./rotas-health')(app, pool);
-  require('./rotas-integracoes')(app, pool);
+  require('./rotas-integracoes')(app, pool, {
+    configuracaoWBuy: {
+      usuario: 'usuario-wbuy-e2e', senha: 'senha-wbuy-e2e',
+      apiUrl: 'https://wbuy-e2e.invalid/api/v1'
+    },
+    transporteWBuy: async url => {
+      const id = String(url).split('/').pop();
+      return new Response(JSON.stringify({
+        code: '010', message: 'success', responseCode: '200', total: '1',
+        data: [{
+          id, identificacao: `WBUY-E2E-${id}`,
+          status: { id: '2', nome: 'Pagamento confirmado' },
+          cliente: { id: '1', nome: 'Cliente WBuy fictício E2E' },
+          produtos: [{ produto_id: '10', produto: 'Consulta GM E2E',
+            sku: contexto.integracoes.sku, qtd: '1', valor: '22.00' }],
+          valor_total: { subtotal: '22.00', desconto: '0', total: '22.00' }
+        }]
+      }), { status: 200, headers: { 'content-type': 'application/json' } });
+    }
+  });
   require('./rotas-mapeamentos-integracoes')(app, pool);
   require('./rotas-whatsapp-admin')(app, pool);
   require('./rotas-operacionais')(app, pool);

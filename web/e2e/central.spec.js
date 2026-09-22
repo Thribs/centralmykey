@@ -1349,6 +1349,14 @@ test('integrações administram modelos e mapeamentos sem chamar serviços exter
   await expect(linhaBling).toContainText('2');
   await expect(linhaSicoob).toContainText('REFERENCIA_NAO_ENCONTRADA');
 
+  await page.getByLabel('ID do pedido WBuy').fill(contexto.pedido_wbuy_id);
+  await page.getByRole('button', { name: 'Sincronizar pedido WBuy' }).click();
+  await expect(page.getByRole('status')).toContainText('recebido na fila');
+  const linhaWBuy = page.locator('tr', { hasText: contexto.pedido_wbuy_id });
+  await expect(linhaWBuy).toContainText('WBUY');
+  await expect(linhaWBuy).toContainText('ORDER.SNAPSHOT');
+  await expect(linhaWBuy).toContainText('RECEBIDO');
+
   await page.getByLabel('Filtrar status de eventos').selectOption('FALHOU');
   await expect(linhaSicoob).toBeVisible();
   await expect(linhaBling).toHaveCount(0);
@@ -1701,6 +1709,7 @@ test('visualizador não vê ações de usuário e recebe 403 ao forçar criaçã
   await expect(page.getByRole('heading', { name: 'Laboratório OpenAI' }))
     .toHaveCount(0);
   await expect(page.getByPlaceholder('ID externo')).toHaveCount(0);
+  await expect(page.getByLabel('ID do pedido WBuy')).toHaveCount(0);
   await expect(page.getByLabel('Nome do modelo')).toHaveCount(0);
   await expect(page.getByLabel(/Status do modelo/)).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Ativar', exact: true }))
@@ -1723,6 +1732,11 @@ test('visualizador não vê ações de usuário e recebe 403 ao forçar criaçã
     }
   );
   expect(mapeamentoNegado.status()).toBe(403);
+  const sincronizacaoNegada = await page.request.post(
+    `${API}/api/integracoes/wbuy/pedidos/${integracoes.pedido_wbuy_id}/sincronizar`,
+    { headers: { Authorization: `Bearer ${token}` } }
+  );
+  expect(sincronizacaoNegada.status()).toBe(403);
   const modeloNegado = await page.request.post(`${API}/api/whatsapp/modelos`, {
     headers: { Authorization: `Bearer ${token}` },
     data: {

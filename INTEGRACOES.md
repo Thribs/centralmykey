@@ -26,9 +26,12 @@ modelos aprovados, contatos revisados e homologação controlada conforme
 
 ## API Joel Pires
 
-O conector está implementado para o fluxo GM, com cache local, classificação de
-erros e reprocessamento. A ampliação para outros produtos depende dos contratos
-de cada consulta.
+A API já existe fora da Central MyKey. O conector apenas consome
+`staging.api.joelpires.com.br` no ambiente de teste e `api.joelpires.com.br` no
+ambiente público; a Central não implementa nem hospeda esse serviço. O fluxo GM
+usa essa API como fonte de verdade, com cache local, classificação de erros e
+reprocessamento. A ampliação para outros produtos depende dos contratos de cada
+consulta.
 
 ## Sicoob
 
@@ -52,11 +55,21 @@ A camada comum de produtos externos está implementada. A administração permit
 associar ID e/ou SKU da WBuy e do Bling a um serviço ativo da Central MyKey,
 detectar colisões, atualizar ou desativar o vínculo e auditar cada mudança.
 
-A configuração WBuy agora representa o contrato documentado pela plataforma:
-usuário e senha da API REST mais a URL da loja. O antigo token isolado não é
-considerado configuração suficiente. A importação continua desativada porque a
-documentação pública confirma os eventos `order` e `order_status`, mas não
-publica o esquema completo do payload nem um mecanismo verificável de assinatura.
+A configuração WBuy segue o contrato REST oficial: usuário e senha próprios da
+API, enviados como Bearer em Base64 para o endpoint oficial. A URL da loja não é
+credencial nem requisito do conector, e o antigo token isolado não é considerado
+configuração suficiente.
+
+A administração pode sincronizar um pedido específico pelo ID. A Central busca
+o registro canônico em `GET /api/v1/order/{id}` e guarda um snapshot idempotente
+em `integracao_eventos`; uma repetição igual incrementa as tentativas e uma
+alteração cria novo snapshot. O payload completo permanece restrito ao banco e a
+auditoria contém apenas IDs, estado e quantidade de produtos. Essa etapa ainda
+não cria pedido na Central, pois a regra que relaciona pagamento, comprador,
+cliente, produto e serviço precisa ser definida antes de produzir efeitos.
+
+O webhook continua desativado. A documentação pública confirma os eventos
+`order` e `order_status`, mas não publica mecanismo verificável de assinatura.
 
 O adaptador Bling e a coexistência durante a transição ainda dependem do fluxo
 OAuth e do mapeamento de estados definido para a conta utilizada.
