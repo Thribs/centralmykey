@@ -1457,8 +1457,19 @@ test('integrações administram modelos e mapeamentos sem chamar serviços exter
   await expect(page.locator('.integration-grid article', { hasText: 'PlugPay' }))
     .toContainText('Contrato não identificado');
   await expect(page.getByText('PRONTIDÃO WHATSAPP GM')).toBeVisible();
-  await expect(page.locator('.whatsapp-readiness')).toContainText('Worker desabilitado');
-  await expect(page.locator('.whatsapp-readiness')).not.toContainText(/\d{10,15}/);
+  const prontidaoWhatsapp = page.locator('.whatsapp-readiness', {
+    hasText: 'PRONTIDÃO WHATSAPP GM'
+  });
+  await expect(prontidaoWhatsapp).toContainText('Worker desabilitado');
+  await expect(prontidaoWhatsapp).not.toContainText(/\d{10,15}/);
+  const prontidaoComercio = page.locator('.whatsapp-readiness', {
+    hasText: 'PRONTIDÃO DO COMÉRCIO ELETRÔNICO'
+  });
+  await expect(prontidaoComercio).toContainText('Conversão WBuy bloqueada');
+  await expect(prontidaoComercio).toContainText('Regra de moeda WBuy ainda não definida');
+  await expect(prontidaoComercio).toContainText(
+    'Reconciliação de cliente, comprador e pagador não definida'
+  );
   const autoridadePedido = page.getByLabel('Autoridade de PEDIDO');
   await expect(autoridadePedido).toHaveValue('');
   page.once('dialog', dialogo => dialogo.accept());

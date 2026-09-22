@@ -1050,6 +1050,13 @@ export async function salvarMapeamentoStatusIntegracao(token, dados) {
   return lerResposta(resposta);
 }
 
+export async function buscarProntidaoComercio(token) {
+  const resposta = await requisitar(`${API_URL}/api/integracoes/prontidao-comercio`, {
+    headers: cabecalhoAutenticado(token)
+  });
+  return lerResposta(resposta);
+}
+
 export async function listarModelosWhatsapp(token) {
   const resposta = await requisitar(`${API_URL}/api/whatsapp/modelos`, {
     headers: cabecalhoAutenticado(token)

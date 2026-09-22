@@ -348,4 +348,48 @@ module.exports = function registrarRotasMapeamentosIntegracoes(app, pool) {
         connection.release();
       }
     });
+
+  app.get('/api/integracoes/prontidao-comercio', autenticarToken,
+    exigirPermissao('INTEGRACOES', 'visualizar'), async (req, res) => {
+      try {
+        const [[autoridades], [status], [produtos], [snapshots]] = await Promise.all([
+          pool.query(`SELECT COUNT(*) AS definidos FROM integracao_autoridades`),
+          pool.query(`SELECT COUNT(*) AS confirmados
+            FROM integracao_status_mapeamentos
+            WHERE provedor='WBUY' AND dominio='PAGAMENTO'
+              AND situacao='CONFIRMADO' AND ativo=1`),
+          pool.query(`SELECT COUNT(*) AS mapeados
+            FROM integracao_produto_mapeamentos
+            WHERE provedor='WBUY' AND ativo=1`),
+          pool.query(`SELECT COUNT(*) AS recebidos FROM integracao_eventos
+            WHERE provedor='WBUY' AND tipo='ORDER.SNAPSHOT' AND status='RECEBIDO'`)
+        ]);
+        const bloqueios = [];
+        if (Number(autoridades[0]?.definidos || 0) < DOMINIOS_AUTORIDADE.length) {
+          bloqueios.push('MATRIZ_AUTORIDADE_INCOMPLETA');
+        }
+        if (Number(status[0]?.confirmados || 0) === 0) {
+          bloqueios.push('STATUS_PAGAMENTO_WBUY_SEM_CONFIRMACAO');
+        }
+        if (Number(produtos[0]?.mapeados || 0) === 0) {
+          bloqueios.push('PRODUTOS_WBUY_SEM_MAPEAMENTO');
+        }
+        bloqueios.push('MOEDA_WBUY_NAO_DEFINIDA');
+        bloqueios.push('RECONCILIACAO_IDENTIDADES_NAO_DEFINIDA');
+        bloqueios.push('CONVERSOR_WBUY_NAO_IMPLEMENTADO');
+        return res.json({ ok: true, pronto_para_converter: false, bloqueios,
+          contagens: {
+            autoridades_definidas: Number(autoridades[0]?.definidos || 0),
+            autoridades_total: DOMINIOS_AUTORIDADE.length,
+            status_pagamento_confirmados: Number(status[0]?.confirmados || 0),
+            produtos_wbuy_mapeados: Number(produtos[0]?.mapeados || 0),
+            snapshots_recebidos: Number(snapshots[0]?.recebidos || 0)
+          }
+        });
+      } catch (error) {
+        console.error('Erro ao consultar prontidão do comércio eletrônico:', error);
+        return res.status(500).json({ ok: false,
+          error: 'Erro ao consultar prontidão do comércio eletrônico' });
+      }
+    });
 };

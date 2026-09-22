@@ -20,6 +20,7 @@ import {
   atualizarUsuario,
   buscarIntegracoes,
   buscarPermissoesUsuario,
+  buscarProntidaoComercio,
   buscarResumoUsuarios,
   cadastrarModeloWhatsapp,
   cadastrarUsuario,
@@ -503,6 +504,7 @@ export function Integracoes({ permissoes: permissoesSessao = [] }) {
   const [autoridades, setAutoridades] = useState([]);
   const [opcoesAutoridade, setOpcoesAutoridade] = useState([]);
   const [statusMapeamentos, setStatusMapeamentos] = useState([]);
+  const [prontidaoComercio, setProntidaoComercio] = useState(null);
   const [opcoesStatus, setOpcoesStatus] = useState({ provedores: [], dominios: [], situacoes: [] });
   const [resumo, setResumo] = useState({});
   const [prontidaoWhatsapp, setProntidaoWhatsapp] = useState(null);
@@ -539,13 +541,14 @@ export function Integracoes({ permissoes: permissoesSessao = [] }) {
 
     try {
       const [dadosIntegracoes, dadosModelos, dadosEventos,
-        dadosMapeamentos, dadosAutoridades, dadosStatus] = await Promise.all([
+        dadosMapeamentos, dadosAutoridades, dadosStatus, dadosProntidao] = await Promise.all([
         buscarIntegracoes(token),
         listarModelosWhatsapp(token),
         listarEventosIntegracao(token, { ...filtrosEventos, limite: 30 }),
         listarMapeamentosIntegracoes(token),
         listarAutoridadesIntegracoes(token),
-        listarMapeamentosStatusIntegracoes(token)
+        listarMapeamentosStatusIntegracoes(token),
+        buscarProntidaoComercio(token)
       ]);
 
       setIntegracoes(dadosIntegracoes.integracoes || []);
@@ -560,6 +563,7 @@ export function Integracoes({ permissoes: permissoesSessao = [] }) {
       setStatusMapeamentos(dadosStatus.dados || []);
       setOpcoesStatus({ provedores: dadosStatus.provedores || [],
         dominios: dadosStatus.dominios || [], situacoes: dadosStatus.situacoes || [] });
+      setProntidaoComercio(dadosProntidao);
     } catch (falha) {
       setErro(falha.message);
     }
@@ -784,6 +788,27 @@ export function Integracoes({ permissoes: permissoesSessao = [] }) {
               'A fila contém envio em processamento ou com estado incerto'
           })[codigo] || codigo}</li>)}
         </ul>}
+      </div>}
+
+      {prontidaoComercio && <div className="admin-panel whatsapp-readiness">
+        <header><div><span>PRONTIDÃO DO COMÉRCIO ELETRÔNICO</span>
+          <h2>Conversão WBuy bloqueada</h2></div>
+          <strong>{Number(prontidaoComercio.contagens?.autoridades_definidas || 0)}/
+            {Number(prontidaoComercio.contagens?.autoridades_total || 0)} autoridades</strong>
+        </header>
+        <div className="whatsapp-readiness-metrics">
+          <span>Status confirmados <strong>{Number(prontidaoComercio.contagens?.status_pagamento_confirmados || 0)}</strong></span>
+          <span>Produtos WBuy <strong>{Number(prontidaoComercio.contagens?.produtos_wbuy_mapeados || 0)}</strong></span>
+          <span>Snapshots recebidos <strong>{Number(prontidaoComercio.contagens?.snapshots_recebidos || 0)}</strong></span>
+        </div>
+        <ul>{prontidaoComercio.bloqueios?.map(codigo => <li key={codigo}>{({
+          MATRIZ_AUTORIDADE_INCOMPLETA: 'Matriz de autoridade incompleta',
+          STATUS_PAGAMENTO_WBUY_SEM_CONFIRMACAO: 'Nenhum status WBuy aprovado como pagamento confirmado',
+          PRODUTOS_WBUY_SEM_MAPEAMENTO: 'Nenhum produto WBuy ativo está mapeado',
+          MOEDA_WBUY_NAO_DEFINIDA: 'Regra de moeda WBuy ainda não definida',
+          RECONCILIACAO_IDENTIDADES_NAO_DEFINIDA: 'Reconciliação de cliente, comprador e pagador não definida',
+          CONVERSOR_WBUY_NAO_IMPLEMENTADO: 'Conversor de snapshot para pedido permanece desabilitado'
+        })[codigo] || codigo}</li>)}</ul>
       </div>}
 
       <div className="admin-panel integration-panel">
