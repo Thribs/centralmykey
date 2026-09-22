@@ -16,6 +16,9 @@ const {
   obterConfiguracaoWhatsapp
 } = require('./configuracoes-integracoes');
 const {
+  reconciliarAlertasOperacionais
+} = require('./reconciliar-alertas-operacionais');
+const {
   registrarContextoRequisicao,
   registrarTratamentoFinal
 } = require('./middleware-erros');
@@ -245,6 +248,23 @@ async function executarComunicacoesOutbox() {
   }
 }
 
+let alertasOperacionaisEmAndamento = false;
+
+async function executarAlertasOperacionais() {
+  if (alertasOperacionaisEmAndamento) return;
+  alertasOperacionaisEmAndamento = true;
+  try {
+    const resultado = await reconciliarAlertasOperacionais(pool);
+    if (resultado.executado && resultado.alertas.some(item => item.alterada)) {
+      console.log('Alertas operacionais reconciliados:', resultado.totais);
+    }
+  } catch (error) {
+    console.error('Erro ao reconciliar alertas operacionais:', error.message);
+  } finally {
+    alertasOperacionaisEmAndamento = false;
+  }
+}
+
 require('./rotas-openai')(app, pool);
 registrarTratamentoFinal(app);
 
@@ -301,4 +321,16 @@ app.listen(port, '127.0.0.1', () => {
   );
 
   intervaloComunicacoes.unref();
+
+  executarAlertasOperacionais();
+
+  const intervaloAlertasOperacionais = setInterval(
+    executarAlertasOperacionais,
+    inteiroConfiguradoIntervalo(
+      process.env.ALERTAS_OPERACIONAIS_INTERVALO_MS,
+      60 * 1000
+    )
+  );
+
+  intervaloAlertasOperacionais.unref();
 });
