@@ -7,7 +7,7 @@ da aprovação dos testes.
 
 ## Estado comprovado
 
-- O commit `7656f76` foi publicado em 22/09/2026, sem merge ou nova tag, com o
+- O commit `5214833` foi publicado em 22/09/2026, sem merge ou nova tag, com o
   serviço ativo e `/health` e `/health/ready` HTTP 200.
 - A publicação criou e verificou o backup integral
   `/opt/centralmykey-backups/20260922T025627Z`. O diagnóstico de prontidão do
@@ -21,6 +21,10 @@ da aprovação dos testes.
   `/opt/centralmykey-backups/20260922T031056Z`. Como não existe volume externo
   montado, nenhum arquivo saiu do VPS; o monitoramento registrou uma única
   atenção `NAO_CONFIGURADO`, sem caminho ou credencial na notificação.
+- A publicação da matriz de autoridade criou e verificou o backup
+  `/opt/centralmykey-backups/20260922T031849Z`, aplicou dez migrações e confirmou
+  onze tabelas. A tabela da matriz foi publicada vazia, com zero auditorias:
+  nenhuma decisão de Joel foi inferida.
 - A instalação publicada usa `qs 6.16.0` e `npm audit --omit=dev` informa zero
   vulnerabilidades conhecidas.
 - As dez migrações adicionadas depois da tag estão aplicadas e as onze tabelas
