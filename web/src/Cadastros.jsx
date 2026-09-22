@@ -776,6 +776,30 @@ function ModalCatalogoServicos({ token, podeCriar, podeEditar, aoFechar }) {
     setFormulario(SERVICO_CATALOGO_INICIAL);
   }
 
+  function rotuloProntidao(status) {
+    return ({
+      OPERACIONAL: 'Operacional',
+      CONFIGURACAO_PENDENTE: 'Configuração pendente',
+      SOMENTE_CATALOGO: 'Somente catálogo',
+      INATIVO: 'Inativo'
+    })[status] || 'Não verificado';
+  }
+
+  function detalheProntidao(item) {
+    const prontidao = item.prontidao || {};
+    if (prontidao.status === 'OPERACIONAL') {
+      return `${prontidao.processador} · ${prontidao.fornecedores_ativos} fornecedor(es)`;
+    }
+    const mensagens = {
+      PROCESSADOR_AUSENTE: 'fluxo ainda não implementado',
+      ENTRADA_CHASSI_AUSENTE: 'chassi obrigatório não configurado',
+      INTEGRACAO_API_JOELPIRES_NAO_CONFIGURADA: 'integração Joel Pires não configurada',
+      FORNECEDOR_FALLBACK_AUSENTE: 'fornecedor de contingência ausente',
+      SERVICO_INATIVO: 'cadastro inativo'
+    };
+    return (prontidao.lacunas || []).map(codigo => mensagens[codigo] || codigo).join(' · ');
+  }
+
   async function salvar(evento) {
     evento.preventDefault();
     setSalvando(true);
@@ -868,7 +892,7 @@ function ModalCatalogoServicos({ token, podeCriar, podeEditar, aoFechar }) {
           {carregando ? <p>Carregando catálogo...</p> : dados.length === 0
             ? <p>Nenhum serviço cadastrado.</p>
             : <div className="registry-table-wrap"><table className="registry-table">
-              <thead><tr><th>Serviço</th><th>Preço</th><th>Entradas</th><th>Status</th><th /></tr></thead>
+              <thead><tr><th>Serviço</th><th>Preço</th><th>Entradas</th><th>Operação</th><th>Status</th><th /></tr></thead>
               <tbody>{dados.map(item => <tr key={item.id}>
                 <td><strong>{item.nome}</strong><span>{item.codigo} · {item.marca || 'Geral'}</span></td>
                 <td><strong>{item.moeda} {Number(item.preco_base).toFixed(2)}</strong>
@@ -878,6 +902,11 @@ function ModalCatalogoServicos({ token, podeCriar, podeEditar, aoFechar }) {
                   item.exige_placa && 'Placa', item.exige_chassi && 'Chassi',
                   item.exige_documento && 'Documento'
                 ].filter(Boolean).join(' · ') || 'Nenhuma obrigatória'}</td>
+                <td><span className={item.prontidao?.status === 'OPERACIONAL'
+                  ? 'registry-active' : item.prontidao?.status === 'CONFIGURACAO_PENDENTE'
+                    ? 'registry-pending' : 'registry-blocked'}>
+                  {rotuloProntidao(item.prontidao?.status)}</span>
+                  <small>{detalheProntidao(item)}</small></td>
                 <td><span className={item.ativo ? 'registry-active' : 'registry-blocked'}>
                   {item.ativo ? 'Ativo' : 'Inativo'}</span></td>
                 <td>{podeEditar && <div className="registry-row-actions">

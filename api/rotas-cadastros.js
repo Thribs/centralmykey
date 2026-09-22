@@ -1,3 +1,6 @@
+const { avaliarProntidaoServico } = require('./servicos-implementados');
+const { obterConfiguracaoApiJoelPires } = require('./config-api-joelpires');
+
 module.exports = function(app, pool) {
   const autenticarToken = app.locals.autenticarToken;
   const exigirPermissao = app.locals.exigirPermissao;
@@ -133,10 +136,32 @@ module.exports = function(app, pool) {
         const [dados] = await pool.query(
           `SELECT id, codigo, nome, categoria, marca, preco_base, preco_vip,
                   moeda, exige_placa, exige_chassi, exige_documento, ativo,
-                  criado_em, atualizado_em
+                  criado_em, atualizado_em,
+                  (SELECT COUNT(*)
+                     FROM fornecedor_servicos fs
+                     INNER JOIN fornecedores f ON f.id = fs.fornecedor_id
+                    WHERE fs.codigo_servico = servicos.codigo
+                      AND fs.ativo = 1 AND f.ativo = 1) AS fornecedores_ativos
              FROM servicos ORDER BY ativo DESC, nome, codigo`
         );
-        return res.json({ ok: true, total: dados.length, dados });
+        let apiJoelPiresConfigurada = false;
+        try {
+          obterConfiguracaoApiJoelPires();
+          apiJoelPiresConfigurada = true;
+        } catch {
+          // A prontidão expõe somente o estado, nunca valores de configuração.
+        }
+        const integracoesConfiguradas = {
+          API_JOELPIRES: apiJoelPiresConfigurada
+        };
+        const catalogo = dados.map(item => ({
+          ...item,
+          prontidao: avaliarProntidaoServico(item, {
+            integracoesConfiguradas,
+            fornecedoresAtivos: item.fornecedores_ativos
+          })
+        }));
+        return res.json({ ok: true, total: catalogo.length, dados: catalogo });
       } catch (error) {
         console.error('Erro ao listar catálogo de serviços:', error);
         return res.status(500).json({ ok: false, error: 'Erro ao consultar catálogo de serviços' });

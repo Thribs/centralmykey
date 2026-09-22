@@ -3400,7 +3400,7 @@
 .registry-table td>span { margin-top:4px;color:#6b748d }
 .registry-table td>small { margin-top:4px;color:#9aa2b6 }
 .registry-table td svg { color:#59647f;vertical-align:middle }
-.registry-badge,.registry-active,.registry-blocked {
+.registry-badge,.registry-active,.registry-blocked,.registry-pending {
   display:inline-flex!important;width:max-content;padding:4px 7px;
   border-radius:999px;background:#eeeffa;color:#4035d3!important;
   font-size:9px;font-weight:850
@@ -3412,6 +3412,7 @@
 .credit-BLOQUEADO,.registry-blocked {
   background:#fff0ee;color:#c33424!important
 }
+.registry-pending { background:#fff4db;color:#9a6200!important }
 .registry-row-actions { gap:5px }
 .registry-row-actions button,.registry-modal header button {
   display:grid;width:32px;height:32px;place-items:center;border:1px solid #dce1ed;

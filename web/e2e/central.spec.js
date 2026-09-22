@@ -1168,6 +1168,8 @@ test('clientes VIP e fornecedores são cadastrados pelas rotas reais', async ({ 
   let linhaCatalogo = catalogo.locator('tr', { hasText: contexto.catalogo_codigo });
   await expect(linhaCatalogo).toContainText('BRL 120.00');
   await expect(linhaCatalogo).toContainText('Chassi');
+  await expect(linhaCatalogo).toContainText('Somente catálogo');
+  await expect(linhaCatalogo).toContainText('fluxo ainda não implementado');
   await linhaCatalogo.getByTitle('Editar serviço').click();
   await catalogo.getByLabel('Preço base').fill('119.90');
   await catalogo.getByLabel('Preço VIP').fill('99.00');

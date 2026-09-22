@@ -141,6 +141,9 @@ async function executar() {
     assert.strictEqual(catalogo.resposta.status, 200);
     assert.ok(servico, 'Serviço criado deve aparecer no catálogo');
     assert.strictEqual(Number(servico.preco_base), 119.9);
+    assert.strictEqual(servico.prontidao.status, 'SOMENTE_CATALOGO');
+    assert.strictEqual(servico.prontidao.processador, null);
+    assert.deepStrictEqual(servico.prontidao.lacunas, ['PROCESSADOR_AUSENTE']);
     const listaOperacional = await requisitar(`${api.url}/api/servicos`);
     assert.strictEqual(listaOperacional.resposta.status, 200);
     assert.ok(!listaOperacional.corpo.dados.some(

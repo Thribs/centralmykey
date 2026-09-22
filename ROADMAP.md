@@ -181,6 +181,9 @@ O próximo marco técnico deve ser **definir a matriz de autoridade WBuy/Bling/C
 
 Na branch `feature/pagamento-manual-idempotente`, ainda não publicada:
 
+- a inspeção de todas as branches e tags confirmou que o legado contém somente a lista técnica de montadoras e seus IDs; não há preço, entrada, fornecedor, pagamento ou entrega que autorize declarar as demais verticais prontas;
+- o catálogo administrativo agora informa separadamente se um item está operacional, com configuração pendente, inativo ou apenas cadastrado; a prontidão exige processador registrado e, para GM, chassi, configuração da API Joel Pires e fornecedor de fallback ativo, sem expor credenciais;
+
 - ficou documentado e coberto por regressão que `api.joelpires.com.br` é uma API externa já existente; a Central MyKey mantém somente o cliente de integração e não deve construir ou publicar uma segunda API Joel Pires;
 - HTTP 404 da busca Joel Pires agora é classificado como `NAO_ENCONTRADO` mesmo quando o corpo não traz o nome `SenhaNotFoundError`; a regressão transacional comprova encaminhamento ao fornecedor e ausência de falso alerta de indisponibilidade;
 - o receptor Bling agora valida o HMAC oficial no corpo bruto, persiste `eventId` de forma idempotente, rejeita colisões e mantém eventos de pedido sem efeito de negócio até a definição da autoridade na transição; a prova usa payloads fictícios, tabela temporária e rollback;
