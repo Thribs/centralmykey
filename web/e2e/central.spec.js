@@ -1177,7 +1177,25 @@ test('administrador gerencia banco de senhas por permissão e confirmação', as
     name: 'Banco de senhas'
   })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Atualizar' })).toBeVisible();
+
+  await page.getByRole('button', { name: 'Nova senha' }).click();
+  const cadastro = page.getByRole('dialog', { name: 'Cadastrar senha' });
+  await cadastro.getByLabel('Chassi').fill(contexto.novo_chassi);
+  await cadastro.getByLabel('Modelo').fill('BANCO NOVO E2E');
+  await cadastro.getByLabel('Ano inicial').fill('2026');
+  await cadastro.getByLabel('Código mecânico original')
+    .fill(contexto.novo_codigo);
+  await cadastro.getByLabel('Confiabilidade').selectOption('ALTA');
+  await cadastro.getByRole('button', { name: 'Salvar senha' }).click();
+  await expect(cadastro).toBeHidden({ timeout: 10000 });
+
   await page.getByLabel('Status da senha').selectOption('');
+  await page.getByPlaceholder('Chassi, mecânico, rádio, imobilizador ou alarme')
+    .fill(contexto.novo_chassi);
+  await page.getByRole('button', { name: 'Pesquisar' }).click();
+  await expect(page.locator('tr', { hasText: contexto.novo_chassi }))
+    .toContainText('Ativo');
+
   await page.getByPlaceholder('Chassi, mecânico, rádio, imobilizador ou alarme')
     .fill(contexto.chassi);
   await page.getByRole('button', { name: 'Pesquisar' }).click();
@@ -1189,9 +1207,13 @@ test('administrador gerencia banco de senhas por permissão e confirmação', as
   let verificacao = await page.request.get(
     `${API}/api/e2e/verificacao?cenario=banco_senhas`
   );
-  let estado = (await verificacao.json()).estado;
+  let corpoVerificacao = await verificacao.json();
+  let estado = corpoVerificacao.estado;
   expect(Number(estado.ativo)).toBe(1);
   expect(Number(estado.auditorias)).toBe(0);
+  expect(Number(corpoVerificacao.criada.ativo)).toBe(1);
+  expect(Number(corpoVerificacao.criada.auditorias)).toBe(1);
+  expect(Number(corpoVerificacao.criada.codigos_na_auditoria)).toBe(0);
 
   page.once('dialog', dialogo => dialogo.accept());
   await linha.getByTitle('Bloquear').click();
@@ -1199,7 +1221,8 @@ test('administrador gerencia banco de senhas por permissão e confirmação', as
   verificacao = await page.request.get(
     `${API}/api/e2e/verificacao?cenario=banco_senhas`
   );
-  estado = (await verificacao.json()).estado;
+  corpoVerificacao = await verificacao.json();
+  estado = corpoVerificacao.estado;
   expect(Number(estado.ativo)).toBe(0);
   expect(Number(estado.auditorias)).toBe(1);
 });

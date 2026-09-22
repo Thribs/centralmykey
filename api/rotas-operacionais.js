@@ -84,6 +84,32 @@ module.exports = function(app, pool) {
       0
     );
 
+  const resumoAuditoriaSenha = dados => ({
+    tipo: dados.tipo || null,
+    marca: dados.marca || null,
+    modelo: dados.modelo || null,
+    ano_inicio: dados.ano_inicio || null,
+    ano_fim: dados.ano_fim || null,
+    chassi: dados.chassi || null,
+    origem_id: dados.origem_id || null,
+    fornecedor_id: dados.fornecedor_id || null,
+    confiabilidade: dados.confiabilidade || null,
+    ativo: dados.ativo === undefined ? 1 : Number(dados.ativo),
+    possui_codigo_mecanico: Boolean(
+      dados.codigo_mecanico || dados.codigo_mecanico_alterado
+    ),
+    possui_codigo_radio: Boolean(
+      dados.codigo_radio || dados.codigo_radio_alterado
+    ),
+    possui_codigo_imobilizador: Boolean(
+      dados.codigo_imobilizador || dados.codigo_imobilizador_alterado
+    ),
+    possui_codigo_alarme: Boolean(
+      dados.codigo_alarme || dados.codigo_alarme_alterado
+    ),
+    possui_pin: Boolean(dados.pin || dados.pin_alterado)
+  });
+
   const podeAlterarSenhaConsultada = async (
     conexao,
     usuarioId,
@@ -624,6 +650,7 @@ module.exports = function(app, pool) {
     autenticarToken,
     exigirPermissao('BANCO_SENHAS', 'criar'),
     async (req, res) => {
+      let conexao;
       try {
         const chassi = normalizarTexto(req.body.chassi, true);
         const codigoMecanico = normalizarTexto(
@@ -689,7 +716,9 @@ module.exports = function(app, pool) {
           });
         }
 
-        const [existentes] = await pool.query(
+        conexao = await pool.getConnection();
+        await conexao.beginTransaction();
+        const [existentes] = await conexao.query(
           `SELECT id
            FROM banco_senhas
            WHERE UPPER(chassi) = ?
@@ -698,6 +727,7 @@ module.exports = function(app, pool) {
         );
 
         if (existentes.length) {
+          await conexao.rollback();
           return res.status(409).json({
             ok: false,
             error: 'Já existe uma senha cadastrada para este chassi',
@@ -719,7 +749,7 @@ module.exports = function(app, pool) {
           ? confiabilidade
           : 'MEDIA';
 
-        const [resultado] = await pool.query(
+        const [resultado] = await conexao.query(
           `INSERT INTO banco_senhas (
              tipo,
              marca,
@@ -772,17 +802,57 @@ module.exports = function(app, pool) {
           ]
         );
 
+        const dadosAuditoria = resumoAuditoriaSenha({
+          tipo: normalizarTexto(req.body.tipo, true) || 'SENHA',
+          marca: normalizarTexto(req.body.marca, true),
+          modelo: normalizarTexto(req.body.modelo, true),
+          ano_inicio: normalizarAno(req.body.ano_inicio),
+          ano_fim: normalizarAno(req.body.ano_fim),
+          chassi,
+          origem_id: Number(req.body.origem_id) || null,
+          fornecedor_id: Number(req.body.fornecedor_id) || null,
+          confiabilidade: confiabilidadeFinal,
+          codigo_mecanico: codigoMecanico,
+          codigo_mecanico_alterado: codigoMecanicoAlterado,
+          codigo_radio: codigoRadio,
+          codigo_radio_alterado: codigoRadioAlterado,
+          codigo_imobilizador: codigoImobilizador,
+          codigo_imobilizador_alterado: codigoImobilizadorAlterado,
+          codigo_alarme: codigoAlarme,
+          codigo_alarme_alterado: codigoAlarmeAlterado,
+          pin,
+          pin_alterado: pinAlterado,
+          ativo: 1
+        });
+        await conexao.query(
+          `INSERT INTO auditoria
+             (usuario_id, modulo, acao, entidade, entidade_id,
+              descricao, dados_antes, dados_depois, ip)
+           VALUES (?, 'BANCO_SENHAS', 'CRIAR', 'BANCO_SENHA', ?,
+                   'Registro de senha automotiva cadastrado', NULL, ?, ?)`,
+          [
+            usuarioDaRequisicao(req) || null,
+            String(resultado.insertId),
+            JSON.stringify(dadosAuditoria),
+            req.ip || null
+          ]
+        );
+        await conexao.commit();
+
         return res.status(201).json({
           ok: true,
           mensagem: 'Senha cadastrada com sucesso',
           senha_id: resultado.insertId
         });
       } catch (error) {
+        if (conexao) await conexao.rollback();
         console.error('Erro ao cadastrar senha:', error);
         return res.status(500).json({
           ok: false,
           error: 'Erro ao cadastrar senha'
         });
+      } finally {
+        if (conexao) conexao.release();
       }
     }
   );
@@ -1076,8 +1146,8 @@ module.exports = function(app, pool) {
             'BANCO_SENHA',
             String(id),
             'Registro de senha automotiva atualizado',
-            JSON.stringify(dadosAnteriores),
-            JSON.stringify({
+            JSON.stringify(resumoAuditoriaSenha(dadosAnteriores)),
+            JSON.stringify(resumoAuditoriaSenha({
               ...dadosNovos,
               ativo: dadosAnteriores.ativo,
               quantidade_usos:
@@ -1086,7 +1156,7 @@ module.exports = function(app, pool) {
                 dadosAnteriores.quantidade_sucessos,
               quantidade_erros:
                 dadosAnteriores.quantidade_erros
-            }),
+            })),
             req.ip || null
           ]
         );

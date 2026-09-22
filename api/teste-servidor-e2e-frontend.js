@@ -228,6 +228,8 @@ async function prepararFixture() {
   const protocoloFechamento = `FF${process.pid}${String(Date.now()).slice(-7)}`;
   const chassiFechamento = `9BGE2E8A0${String(Date.now() + 7).slice(-8)}`;
   const chassiBancoSenhas = `9BGE2E9A0${String(Date.now() + 8).slice(-8)}`;
+  const chassiBancoSenhasNovo = `9BGE2E0A0${String(Date.now() + 9).slice(-8)}`;
+  const codigoBancoSenhasNovo = `MEC-BANCO-NOVO-${marcador}`;
   const telefone = `5594${String(Date.now()).slice(-8)}`;
   const nomeCliente = `CLIENTE E2E INTEGRADO ${marcador}`;
   const nomeFornecedor = `FORNECEDOR E2E INTEGRADO ${marcador}`;
@@ -672,7 +674,9 @@ async function prepararFixture() {
     },
     bancoSenhas: {
       id: senhaAdministrativa.insertId,
-      chassi: chassiBancoSenhas
+      chassi: chassiBancoSenhas,
+      novoChassi: chassiBancoSenhasNovo,
+      novoCodigo: codigoBancoSenhasNovo
     },
     cadastros: {
       clienteNome: nomeClienteCadastro,
@@ -853,7 +857,9 @@ async function iniciar() {
     },
     banco_senhas: {
       id: contexto.bancoSenhas.id,
-      chassi: contexto.bancoSenhas.chassi
+      chassi: contexto.bancoSenhas.chassi,
+      novo_chassi: contexto.bancoSenhas.novoChassi,
+      novo_codigo: contexto.bancoSenhas.novoCodigo
     },
     cadastros: {
       cliente_nome: contexto.cadastros.clienteNome,
@@ -885,7 +891,28 @@ async function iniciar() {
            FROM banco_senhas bs WHERE bs.id = ? LIMIT 1`,
         [contexto.bancoSenhas.id]
       );
-      return res.json({ ok: true, estado: estado || null });
+      const [[criada]] = await connection.query(
+        `SELECT bs.id, bs.ativo,
+                (SELECT COUNT(*) FROM auditoria a
+                  WHERE a.modulo = 'BANCO_SENHAS'
+                    AND a.entidade_id = CAST(bs.id AS CHAR)) AS auditorias,
+                (SELECT COUNT(*) FROM auditoria a
+                  WHERE a.modulo = 'BANCO_SENHAS'
+                    AND a.entidade_id = CAST(bs.id AS CHAR)
+                    AND (CAST(a.dados_antes AS CHAR) LIKE ?
+                      OR CAST(a.dados_depois AS CHAR) LIKE ?)) AS codigos_na_auditoria
+           FROM banco_senhas bs WHERE bs.chassi = ? LIMIT 1`,
+        [
+          `%${contexto.bancoSenhas.novoCodigo}%`,
+          `%${contexto.bancoSenhas.novoCodigo}%`,
+          contexto.bancoSenhas.novoChassi
+        ]
+      );
+      return res.json({
+        ok: true,
+        estado: estado || null,
+        criada: criada || null
+      });
     }
     if (req.query.cenario === 'integracoes') {
       const [[mapeamento]] = await connection.query(
@@ -1188,7 +1215,7 @@ async function encerrar(codigo = 0) {
              WHERE nome = ?) AS modelos_whatsapp,
            (SELECT COUNT(*) FROM banco_senhas
              WHERE JSON_UNQUOTE(JSON_EXTRACT(dados_extras, '$.api_senha_id'))
-               IN (?, ?, ?) OR chassi IN (?, ?)) AS cache`,
+               IN (?, ?, ?) OR chassi IN (?, ?, ?)) AS cache`,
         [
           contexto?.encontrado?.protocolo,
           contexto?.naoEncontrado?.protocolo,
@@ -1225,7 +1252,8 @@ async function encerrar(codigo = 0) {
           String(contexto?.dadosInvalidos?.apiSenhaId),
           String(contexto?.indisponivel?.apiSenhaId),
           contexto?.resultadoFornecedor?.chassi,
-          contexto?.bancoSenhas?.chassi
+          contexto?.bancoSenhas?.chassi,
+          contexto?.bancoSenhas?.novoChassi
         ]
       );
       if (Object.values(residuos).some(Number)) {

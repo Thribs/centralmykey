@@ -49,8 +49,9 @@ A suíte cobre inicialmente:
   Fornecedores, Financeiro e Pedidos sem controles de mutação e recebe HTTP 403
   ao tentar forçar escritas; todo o cenário usa JWT real e rollback;
 - administração do Banco de Senhas concedida pela permissão `aprovar`, sem
-  depender do ID do usuário, com desistência sem mutação, bloqueio confirmado,
-  auditoria e visualizador impedido na interface e por HTTP;
+  depender do ID do usuário, com cadastro real, desistência sem mutação,
+  bloqueio confirmado, auditoria sem códigos e visualizador impedido na
+  interface e por HTTP;
 - atendimento móvel assumido da fila, nota interna, resposta WhatsApp mockada,
   mudança de etapa, transferência para outro usuário autenticado e finalização
   confirmada, com persistência real e rollback;
