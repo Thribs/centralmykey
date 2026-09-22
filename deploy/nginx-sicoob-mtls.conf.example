@@ -1,0 +1,29 @@
+# Modelo para um host HTTPS exclusivo do webhook Sicoob.
+# Substitua os caminhos e o server_name somente durante a homologação.
+# Este arquivo não deve conter certificados, chaves ou segredos reais.
+server {
+    listen 443 ssl;
+    server_name SICOOB_WEBHOOK_HOST;
+
+    ssl_certificate /CAMINHO/CERTIFICADO_TLS_PUBLICO.pem;
+    ssl_certificate_key /CAMINHO/CHAVE_TLS_PUBLICA.pem;
+
+    ssl_client_certificate /CAMINHO/CA_CLIENTE_SICOOB.pem;
+    ssl_verify_client on;
+    ssl_verify_depth 3;
+    ssl_protocols TLSv1.2 TLSv1.3;
+
+    location = /webhooks/sicoob {
+        client_max_body_size 256k;
+        proxy_pass http://127.0.0.1:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_set_header X-Client-Cert-Verify $ssl_client_verify;
+    }
+
+    location / {
+        return 404;
+    }
+}

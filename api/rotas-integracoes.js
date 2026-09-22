@@ -5,13 +5,50 @@ const {
   obterConfiguracaoBling,
   obterConfiguracaoWBuy
 } = require('./configuracoes-integracoes');
-const { criarCobrancaPedidoSicoob } = require('./sicoob-pix');
+const {
+  criarCobrancaPedidoSicoob,
+  processarWebhookSicoob
+} = require('./sicoob-pix');
 const { receberEventoBling } = require('./webhook-bling');
 const { sincronizarPedidoWBuy } = require('./wbuy-pedidos');
 
 module.exports = function registrarRotasIntegracoes(app, pool, opcoes = {}) {
   const autenticarToken = app.locals.autenticarToken;
   const exigirPermissao = app.locals.exigirPermissao;
+
+  const proxyMtlsConfirmado = req => {
+    const endereco = String(req.socket?.remoteAddress || '');
+    const local = endereco === '127.0.0.1' || endereco === '::1' ||
+      endereco === '::ffff:127.0.0.1';
+    return local && req.get('x-client-cert-verify') === 'SUCCESS';
+  };
+
+  app.post('/webhooks/sicoob', async (req, res) => {
+    try {
+      const config = opcoes.configuracaoSicoob || await obterConfiguracaoSicoob(pool);
+      if (!config.webhookHabilitado) {
+        return res.status(503).json({ ok: false,
+          codigo: 'SICOOB_WEBHOOK_DESABILITADO',
+          error: 'Webhook Sicoob desabilitado' });
+      }
+      if (!proxyMtlsConfirmado(req)) {
+        return res.status(401).json({ ok: false,
+          codigo: 'CERTIFICADO_CLIENTE_INVALIDO',
+          error: 'Certificado de cliente inválido' });
+      }
+      const corpoBruto = req.rawBody || Buffer.from(JSON.stringify(req.body || {}));
+      const resultado = await processarWebhookSicoob(pool, corpoBruto);
+      return res.status(200).json(resultado);
+    } catch (error) {
+      const status = Number(error.status) || 500;
+      if (status >= 500) {
+        console.error('Erro ao receber webhook Sicoob:', error.codigo || error.message);
+      }
+      return res.status(status).json({ ok: false,
+        codigo: error.codigo || 'ERRO_WEBHOOK_SICOOB',
+        error: status >= 500 ? 'Webhook Sicoob indisponível' : error.message });
+    }
+  });
 
   app.post('/webhooks/bling', async (req, res) => {
     try {

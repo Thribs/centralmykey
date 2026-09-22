@@ -5,7 +5,7 @@ const path = require('path');
 const dotenv = require('dotenv');
 const mysql = require('mysql2/promise');
 const express = require('express');
-const { interpretarWebhook, processarWebhookSicoob } = require('./sicoob-pix');
+const { interpretarWebhook } = require('./sicoob-pix');
 const { criarTabelaOutboxTemporaria } = require('./teste-suporte-outbox');
 
 dotenv.config({ path: process.env.CENTRALMYKEY_ENV_PATH || path.join(__dirname, '.env'), quiet: true });
@@ -62,7 +62,9 @@ async function criarTabelasTemporarias(connection) {
 
 async function iniciarApi(connection, opcoes = {}) {
   const app = express();
-  app.use(express.json());
+  app.use(express.json({
+    verify: (req, res, buffer) => { req.rawBody = buffer; }
+  }));
   app.locals.autenticarToken = (req, res, next) => next();
   app.locals.exigirPermissao = () => (req, res, next) => next();
   require('./rotas-integracoes')(app, poolTransacional(connection), opcoes);
@@ -109,7 +111,8 @@ async function executar() {
     const chamadasSicoob = [];
     api = await iniciarApi(connection, {
       configuracaoSicoob: {
-        habilitado: true, clientId: 'cliente-teste', clientSecret: 'segredo-teste',
+        habilitado: true, webhookHabilitado: true,
+        clientId: 'cliente-teste', clientSecret: 'segredo-teste',
         certPath: '/certificado/ficticio', keyPath: '/chave/ficticia', chavePix: 'pix@teste.invalid',
         tokenUrl: 'https://api-homol.sicoob.com.br/cooperado/pix/token',
         apiUrl: 'https://api-homol.sicoob.com.br/cooperado/pix/api/v2', scope: 'cob.write'
@@ -151,11 +154,21 @@ async function executar() {
     assert.strictEqual(chamadasSicoob.length, 4);
     assert.strictEqual(JSON.parse(chamadasSicoob[3].body).calendario.expiracao, 1800);
 
-    const pool = poolTransacional(connection);
     const desconhecido = JSON.stringify({ pix: [{ txid: txidDesconhecido,
       endToEndId: `U${e2e.slice(1)}`, valor: valor.toFixed(2),
       horario: '2026-09-21T12:00:00Z' }] });
-    const resultadoDesconhecido = await processarWebhookSicoob(pool, desconhecido);
+    const semCertificado = await fetch(`${api.url}/webhooks/sicoob`, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: desconhecido
+    });
+    assert.strictEqual(semCertificado.status, 401);
+    assert.strictEqual((await semCertificado.json()).codigo, 'CERTIFICADO_CLIENTE_INVALIDO');
+    const comCertificado = await fetch(`${api.url}/webhooks/sicoob`, {
+      method: 'POST', headers: { 'content-type': 'application/json',
+        'x-client-cert-verify': 'SUCCESS' }, body: desconhecido
+    });
+    const resultadoDesconhecido = await comCertificado.json();
+    assert.strictEqual(comCertificado.status, 200);
     assert.strictEqual(resultadoDesconhecido.resultados[0].codigo, 'TXID_NAO_VINCULADO');
 
     global.fetch = async () => ({ ok: true, status: 200, text: async () => JSON.stringify([{
@@ -164,10 +177,19 @@ async function executar() {
     }]) });
     const corpo = JSON.stringify({ pix: [{ txid, endToEndId: e2e,
       valor: valor.toFixed(2), horario: '2026-09-21T12:01:00Z', infoPagador: 'Pedido' }] });
-    const recebido = await processarWebhookSicoob(pool, corpo);
+    const respostaWebhook = await fetchOriginal(`${api.url}/webhooks/sicoob`, {
+      method: 'POST', headers: { 'content-type': 'application/json',
+        'x-client-cert-verify': 'SUCCESS' }, body: corpo
+    });
+    const recebido = await respostaWebhook.json();
+    assert.strictEqual(respostaWebhook.status, 200);
     assert.strictEqual(recebido.ok, true);
     assert.strictEqual(recebido.resultados[0].processamento.status, 'CONCLUIDO');
-    const repetido = await processarWebhookSicoob(pool, corpo);
+    const respostaRepetida = await fetchOriginal(`${api.url}/webhooks/sicoob`, {
+      method: 'POST', headers: { 'content-type': 'application/json',
+        'x-client-cert-verify': 'SUCCESS' }, body: corpo
+    });
+    const repetido = await respostaRepetida.json();
     assert.strictEqual(repetido.resultados[0].idempotente, true);
 
     const [[estado]] = await connection.query(

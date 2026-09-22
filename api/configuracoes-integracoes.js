@@ -22,6 +22,7 @@ const CHAVES = {
   sicoobCaPath: ['SICOOB_CA_PATH'],
   sicoobChavePix: ['SICOOB_CHAVE_PIX'],
   sicoobAmbiente: ['SICOOB_AMBIENTE'],
+  sicoobWebhookHabilitado: ['SICOOB_WEBHOOK_HABILITADO'],
   plugPayToken: ['PLUGPAY_TOKEN', 'PLUGPAY_API_KEY'],
   wbuyUsuario: ['WBUY_USUARIO', 'WBUY_USERNAME'],
   wbuySenha: ['WBUY_SENHA', 'WBUY_PASSWORD'],
@@ -119,7 +120,8 @@ function resumirIntegracoes(config) {
           Boolean(config.sicoobChavePix)],
         habilitado: false
       }),
-      componentes: { cobranca: true, conciliacao: true, webhook_publico_mtls: false }
+      componentes: { cobranca: true, conciliacao: true,
+        webhook_publico_mtls: verdadeiro(config.sicoobWebhookHabilitado) }
     },
     {
       codigo: 'PLUGPAY',
@@ -181,6 +183,7 @@ async function obterConfiguracaoSicoob(pool) {
     clientId: config.sicoobClientId, clientSecret: config.sicoobClientSecret,
     certPath: config.sicoobCertPath, keyPath: config.sicoobKeyPath,
     caPath: config.sicoobCaPath, chavePix: config.sicoobChavePix,
+    webhookHabilitado: verdadeiro(config.sicoobWebhookHabilitado),
     // A criação só pode ser ativada junto com o webhook autenticado por mTLS.
     habilitado: false,
     tokenUrl: producao

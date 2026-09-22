@@ -12,7 +12,9 @@ produção:
 - valor e moeda precisam coincidir exatamente com o pedido;
 - `txid` desconhecido gera evento `FALHOU`, sem pagamento ou lançamento;
 - pagamento válido executa o mesmo fluxo pós-pagamento do pedido;
-- a administração consulta metadados, sem receber o payload do webhook.
+- a administração consulta metadados, sem receber o payload do webhook;
+- a rota `POST /webhooks/sicoob` permanece desabilitada por padrão e só aceita
+  chamadas locais encaminhadas pelo proxy com validação mTLS positiva.
 
 A preparação local não afirma que uma cobrança existe no Sicoob. A referência
 só muda de `PREPARADA` para `REGISTRADA` quando o cliente da API confirma o
@@ -24,7 +26,9 @@ nova chamada idempotente.
 O manual oficial do Sicoob define OAuth2 com credenciais do cliente e mTLS para
 a API Pix, além de mTLS no envio do webhook ao recebedor. O Nginx atualmente
 publicado encaminha HTTPS para a API, mas não exige nem valida certificado de
-cliente. Portanto, esta branch não registra uma rota pública de webhook.
+cliente. A branch registra a rota interna desabilitada e fornece
+`deploy/nginx-sicoob-mtls.conf.example` para um host exclusivo; nada foi
+instalado ou exposto no Nginx ativo.
 
 Antes da ativação serão necessários:
 
