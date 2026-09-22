@@ -4530,6 +4530,11 @@ border:1px solid #dbe0eb;border-radius:8px;background:white;cursor:pointer}
   cursor: pointer;
 }
 
+.order-sicoob-button {
+  margin-left: 0;
+  background: #176a4a;
+}
+
 .payment-modal {
   width: min(560px, calc(100vw - 30px));
   display: flex;
@@ -4637,6 +4642,90 @@ border:1px solid #dbe0eb;border-radius:8px;background:white;cursor:pointer}
   color: #303852;
   font: inherit;
   resize: vertical;
+}
+
+.sicoob-request {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  color: #303852;
+  font-size: 13px;
+  font-weight: 750;
+}
+
+.sicoob-request input {
+  min-height: 42px;
+  box-sizing: border-box;
+  border: 1px solid #d8deeb;
+  border-radius: 9px;
+  padding: 0 11px;
+  color: #303852;
+  font: inherit;
+}
+
+.sicoob-result {
+  display: flex;
+  flex-direction: column;
+  gap: 13px;
+}
+
+.sicoob-result label {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  color: #303852;
+  font-size: 13px;
+  font-weight: 750;
+}
+
+.sicoob-success {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0;
+  color: #176a4a;
+  font-weight: 800;
+}
+
+.sicoob-copy-button {
+  display: inline-flex;
+  min-height: 40px;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border: 0;
+  border-radius: 9px;
+  background: #176a4a;
+  color: #fff;
+  font: inherit;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.sicoob-result dl {
+  display: grid;
+  gap: 7px;
+  margin: 0;
+}
+
+.sicoob-result dl div {
+  display: grid;
+  grid-template-columns: 60px minmax(0, 1fr);
+  gap: 8px;
+}
+
+.sicoob-result dt {
+  color: #777e96;
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.sicoob-result dd {
+  overflow-wrap: anywhere;
+  margin: 0;
+  color: #303852;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
 }
 
 .payment-modal footer {

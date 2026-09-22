@@ -133,6 +133,12 @@ async function executar() {
       }
     });
     servidor = api.servidor;
+    const respostaStatus = await fetch(`${api.url}/api/pagamentos/sicoob/status`);
+    const statusSicoob = await respostaStatus.json();
+    assert.strictEqual(respostaStatus.status, 200);
+    assert.deepStrictEqual(statusSicoob,
+      { ok: true, disponivel: true, codigo: 'PRONTO' });
+    assert.ok(!JSON.stringify(statusSicoob).includes('segredo-teste'));
     const respostaCobranca = await fetch(`${api.url}/api/pedidos/${pedidoId}/pagamentos/sicoob`, {
       method: 'POST', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ expiracao_segundos: 1800 })

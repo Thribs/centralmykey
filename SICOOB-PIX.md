@@ -14,9 +14,18 @@ produção:
 - valor e moeda precisam coincidir exatamente com o pedido;
 - `txid` desconhecido gera evento `FALHOU`, sem pagamento ou lançamento;
 - pagamento válido executa o mesmo fluxo pós-pagamento do pedido;
+- a interface do pedido gera a cobrança, exibe o Pix copia e cola e permite
+  copiá-lo somente quando o usuário possui permissão financeira e o conector
+  informa disponibilidade;
 - a administração consulta metadados, sem receber o payload do webhook;
 - a rota `POST /webhooks/sicoob` permanece desabilitada por padrão e só aceita
   chamadas locais encaminhadas pelo proxy com validação mTLS positiva.
+
+As chaves `SICOOB_COBRANCA_HABILITADA` e
+`SICOOB_WEBHOOK_HABILITADO` começam como `false`. A cobrança só fica disponível
+quando as credenciais exigidas estão configuradas e ambas as chaves estão
+habilitadas; assim, a Central não cria um Pix que ainda não possa ser conciliado
+por um webhook autenticado.
 
 A preparação local não afirma que uma cobrança existe no Sicoob. A referência
 só muda de `PREPARADA` para `REGISTRADA` quando o cliente da API confirma o
@@ -39,7 +48,8 @@ Antes da ativação serão necessários:
 3. validação de certificado de cliente no Nginx apenas no endpoint Sicoob;
 4. encaminhamento à aplicação somente após validação positiva no proxy;
 5. teste de homologação de cobrança, pagamento, reentrega e evento inválido;
-6. backup e plano de rollback antes da publicação.
+6. habilitar as duas chaves somente depois dos testes de homologação;
+7. backup e plano de rollback antes da publicação.
 
 Nenhum segredo deve ser gravado em documentação, logs, payload administrativo
 ou repositório.

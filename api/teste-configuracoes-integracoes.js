@@ -5,6 +5,7 @@ const crypto = require('crypto');
 const express = require('express');
 const {
   carregarConfiguracoesIntegracoes,
+  obterConfiguracaoSicoob,
   obterConfiguracaoWhatsapp,
   resumirIntegracoes
 } = require('./configuracoes-integracoes');
@@ -20,7 +21,7 @@ const CHAVES_TESTE = [
   'WHATSAPP_MODELO_ENTREGA_RESULTADO', 'COMUNICACOES_OUTBOX_HABILITADO',
   'SICOOB_CLIENT_ID', 'SICOOB_CLIENT_SECRET', 'SICOOB_CERT_PATH',
   'SICOOB_KEY_PATH', 'SICOOB_CA_PATH', 'SICOOB_CHAVE_PIX', 'SICOOB_AMBIENTE',
-  'SICOOB_WEBHOOK_HABILITADO',
+  'SICOOB_COBRANCA_HABILITADA', 'SICOOB_WEBHOOK_HABILITADO',
   'WBUY_USUARIO', 'WBUY_USERNAME', 'WBUY_SENHA', 'WBUY_PASSWORD',
   'WBUY_LOJA_URL', 'WBUY_TOKEN', 'WBUY_API_KEY'
 ];
@@ -101,6 +102,8 @@ async function executar() {
     const itemWbuy = resumo.find(item => item.codigo === 'WBUY');
     assert.strictEqual(itemWhatsapp.status, 'CONFIGURADO');
     assert.strictEqual(itemSicoob.status, 'PARCIAL');
+    assert.strictEqual(itemSicoob.habilitado, false);
+    assert.strictEqual(itemSicoob.componentes.cobranca_habilitada, false);
     assert.strictEqual(itemSicoob.componentes.webhook_publico_mtls, false);
     assert.strictEqual(itemWbuy.status, 'CREDENCIAIS_SEM_CONECTOR');
     assert.strictEqual(itemWbuy.componentes.credencial_legada, true);
@@ -108,6 +111,22 @@ async function executar() {
     assert.strictEqual(itemBling.componentes.webhook_assinado, true);
     assert.ok(resumo.every(item => !JSON.stringify(item).includes('ficticio')),
       'O resumo nunca pode expor valores de configuração');
+
+    const sicoobHabilitado = await obterConfiguracaoSicoob(poolFalso({
+      SICOOB_CLIENT_ID: 'id-ficticio',
+      SICOOB_CLIENT_SECRET: 'segredo-ficticio',
+      SICOOB_CERT_PATH: '/certificado/ficticio',
+      SICOOB_KEY_PATH: '/chave/ficticia',
+      SICOOB_CHAVE_PIX: 'pix-ficticia',
+      SICOOB_COBRANCA_HABILITADA: 'true',
+      SICOOB_WEBHOOK_HABILITADO: 'true'
+    }));
+    assert.strictEqual(sicoobHabilitado.habilitado, true);
+    const sicoobSemCredencial = await obterConfiguracaoSicoob(poolFalso({
+      SICOOB_COBRANCA_HABILITADA: 'true',
+      SICOOB_WEBHOOK_HABILITADO: 'true'
+    }));
+    assert.strictEqual(sicoobSemCredencial.habilitado, false);
 
     global.fetch = async (url, opcoes) => {
       assert.match(String(url), /^https:\/\/graph\.facebook\.com\/v98\.0\//);

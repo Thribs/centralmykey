@@ -19,6 +19,7 @@ import {
 import {
   buscarPedido,
   buscarResumoPedidos,
+  obterStatusSicoob,
   listarFilaPedidos,
   cancelarPedido,
   estornarECancelarPedido,
@@ -27,6 +28,7 @@ import {
 } from './api';
 import NovoPedido from './NovoPedido';
 import ConfirmarPagamento from './ConfirmarPagamento';
+import CobrancaSicoob from './CobrancaSicoob';
 import ResultadoPedido from './ResultadoPedido';
 import ValidarResultado from './ValidarResultado';
 import CorrigirDadosPedido from './CorrigirDadosPedido';
@@ -167,8 +169,10 @@ function ListaComunicacoes({ itens, vazio, pedido, podeEditar, aoReprocessar }) 
 function DetalhePedido({
   dados,
   podeEditar,
+  podeGerarCobrancaSicoob,
   aoFechar,
   aoConfirmarPagamento,
+  aoGerarCobrancaSicoob,
   aoRegistrarResultado,
   aoValidarResultado,
   aoReprocessar,
@@ -233,6 +237,16 @@ function DetalhePedido({
                 >
                   <CircleDollarSign size={17} />
                   Confirmar pagamento
+                </button>
+              )}
+              {podeGerarCobrancaSicoob && pedido.status === 'AGUARDANDO_PAGAMENTO' && (
+                <button
+                  type="button"
+                  className="order-payment-button order-sicoob-button"
+                  onClick={() => aoGerarCobrancaSicoob({ ...pedido, partes })}
+                >
+                  <CircleDollarSign size={17} />
+                  Gerar Pix Sicoob
                 </button>
               )}
               {podeEditar && pedido.status === 'EM_CONSULTA' && (
@@ -459,8 +473,10 @@ function DetalhePedido({
 export default function Pedidos({ buscaInicial = '', permissoes = [] }) {
   const token = localStorage.getItem('central_mykey_token');
   const permissao = permissoes.find(item => item.codigo === 'PEDIDOS_SENHAS') || {};
+  const permissaoFinanceiro = permissoes.find(item => item.codigo === 'FINANCEIRO') || {};
   const podeCriar = Number(permissao.criar) === 1;
   const podeEditar = Number(permissao.editar) === 1;
+  const podeGerarCobranca = Number(permissaoFinanceiro.editar) === 1;
   const [resumo, setResumo] = useState(null);
   const [pedidos, setPedidos] = useState([]);
   const [total, setTotal] = useState(0);
@@ -470,6 +486,8 @@ export default function Pedidos({ buscaInicial = '', permissoes = [] }) {
   const [erro, setErro] = useState('');
   const [detalhe, setDetalhe] = useState(null);
   const [pagamento, setPagamento] = useState(null);
+  const [cobrancaSicoob, setCobrancaSicoob] = useState(null);
+  const [sicoobDisponivel, setSicoobDisponivel] = useState(false);
   const [resultado, setResultado] = useState(null);
   const [validacao, setValidacao] = useState(null);
   const [correcao, setCorrecao] = useState(null);
@@ -511,6 +529,21 @@ export default function Pedidos({ buscaInicial = '', permissoes = [] }) {
       clearTimeout(atraso);
     };
   }, [token, status, busca, atualizacao]);
+
+  useEffect(() => {
+    let ativo = true;
+    if (!podeGerarCobranca) {
+      return () => { ativo = false; };
+    }
+    obterStatusSicoob(token)
+      .then(resposta => {
+        if (ativo) setSicoobDisponivel(resposta.disponivel === true);
+      })
+      .catch(() => {
+        if (ativo) setSicoobDisponivel(false);
+      });
+    return () => { ativo = false; };
+  }, [token, podeGerarCobranca, atualizacao]);
 
   async function abrirPedido(pedidoId) {
     setAbrindo(true);
@@ -790,8 +823,10 @@ export default function Pedidos({ buscaInicial = '', permissoes = [] }) {
         <DetalhePedido
           dados={detalhe}
           podeEditar={podeEditar}
+          podeGerarCobrancaSicoob={podeGerarCobranca && sicoobDisponivel}
           aoFechar={() => setDetalhe(null)}
           aoConfirmarPagamento={setPagamento}
+          aoGerarCobrancaSicoob={setCobrancaSicoob}
           aoRegistrarResultado={setResultado}
           aoValidarResultado={(pedido, modo) => setValidacao({ pedido, modo })}
           aoReprocessar={reprocessar}
@@ -814,6 +849,14 @@ export default function Pedidos({ buscaInicial = '', permissoes = [] }) {
             }}
           />
         )}
+
+      {cobrancaSicoob && (
+        <CobrancaSicoob
+          token={token}
+          pedido={cobrancaSicoob}
+          aoFechar={() => setCobrancaSicoob(null)}
+        />
+      )}
 
       {resultado && (
         <ResultadoPedido

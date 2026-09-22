@@ -21,6 +21,10 @@ const sessao = {
     {
       codigo: 'CLIENTES', modulo: 'Clientes',
       visualizar: 1, criar: 1, editar: 1, excluir: 1, aprovar: 1
+    },
+    {
+      codigo: 'FINANCEIRO', modulo: 'Financeiro',
+      visualizar: 1, criar: 1, editar: 1, excluir: 1, aprovar: 1
     }
   ]
 };
@@ -260,6 +264,25 @@ test('formulários GM permanecem acessíveis em celular tablet e desktop', async
       });
       return true;
     }
+    if (url.pathname === '/api/pagamentos/sicoob/status') {
+      await json(route, { ok: true, disponivel: true, codigo: 'PRONTO' });
+      return true;
+    }
+    if (
+      url.pathname === '/api/pedidos/710001/pagamentos/sicoob' &&
+      route.request().method() === 'POST'
+    ) {
+      await json(route, {
+        ok: true,
+        status: 'REGISTRADA',
+        txid: 'SICOOBE2EFICTICIO00000000000001',
+        valor: 60,
+        moeda: 'BRL',
+        location: 'pix.sicoob.invalid/e2e',
+        pix_copia_cola: '000201PIX-COPIA-E-COLA-FICTICIO-E2E'
+      }, 201);
+      return true;
+    }
     const item = pedidos.find(([, id]) => url.pathname === `/api/pedidos/${id}`);
     if (item) {
       const [protocolo, id, status] = item;
@@ -351,6 +374,15 @@ test('formulários GM permanecem acessíveis em celular tablet e desktop', async
 
     await page.locator('tr', { hasText: 'CMK-RESP-PAGAMENTO' }).click();
     let detalhe = page.getByRole('dialog', { name: 'CMK-RESP-PAGAMENTO' });
+    await detalhe.getByRole('button', { name: 'Gerar Pix Sicoob' }).click();
+    modal = page.getByRole('dialog', { name: 'Gerar cobrança Pix Sicoob' });
+    await validarModal(modal, 'Gerar Pix');
+    await modal.getByRole('button', { name: 'Gerar Pix', exact: true }).click();
+    await expect(modal.getByLabel('Pix copia e cola')).toHaveValue(
+      '000201PIX-COPIA-E-COLA-FICTICIO-E2E'
+    );
+    await expect(modal.getByText('Cobrança registrada no Sicoob')).toBeVisible();
+    await modal.getByRole('button', { name: 'Fechar' }).last().click();
     await detalhe.getByRole('button', { name: 'Confirmar pagamento' }).click();
     modal = page.getByRole('dialog', { name: 'Confirmar pagamento' });
     await validarModal(modal, 'Confirmar pagamento');

@@ -73,6 +73,27 @@ module.exports = function registrarRotasIntegracoes(app, pool, opcoes = {}) {
     }
   });
 
+  app.get('/api/pagamentos/sicoob/status', autenticarToken,
+    exigirPermissao('FINANCEIRO', 'visualizar'), async (req, res) => {
+      try {
+        const config = opcoes.configuracaoSicoob || await obterConfiguracaoSicoob(pool);
+        const disponivel = Boolean(config.habilitado && config.webhookHabilitado);
+        return res.json({
+          ok: true,
+          disponivel,
+          codigo: disponivel ? 'PRONTO' : 'HOMOLOGACAO_PENDENTE'
+        });
+      } catch (error) {
+        console.error('Erro ao consultar disponibilidade Sicoob:', error.message);
+        return res.status(500).json({
+          ok: false,
+          disponivel: false,
+          codigo: 'ERRO_STATUS_SICOOB',
+          error: 'Não foi possível consultar a disponibilidade do Sicoob'
+        });
+      }
+    });
+
   app.post('/api/pedidos/:id/pagamentos/sicoob', autenticarToken,
     exigirPermissao('FINANCEIRO', 'editar'), async (req, res) => {
       const pedidoId = Number(req.params.id);

@@ -1124,6 +1124,28 @@ export async function criarPedido(token, dados) {
   return lerResposta(resposta);
 }
 
+export async function obterStatusSicoob(token) {
+  const resposta = await requisitar(`${API_URL}/api/pagamentos/sicoob/status`, {
+    headers: cabecalhoAutenticado(token)
+  });
+  return lerResposta(resposta);
+}
+
+export async function criarCobrancaSicoob(token, pedidoId, dados) {
+  const resposta = await requisitar(
+    `${API_URL}/api/pedidos/${pedidoId}/pagamentos/sicoob`,
+    {
+      method: 'POST',
+      headers: cabecalhoAutenticado(token, {
+        'Content-Type': 'application/json'
+      }),
+      body: JSON.stringify(dados)
+    },
+    { timeoutMs: 45000 }
+  );
+  return lerResposta(resposta);
+}
+
 export async function confirmarPagamentoManual(
   token,
   pedidoId,

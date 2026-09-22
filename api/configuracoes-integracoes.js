@@ -22,6 +22,7 @@ const CHAVES = {
   sicoobCaPath: ['SICOOB_CA_PATH'],
   sicoobChavePix: ['SICOOB_CHAVE_PIX'],
   sicoobAmbiente: ['SICOOB_AMBIENTE'],
+  sicoobCobrancaHabilitada: ['SICOOB_COBRANCA_HABILITADA'],
   sicoobWebhookHabilitado: ['SICOOB_WEBHOOK_HABILITADO'],
   plugPayToken: ['PLUGPAY_TOKEN', 'PLUGPAY_API_KEY'],
   wbuyUsuario: ['WBUY_USUARIO', 'WBUY_USERNAME'],
@@ -86,6 +87,8 @@ function resumirIntegracoes(config) {
   const whatsappWebhook = Boolean(config.metaVerifyToken && config.metaAppSecret);
   const whatsappModelos = Boolean(config.modeloFornecedor && config.modeloEntrega);
   const whatsappHabilitado = verdadeiro(config.outboxHabilitada);
+  const sicoobCobrancaHabilitada = verdadeiro(config.sicoobCobrancaHabilitada);
+  const sicoobWebhookHabilitado = verdadeiro(config.sicoobWebhookHabilitado);
   return [
     {
       codigo: 'WHATSAPP',
@@ -118,10 +121,11 @@ function resumirIntegracoes(config) {
         requisitos: [Boolean(config.sicoobClientId), Boolean(config.sicoobClientSecret),
           Boolean(config.sicoobCertPath), Boolean(config.sicoobKeyPath),
           Boolean(config.sicoobChavePix)],
-        habilitado: false
+        habilitado: sicoobCobrancaHabilitada && sicoobWebhookHabilitado
       }),
       componentes: { cobranca: true, conciliacao: true,
-        webhook_publico_mtls: verdadeiro(config.sicoobWebhookHabilitado) }
+        cobranca_habilitada: sicoobCobrancaHabilitada,
+        webhook_publico_mtls: sicoobWebhookHabilitado }
     },
     {
       codigo: 'PLUGPAY',
@@ -179,13 +183,19 @@ async function obterConfiguracaoWhatsapp(pool) {
 async function obterConfiguracaoSicoob(pool) {
   const config = await carregarConfiguracoesIntegracoes(pool);
   const producao = String(config.sicoobAmbiente).toLowerCase() === 'producao';
+  const webhookHabilitado = verdadeiro(config.sicoobWebhookHabilitado);
+  const cobrancaHabilitada = verdadeiro(config.sicoobCobrancaHabilitada);
+  const credenciaisConfiguradas = Boolean(
+    config.sicoobClientId && config.sicoobClientSecret &&
+    config.sicoobCertPath && config.sicoobKeyPath && config.sicoobChavePix
+  );
   return {
     clientId: config.sicoobClientId, clientSecret: config.sicoobClientSecret,
     certPath: config.sicoobCertPath, keyPath: config.sicoobKeyPath,
     caPath: config.sicoobCaPath, chavePix: config.sicoobChavePix,
-    webhookHabilitado: verdadeiro(config.sicoobWebhookHabilitado),
+    webhookHabilitado,
     // A criação só pode ser ativada junto com o webhook autenticado por mTLS.
-    habilitado: false,
+    habilitado: credenciaisConfiguradas && cobrancaHabilitada && webhookHabilitado,
     tokenUrl: producao
       ? 'https://apis.sisbr.com.br/cooperado/pix/token'
       : 'https://api-homol.sicoob.com.br/cooperado/pix/token',
