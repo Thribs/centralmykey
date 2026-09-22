@@ -478,6 +478,23 @@ if (bancoProprio.length) {
         ]
       );
 
+      const [[faturaAtual]] = await connection.query(
+        `SELECT status
+           FROM faturas_clientes
+          WHERE id = ?
+          LIMIT 1
+          FOR UPDATE`,
+        [fatura.insertId]
+      );
+      if (!faturaAtual || faturaAtual.status !== 'ABERTA') {
+        await connection.rollback();
+        return res.status(409).json({
+          ok: false,
+          codigo: 'FATURA_PERIODO_FECHADO',
+          error: 'A fatura deste período já foi fechada'
+        });
+      }
+
       await connection.query(
         `INSERT INTO fatura_itens (
            fatura_id,

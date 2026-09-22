@@ -539,7 +539,8 @@ async function prepararFixture() {
     `INSERT INTO faturas_clientes
        (cliente_id, periodo_inicio, periodo_fim, vencimento, moeda,
         valor_total, status, observacao)
-     VALUES (?, DATE_SUB(CURDATE(), INTERVAL 7 DAY), CURDATE(),
+     VALUES (?, DATE_SUB(CURDATE(), INTERVAL 8 DAY),
+             DATE_SUB(CURDATE(), INTERVAL 1 DAY),
              DATE_SUB(CURDATE(), INTERVAL 1 DAY), 'BRL', 1,
              'ABERTA', ?)`,
     [cliente.insertId, `FATURA E2E ${marcador}`]

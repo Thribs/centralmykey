@@ -68,6 +68,7 @@ async function executar() {
   const marcador = `${process.pid}-${String(Date.now()).slice(-8)}`;
   const protocolo = `FAT${process.pid}${String(Date.now()).slice(-7)}`;
   const observacao = `FATURA SEMANAL TESTE ${marcador}`;
+  const observacaoPeriodoAberto = `FATURA PERIODO ABERTO ${marcador}`;
   const referencia = `PIX-FATURA-${marcador}`;
   let servidor;
   let faturaId;
@@ -113,6 +114,15 @@ async function executar() {
        VALUES (?, ?, 75.50)`,
       [faturaId, pedido.insertId]
     );
+    const [faturaPeriodoAberto] = await connection.query(
+      `INSERT INTO faturas_clientes
+         (cliente_id, periodo_inicio, periodo_fim, vencimento, moeda,
+          valor_total, status, observacao)
+       VALUES (?, CURDATE(), DATE_ADD(CURDATE(), INTERVAL 6 DAY),
+               DATE_ADD(CURDATE(), INTERVAL 9 DAY), 'USD', 10,
+               'ABERTA', ?)`,
+      [cliente.id, observacaoPeriodoAberto]
+    );
 
     const api = await iniciarApi(connection, usuario);
     servidor = api.servidor;
@@ -136,6 +146,16 @@ async function executar() {
     );
 
     const urlFechamento = `${api.url}/api/faturas/${faturaId}/fechar`;
+    const periodoAindaAberto = await requisicaoJson(
+      `${api.url}/api/faturas/${faturaPeriodoAberto.insertId}/fechar`,
+      { method: 'POST', headers: cabecalhos, body: '{}' }
+    );
+    assert.strictEqual(periodoAindaAberto.resposta.status, 409);
+    assert.strictEqual(
+      periodoAindaAberto.corpo.codigo,
+      'PERIODO_AINDA_ABERTO'
+    );
+
     const fechada = await requisicaoJson(urlFechamento, {
       method: 'POST', headers: cabecalhos, body: '{}'
     });
@@ -209,9 +229,10 @@ async function executar() {
       const [[residuos]] = await connection.query(
         `SELECT
           (SELECT COUNT(*) FROM pedidos_senha WHERE protocolo=?) pedidos,
-          (SELECT COUNT(*) FROM faturas_clientes WHERE observacao=?) faturas,
+          (SELECT COUNT(*) FROM faturas_clientes
+            WHERE observacao IN (?, ?)) faturas,
           (SELECT COUNT(*) FROM pagamentos WHERE referencia_externa=?) pagamentos`,
-        [protocolo, observacao, referencia]
+        [protocolo, observacao, observacaoPeriodoAberto, referencia]
       );
       assert.deepStrictEqual(Object.values(residuos).map(Number), [0, 0, 0]);
     } catch (falhaLimpeza) {

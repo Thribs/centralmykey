@@ -1215,6 +1215,7 @@ module.exports = function (app, pool) {
              f.status,
              f.periodo_inicio,
              f.periodo_fim,
+             IF(f.periodo_fim < CURDATE(), 1, 0) AS periodo_encerrado,
              c.nome AS cliente
            FROM faturas_clientes f
            INNER JOIN clientes c
@@ -1268,6 +1269,15 @@ module.exports = function (app, pool) {
             ok: false,
             error: 'Somente fatura aberta pode ser fechada',
             status_atual: fatura.status
+          });
+        }
+
+        if (!Number(fatura.periodo_encerrado)) {
+          await connection.rollback();
+          return res.status(409).json({
+            ok: false,
+            codigo: 'PERIODO_AINDA_ABERTO',
+            error: 'A fatura só pode ser fechada após o término da semana'
           });
         }
 
