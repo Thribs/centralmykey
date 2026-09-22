@@ -213,6 +213,18 @@ async function executar() {
         externoCancelado.pedidoId, externoCancelado.pagamentoId]
     );
     await connection.query(
+      `INSERT INTO integracao_referencias_pagamento
+         (provedor, entidade, entidade_id, referencia_provedor, valor, moeda,
+          expiracao_segundos, status, identificador_pagamento,
+          erro_codigo, erro_detalhe)
+       VALUES ('SICOOB', 'PEDIDO', ?, ?, 50, 'BRL', 3600, 'FALHOU', ?,
+               'PAGAMENTO_APOS_CANCELAMENTO_REQUER_ESTORNO',
+               'Pagamento recebido após o cancelamento do pedido')`,
+      [externoCancelado.pedidoId,
+        `SICEXT${String(Date.now()).slice(-20)}`,
+        `${referenciaOriginal}-EXT`]
+    );
+    await connection.query(
       `INSERT INTO comunicacoes_outbox
          (chave_idempotencia, canal, finalidade, pedido_id,
           fornecedor_id, destinatario, payload, status,
@@ -278,6 +290,7 @@ async function executar() {
     assert.strictEqual(estornoExterno.corpo.estorno.idempotente, false);
     assert.strictEqual(estornoExterno.corpo.estorno.status, 'CONFIRMADO');
     assert.strictEqual(estornoExterno.corpo.estorno.eventos_resolvidos, 1);
+    assert.strictEqual(estornoExterno.corpo.estorno.referencias_canceladas, 1);
 
     const recusado = await postar(
       `${api.url}/api/pedidos/${bloqueado.pedidoId}/estornar-e-cancelar`,
@@ -312,7 +325,10 @@ async function executar() {
            WHERE id = ? AND status='CANCELADO') AS externo_permanece_cancelado,
          (SELECT COUNT(*) FROM integracao_eventos
            WHERE pagamento_id=? AND status='IGNORADO'
-             AND erro_codigo='PAGAMENTO_ESTORNADO') AS evento_resolvido`,
+             AND erro_codigo='PAGAMENTO_ESTORNADO') AS evento_resolvido,
+         (SELECT COUNT(*) FROM integracao_referencias_pagamento
+           WHERE entidade_id=? AND status='CANCELADA'
+             AND erro_codigo='PAGAMENTO_ESTORNADO') AS referencia_cancelada`,
       [
         cancelavel.pedidoId,
         externoCancelado.pedidoId,
@@ -323,12 +339,13 @@ async function executar() {
         bloqueado.pedidoId,
         bloqueado.pedidoId,
         externoCancelado.pedidoId,
-        externoCancelado.pagamentoId
+        externoCancelado.pagamentoId,
+        externoCancelado.pedidoId
       ]
     );
     assert.deepStrictEqual(
       Object.values(estado).map(Number),
-      [2, 1, 2, 2, 1, 0, 1, 1, 1]
+      [2, 1, 2, 2, 1, 0, 1, 1, 1, 1]
     );
     const [[estornoBloqueado]] = await connection.query(
       `SELECT COUNT(*) AS quantidade

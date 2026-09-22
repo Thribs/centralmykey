@@ -18,7 +18,9 @@ mantém o pedido `CANCELADO` e deixa o evento `FALHOU` com
 `PAGAMENTO_APOS_CANCELAMENTO_REQUER_ESTORNO`. Um operador com aprovação
 financeira registra a devolução já realizada; o evento passa a `IGNORADO` com
 `PAGAMENTO_ESTORNADO` somente na mesma transação que cria a despesa, o pagamento
-de saída, o estorno, o histórico e a auditoria.
+de saída, o estorno, o histórico e a auditoria. A referência Sicoob ligada pelo
+identificador do pagamento também passa de `FALHOU` para `CANCELADA` nessa
+transação.
 
 Nesses casos, o sistema cancela comunicações pendentes, remove o item da fatura aberta, recalcula o total a partir dos itens restantes, cancela a fatura que ficar vazia e zera fornecedor, origem e custo do pedido. O valor armazenado anteriormente na fatura não é usado como base da reconciliação.
 

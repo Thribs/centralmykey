@@ -13,7 +13,8 @@ produção:
   expirar referências vencidas mesmo que ninguém tente gerar outra cobrança;
 - o cancelamento do pedido encerra referências locais ainda ativas, e um Pix
   confirmado tardiamente registra a entrada, mantém o pedido cancelado e vira
-  exceção até a devolução ser confirmada pelo financeiro;
+  exceção até a devolução ser confirmada pelo financeiro; depois do estorno, a
+  referência identificada pelo `endToEndId` passa a `CANCELADA`;
 - o webhook padrão `{ "pix": [...] }` é validado antes do processamento;
 - o `endToEndId` identifica o evento e o pagamento para reentrega idempotente;
 - valor e moeda precisam coincidir exatamente com o pedido;
