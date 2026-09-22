@@ -81,6 +81,7 @@ async function executar() {
   const sufixo = `${process.pid}${String(Date.now()).slice(-7)}`;
   const protocolo = `SIC${sufixo}`.slice(0, 30);
   let txid;
+  let txidRenovado;
   const txidDesconhecido = `UNK${sufixo}QRSTUVWXYZABCDE`.slice(0, 26);
   const e2e = `E${sufixo}ABCDEFGHIJKLMNOPQRSTUV`.slice(0, 32);
   let pedidoId;
@@ -123,8 +124,9 @@ async function executar() {
           return { status: 200, body: JSON.stringify({ access_token: 'token-ficticio' }) };
         }
         const txidRemoto = requisicao.url.split('/').pop();
-        txid = txid || txidRemoto;
-        assert.strictEqual(txidRemoto, txid);
+        if (!txid) txid = txidRemoto;
+        else if (txidRemoto !== txid && !txidRenovado) txidRenovado = txidRemoto;
+        assert.ok([txid, txidRenovado].includes(txidRemoto));
         return { status: 201, body: JSON.stringify({ txid: txidRemoto,
           location: `pix.sicoob.test/${txidRemoto}`,
           pixCopiaECola: `PIX-FICTICIO-${txidRemoto}` }) };
@@ -153,6 +155,39 @@ async function executar() {
     assert.strictEqual(cobrancaRepetida.registrada_agora, false);
     assert.strictEqual(chamadasSicoob.length, 4);
     assert.strictEqual(JSON.parse(chamadasSicoob[3].body).calendario.expiracao, 1800);
+
+    await connection.query(
+      `UPDATE integracao_referencias_pagamento
+          SET criada_em=DATE_SUB(NOW(), INTERVAL 1801 SECOND)
+        WHERE provedor='SICOOB' AND referencia_provedor=?`,
+      [txid]
+    );
+    const respostaRenovada = await fetch(
+      `${api.url}/api/pedidos/${pedidoId}/pagamentos/sicoob`, {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ expiracao_segundos: 1800 })
+      }
+    );
+    const renovada = await respostaRenovada.json();
+    assert.strictEqual(respostaRenovada.status, 201);
+    assert.strictEqual(renovada.idempotente, false);
+    assert.strictEqual(renovada.txid, txidRenovado);
+    assert.notStrictEqual(txidRenovado, txid);
+    assert.strictEqual(chamadasSicoob.length, 6);
+    const [[referenciasAntesPagamento]] = await connection.query(
+      `SELECT
+         SUM(status='EXPIRADA') AS expiradas,
+         SUM(status='REGISTRADA') AS registradas,
+         COUNT(*) AS total
+       FROM integracao_referencias_pagamento
+       WHERE provedor='SICOOB' AND entidade_id=?`,
+      [pedidoId]
+    );
+    assert.deepStrictEqual(
+      Object.values(referenciasAntesPagamento).map(Number),
+      [1, 1, 2]
+    );
+    txid = txidRenovado;
 
     const desconhecido = JSON.stringify({ pix: [{ txid: txidDesconhecido,
       endToEndId: `U${e2e.slice(1)}`, valor: valor.toFixed(2),
@@ -200,23 +235,30 @@ async function executar() {
               (SELECT COUNT(*) FROM integracao_eventos
                 WHERE erro_codigo='TXID_NAO_VINCULADO') AS desconhecidos,
               (SELECT COUNT(*) FROM pedido_historico
-                WHERE pedido_id=p.id AND tipo='COBRANCA_SICOOB_REGISTRADA') AS historicos_cobranca
+                WHERE pedido_id=p.id AND tipo='COBRANCA_SICOOB_REGISTRADA') AS historicos_cobranca,
+              (SELECT COUNT(*) FROM pedido_historico
+                WHERE pedido_id=p.id AND tipo='COBRANCA_SICOOB_EXPIRADA') AS historicos_expiracao,
+              (SELECT COUNT(*) FROM auditoria
+                WHERE entidade='pedidos_senha' AND entidade_id=CAST(p.id AS CHAR)
+                  AND acao='EXPIRAR_COBRANCA_SICOOB') AS auditorias_expiracao
          FROM pedidos_senha p JOIN integracao_referencias_pagamento r
-           ON r.entidade_id=p.id WHERE p.id=?`,
-      [pedidoId]
+           ON r.entidade_id=p.id AND r.referencia_provedor=? WHERE p.id=?`,
+      [txid, pedidoId]
     );
     assert.deepStrictEqual(
       [estado.pedido_status, estado.referencia_status, estado.identificador_pagamento,
         Number(estado.pagamentos), Number(estado.desconhecidos),
-        Number(estado.historicos_cobranca)],
-      ['CONCLUIDO', 'PAGA', e2e, 1, 1, 1]
+        Number(estado.historicos_cobranca), Number(estado.historicos_expiracao),
+        Number(estado.auditorias_expiracao)],
+      ['CONCLUIDO', 'PAGA', e2e, 1, 1, 2, 1, 1]
     );
     global.fetch = fetchOriginal;
     const resposta = await fetch(`${api.url}/api/integracoes/referencias-pagamento?provedor=SICOOB`);
     const listagem = await resposta.json();
     assert.strictEqual(resposta.status, 200);
-    assert.strictEqual(listagem.total, 1);
-    assert.strictEqual(listagem.dados[0].status, 'PAGA');
+    assert.strictEqual(listagem.total, 2);
+    assert.deepStrictEqual(listagem.dados.map(item => item.status).sort(),
+      ['EXPIRADA', 'PAGA']);
     assert.ok(!Object.hasOwn(listagem.dados[0], 'payload'));
   } catch (falha) {
     erro = falha;

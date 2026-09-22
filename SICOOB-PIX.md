@@ -7,6 +7,8 @@ produção:
 
 - o cliente usa OAuth2, mTLS e `PUT /cob/{txid}` para registrar a cobrança;
 - uma referência Pix associa um `txid` único ao pedido e ao valor esperado;
+- uma referência cujo prazo terminou passa atomicamente a `EXPIRADA`, recebe
+  histórico e auditoria e deixa uma nova cobrança gerar outro `txid`;
 - o webhook padrão `{ "pix": [...] }` é validado antes do processamento;
 - o `endToEndId` identifica o evento e o pagamento para reentrega idempotente;
 - valor e moeda precisam coincidir exatamente com o pedido;
