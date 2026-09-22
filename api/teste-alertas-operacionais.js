@@ -127,7 +127,12 @@ async function executar() {
     const primeiro = await reconciliarAlertasOperacionais(pool, {
       pedidoMinutos: 10,
       outboxMinutos: 10,
-      eventoMinutos: 10
+      eventoMinutos: 10,
+      obterEstadoBackup: async () => ({
+        status: 'ATRASADO', integridade: true,
+        ultimo_backup_em: '2026-09-19T03:00:00.000Z',
+        idade_horas: 48, limite_horas: 30
+      })
     });
     assert.strictEqual(primeiro.executado, true);
     assert.deepStrictEqual(primeiro.totais, {
@@ -135,17 +140,18 @@ async function executar() {
       outboxPendentes: 1,
       outboxProcessando: 1,
       integracoesFalhas: 1,
-      integracoesAtrasadas: 1
+      integracoesAtrasadas: 1,
+      backupStatus: 'ATRASADO'
     });
-    assert.strictEqual(primeiro.alertas.filter(item => item.alterada).length, 3);
+    assert.strictEqual(primeiro.alertas.filter(item => item.alterada).length, 4);
 
     const [notificacoes] = await connection.query(
       `SELECT id, chave, nivel, status, dados FROM notificacoes ORDER BY chave`
     );
-    assert.strictEqual(notificacoes.length, 3);
+    assert.strictEqual(notificacoes.length, 4);
     assert.deepStrictEqual(
       notificacoes.map(item => item.nivel).sort(),
-      ['ATENCAO', 'CRITICA', 'CRITICA']
+      ['ATENCAO', 'CRITICA', 'CRITICA', 'CRITICA']
     );
     const serializado = JSON.stringify(notificacoes);
     assert.ok(!serializado.includes(marcador));
@@ -161,13 +167,18 @@ async function executar() {
     const segundo = await reconciliarAlertasOperacionais(pool, {
       pedidoMinutos: 10,
       outboxMinutos: 10,
-      eventoMinutos: 10
+      eventoMinutos: 10,
+      obterEstadoBackup: async () => ({
+        status: 'ATRASADO', integridade: true,
+        ultimo_backup_em: '2026-09-19T03:00:00.000Z',
+        idade_horas: 48, limite_horas: 30
+      })
     });
     assert.strictEqual(segundo.alertas.filter(item => item.alterada).length, 0);
     const [[leituras]] = await connection.query(
       'SELECT COUNT(*) AS total FROM notificacao_leituras'
     );
-    assert.strictEqual(Number(leituras.total), 3, 'Ciclo igual não deve reabrir leitura');
+    assert.strictEqual(Number(leituras.total), 4, 'Ciclo igual não deve reabrir leitura');
 
     await connection.query(
       "UPDATE pedidos_senha SET status='CANCELADO' WHERE id=?",
@@ -184,9 +195,14 @@ async function executar() {
     const resolvido = await reconciliarAlertasOperacionais(pool, {
       pedidoMinutos: 10,
       outboxMinutos: 10,
-      eventoMinutos: 10
+      eventoMinutos: 10,
+      obterEstadoBackup: async () => ({
+        status: 'OK', integridade: true,
+        ultimo_backup_em: '2026-09-21T03:00:00.000Z',
+        idade_horas: 1, limite_horas: 30
+      })
     });
-    assert.strictEqual(resolvido.alertas.filter(item => item.alterada).length, 3);
+    assert.strictEqual(resolvido.alertas.filter(item => item.alterada).length, 4);
     const [[estadoFinal]] = await connection.query(
       `SELECT SUM(status='ATIVA') AS ativas,
               SUM(status='RESOLVIDA') AS resolvidas
@@ -194,7 +210,7 @@ async function executar() {
     );
     assert.deepStrictEqual(
       [Number(estadoFinal.ativas), Number(estadoFinal.resolvidas)],
-      [0, 3]
+      [0, 4]
     );
   } catch (falha) {
     erro = falha;

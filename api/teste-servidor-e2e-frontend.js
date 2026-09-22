@@ -1371,7 +1371,13 @@ async function iniciar() {
   require('./rotas-estornos')(app, pool);
   require('./rotas-fechamentos-fornecedores')(app, pool);
   require('./rotas-auditoria')(app, pool);
-  require('./rotas-health')(app, pool);
+  require('./rotas-health')(app, pool, {
+    obterEstadoBackup: async () => ({
+      status: 'OK', integridade: true,
+      ultimo_backup_em: '2026-09-21T03:00:00.000Z',
+      idade_horas: 2, limite_horas: 30
+    })
+  });
   require('./rotas-integracoes')(app, pool, {
     configuracaoWBuy: {
       usuario: 'usuario-wbuy-e2e', senha: 'senha-wbuy-e2e',

@@ -55,6 +55,14 @@ Os limites podem ser ajustados por `BACKUP_RETENCAO_DIAS`,
 `BACKUP_RETENCAO_MINIMO` e `BACKUP_LOCK_LIMITE_HORAS`. A trava é recuperada
 automaticamente somente depois do limite configurado.
 
+O monitoramento classifica o pacote gerenciado mais recente como `OK`,
+`ATRASADO`, `AUSENTE` ou `INVALIDO`. A idade máxima padrão é 30 horas,
+configurável por `MONITORAMENTO_BACKUP_ATRASO_HORAS`; a verificação integral dos
+hashes é armazenada em memória por 60 minutos, configuráveis por
+`MONITORAMENTO_BACKUP_VERIFICACAO_MINUTOS`. Estado, idade e limite aparecem na
+tela de Monitoramento sem expor caminhos. Um estado diferente de `OK` cria um
+alerta interno crítico, resolvido automaticamente depois de um backup válido.
+
 Os arquivos em `deploy/systemd/central-mykey-backup.service` e
 `deploy/systemd/central-mykey-backup.timer` preparam uma execução diária às
 03h15, com atraso aleatório de até 30 minutos. As unidades foram instaladas e
@@ -64,6 +72,11 @@ criou um pacote formato 2 com quatro artefatos verificados.
 `api/teste-backup-agendado.js` usa somente `/tmp` e comprova retenção mínima,
 preservação de diretórios desconhecidos, bloqueio concorrente, recuperação de
 trava antiga e limpeza da trava em caso de erro.
+
+`api/teste-estado-backup.js` comprova as quatro classificações e a minimização
+da resposta. `api/teste-monitoramento.js` e `api/teste-alertas-operacionais.js`
+usam MySQL dentro de transação e rollback para comprovar a exibição, a
+persistência estável do alerta e sua resolução.
 
 `api/teste-backup-mysql.js` passa um dump fictício compactado pelo mesmo pipeline
 de restauração e pelo cliente MySQL real. O SQL cria apenas uma tabela

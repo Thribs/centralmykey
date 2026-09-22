@@ -1,6 +1,8 @@
 'use strict';
 
-module.exports = function registrarRotasHealth(app, pool) {
+const { obterEstadoBackup } = require('./estado-backup');
+
+module.exports = function registrarRotasHealth(app, pool, opcoes = {}) {
   const inteiroConfigurado = (valor, padrao, minimo = 1, maximo = 10080) => {
     const numero = Number(valor);
     return Number.isInteger(numero) && numero >= minimo && numero <= maximo
@@ -74,6 +76,9 @@ module.exports = function registrarRotasHealth(app, pool) {
       };
 
       try {
+        const estadoBackup = await (
+          opcoes.obterEstadoBackup || obterEstadoBackup
+        )();
         const [[pedidos]] = await pool.query(`
           SELECT
             SUM(status = 'AGUARDANDO_PAGAMENTO'
@@ -162,12 +167,14 @@ module.exports = function registrarRotasHealth(app, pool) {
           pedidos: numerico(pedidos),
           comunicacoes: numerico(comunicacoes),
           integracoes: numerico(integracoes),
-          notificacoes: numerico(notificacoes)
+          notificacoes: numerico(notificacoes),
+          backup: estadoBackup
         };
         const critico = dados.comunicacoes.falhas +
           dados.comunicacoes.incertas +
           dados.integracoes.falhas +
-          dados.notificacoes.criticas;
+          dados.notificacoes.criticas +
+          (dados.backup.status === 'OK' ? 0 : 1);
         const atencao = dados.pedidos.aguardando_pagamento_atrasados +
           dados.pedidos.aguardando_dados_atrasados +
           dados.pedidos.em_consulta_atrasados +

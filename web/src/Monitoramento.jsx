@@ -5,6 +5,7 @@ import {
   AlertTriangle,
   CircleCheck,
   Clock3,
+  DatabaseBackup,
   Plug,
   RefreshCw,
   Send
@@ -65,6 +66,7 @@ export default function Monitoramento() {
   const comunicacoes = dados?.comunicacoes || {};
   const integracoes = dados?.integracoes || {};
   const notificacoes = dados?.notificacoes || {};
+  const backup = dados?.backup || {};
 
   return (
     <section className="monitor-page">
@@ -113,6 +115,14 @@ export default function Monitoramento() {
           detalhe={`${Number(integracoes.falhas || 0)} falha(s)`}
           Icone={Plug}
         />
+        <Indicador
+          titulo="Estado do backup"
+          valor={backup.status === 'OK' ? 0 : 1}
+          detalhe={backup.status === 'OK'
+            ? `Último há ${Number(backup.idade_horas || 0)}h`
+            : backup.status || 'INDEFINIDO'}
+          Icone={DatabaseBackup}
+        />
       </div>
 
       <div className="monitor-grid">
@@ -153,6 +163,16 @@ export default function Monitoramento() {
             <div><dt>Críticos</dt><dd>{Number(notificacoes.criticas || 0)}</dd></div>
             <div><dt>Atenção</dt><dd>{Number(notificacoes.atencoes || 0)}</dd></div>
             <div><dt>Verificado</dt><dd>{dataHora(dados?.verificado_em)}</dd></div>
+          </dl>
+        </section>
+
+        <section className="monitor-card">
+          <header><DatabaseBackup size={18} /><h2>Backup</h2></header>
+          <dl>
+            <div><dt>Estado</dt><dd>{backup.status || 'INDEFINIDO'}</dd></div>
+            <div><dt>Integridade</dt><dd>{backup.integridade ? 'Verificada' : 'Pendente'}</dd></div>
+            <div><dt>Último backup</dt><dd>{dataHora(backup.ultimo_backup_em)}</dd></div>
+            <div><dt>Limite</dt><dd>{Number(backup.limite_horas || 0)} horas</dd></div>
           </dl>
         </section>
       </div>

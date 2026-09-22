@@ -4,6 +4,7 @@ const {
   registrarNotificacao,
   resolverNotificacao
 } = require('./notificacoes-internas');
+const { obterEstadoBackup } = require('./estado-backup');
 
 const NOME_BLOQUEIO = 'central_mykey_alertas_operacionais';
 
@@ -58,6 +59,9 @@ async function reconciliarAlertasOperacionais(pool, opcoes = {}) {
       10
     )
   };
+  const backup = await (opcoes.obterEstadoBackup || obterEstadoBackup)({
+    limiteHoras: opcoes.backupHoras
+  });
   const connection = await pool.getConnection();
   let bloqueio = false;
   try {
@@ -108,7 +112,8 @@ async function reconciliarAlertasOperacionais(pool, opcoes = {}) {
       outboxPendentes: Number(outbox.pendentes || 0),
       outboxProcessando: Number(outbox.processando || 0),
       integracoesFalhas: Number(integracoes.falhas || 0),
-      integracoesAtrasadas: Number(integracoes.atrasados || 0)
+      integracoesAtrasadas: Number(integracoes.atrasados || 0),
+      backupStatus: backup.status
     };
     const alertas = [
       {
@@ -150,6 +155,24 @@ async function reconciliarAlertasOperacionais(pool, opcoes = {}) {
           falhas: totais.integracoesFalhas,
           atrasados: totais.integracoesAtrasadas,
           limite_minutos: limites.eventoMinutos
+        }
+      },
+      {
+        chave: 'MONITORAMENTO:BACKUP_OPERACIONAL',
+        ativo: backup.status !== 'OK',
+        tipo: 'BACKUP_OPERACIONAL',
+        nivel: 'CRITICA',
+        modulo: 'CONFIGURACOES',
+        titulo: 'Backup da Central exige atenção',
+        mensagem: backup.status === 'ATRASADO'
+          ? 'O último backup válido ultrapassou o limite operacional.'
+          : backup.status === 'AUSENTE'
+            ? 'Nenhum backup gerenciado foi encontrado.'
+            : 'O backup mais recente não passou na verificação de integridade.',
+        entidade: 'backup',
+        dados: {
+          status: backup.status,
+          limite_horas: backup.limite_horas
         }
       }
     ];

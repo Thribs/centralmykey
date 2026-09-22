@@ -41,6 +41,12 @@ async function iniciarApi(connection) {
   };
   require('./rotas-health')(app, {
     query: (...args) => connection.query(...args)
+  }, {
+    obterEstadoBackup: async () => ({
+      status: 'OK', integridade: true,
+      ultimo_backup_em: '2026-09-21T03:00:00.000Z',
+      idade_horas: 2, limite_horas: 30
+    })
   });
   const servidor = await new Promise((resolve, reject) => {
     const instancia = app.listen(0, '127.0.0.1', () => resolve(instancia));
@@ -202,6 +208,8 @@ async function executar() {
     const atual = await requisitar(url);
     assert.strictEqual(atual.resposta.status, 200);
     assert.strictEqual(atual.corpo.status, 'CRITICO');
+    assert.strictEqual(atual.corpo.backup.status, 'OK');
+    assert.strictEqual(atual.corpo.backup.integridade, true);
     assert.strictEqual(atual.corpo.limites.pedido_atraso_minutos, 10);
     for (const campo of [
       'aguardando_pagamento_atrasados', 'aguardando_dados_atrasados',
