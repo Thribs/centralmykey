@@ -43,9 +43,10 @@ A suíte cobre inicialmente:
 - administração de integrações criando e desativando mapeamento WBuy e
   cadastrando, aprovando e ativando modelo WhatsApp fictício, com permissões,
   auditoria e rollback, sem chamadas a provedores externos;
-- administrador criando, autorizando e bloqueando usuário pela interface, e
-  visualizador sem controles de mutação nem possibilidade de forçar a criação
-  pela API; todo o cenário usa JWT real e rollback;
+- administrador criando, autorizando e bloqueando usuário pela interface; o
+  visualizador também percorre Usuários, Configurações, Integrações, Clientes,
+  Fornecedores, Financeiro e Pedidos sem controles de mutação e recebe HTTP 403
+  ao tentar forçar escritas; todo o cenário usa JWT real e rollback;
 - atendimento móvel assumido da fila, nota interna, resposta WhatsApp mockada,
   mudança de etapa, transferência para outro usuário autenticado e finalização
   confirmada, com persistência real e rollback;

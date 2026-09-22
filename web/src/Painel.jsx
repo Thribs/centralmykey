@@ -611,6 +611,7 @@ export default function Painel({
             <Pedidos
               key={`pedidos-${destinoBusca.modulo === 'PEDIDOS_SENHAS' ? destinoBusca.chave : 0}`}
               buscaInicial={destinoBusca.modulo === 'PEDIDOS_SENHAS' ? destinoBusca.busca : ''}
+              permissoes={permissoes}
             />
           ) : atual?.codigo === 'BANCO_SENHAS' ? (
             <BancoSenhas
@@ -621,14 +622,16 @@ export default function Painel({
             <Clientes
               key={`clientes-${destinoBusca.modulo === 'CLIENTES' ? destinoBusca.chave : 0}`}
               buscaInicial={destinoBusca.modulo === 'CLIENTES' ? destinoBusca.busca : ''}
+              permissoes={permissoes}
             />
           ) : atual?.codigo === 'FORNECEDORES' ? (
             <Fornecedores
               key={`fornecedores-${destinoBusca.modulo === 'FORNECEDORES' ? destinoBusca.chave : 0}`}
               buscaInicial={destinoBusca.modulo === 'FORNECEDORES' ? destinoBusca.busca : ''}
+              permissoes={permissoes}
             />
           ) : atual?.codigo === 'FINANCEIRO' ? (
-            <Financeiro />
+            <Financeiro permissoes={permissoes} />
           ) : atual?.codigo === 'RELATORIOS' ? (
             <Relatorios />
           ) : atual?.codigo === 'USUARIOS' ? (

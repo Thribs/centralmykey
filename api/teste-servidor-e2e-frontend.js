@@ -318,6 +318,16 @@ async function prepararFixture() {
      VALUES (?, ?, 1, 0, 0, 0, 0)`,
     [visualizador.insertId, moduloIntegracoes.id]
   );
+  for (const codigo of ['CLIENTES', 'FORNECEDORES', 'FINANCEIRO', 'PEDIDOS_SENHAS']) {
+    const modulo = modulos.find(item => item.codigo === codigo);
+    if (!modulo) throw new Error(`Módulo ${codigo} ativo é obrigatório para o E2E`);
+    await connection.query(
+      `INSERT INTO usuario_permissoes
+         (usuario_id, modulo_id, visualizar, criar, editar, excluir, aprovar)
+       VALUES (?, ?, 1, 0, 0, 0, 0)`,
+      [visualizador.insertId, modulo.id]
+    );
+  }
   const moduloAtendimento = modulos.find(item => item.codigo === 'ATENDIMENTO');
   if (!moduloAtendimento) {
     throw new Error('Módulo ATENDIMENTO ativo é obrigatório para o E2E');

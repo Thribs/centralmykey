@@ -14,8 +14,14 @@ const sessao = {
   },
   permissoes: [
     { codigo: 'DASHBOARD', modulo: 'Dashboard', visualizar: 1 },
-    { codigo: 'PEDIDOS_SENHAS', modulo: 'Pedidos e senhas', visualizar: 1 },
-    { codigo: 'CLIENTES', modulo: 'Clientes', visualizar: 1 }
+    {
+      codigo: 'PEDIDOS_SENHAS', modulo: 'Pedidos e senhas',
+      visualizar: 1, criar: 1, editar: 1, excluir: 1, aprovar: 1
+    },
+    {
+      codigo: 'CLIENTES', modulo: 'Clientes',
+      visualizar: 1, criar: 1, editar: 1, excluir: 1, aprovar: 1
+    }
   ]
 };
 
@@ -1464,6 +1470,7 @@ test('visualizador não vê ações de usuário e recebe 403 ao forçar criaçã
   );
 
   await page.goto('/');
+  await page.getByRole('button', { name: 'Usuários', exact: true }).click();
   await expect(page.getByRole('main').getByRole('heading', { name: 'Usuários' }))
     .toBeVisible();
   await expect(page.getByRole('button', { name: 'Novo usuário' })).toBeHidden();
@@ -1558,6 +1565,52 @@ test('visualizador não vê ações de usuário e recebe 403 ao forçar criaçã
   const estadoIntegracoes = await verificacaoIntegracoes.json();
   expect(estadoIntegracoes.mapeamento).toEqual(estadoIntegracoesAntes.mapeamento);
   expect(estadoIntegracoes.modelo).toEqual(estadoIntegracoesAntes.modelo);
+
+  await page.getByRole('button', { name: 'Clientes', exact: true }).click();
+  await expect(page.getByRole('main').getByRole('heading', { name: 'Clientes' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Novo cliente' })).toHaveCount(0);
+  await expect(page.getByTitle('Editar')).toHaveCount(0);
+
+  await page.getByRole('button', { name: 'Fornecedores', exact: true }).click();
+  await expect(page.getByRole('main').getByRole('heading', { name: 'Fornecedores' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Novo fornecedor' })).toHaveCount(0);
+  await expect(page.getByTitle('Editar')).toHaveCount(0);
+  const servicos = page.getByTitle('Serviços e custos').first();
+  await expect(servicos).toBeVisible();
+  await servicos.click();
+  const dialogoServicos = page.getByRole('dialog');
+  await expect(dialogoServicos.getByRole('button', { name: 'Adicionar regra' }))
+    .toHaveCount(0);
+  await expect(dialogoServicos.getByTitle('Editar regra')).toHaveCount(0);
+  await dialogoServicos.getByRole('button', { name: 'Fechar' }).click();
+
+  await page.getByRole('button', { name: 'Financeiro', exact: true }).click();
+  await page.locator('.finance-tabs').getByRole('button', {
+    name: 'Fornecedores', exact: true
+  }).click();
+  await expect(page.getByRole('button', { name: 'Gerar última semana' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Aprovar', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Registrar pagamento' })).toHaveCount(0);
+
+  await page.getByRole('button', { name: 'Pedidos e senhas', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Novo pedido' })).toHaveCount(0);
+
+  const mutacoesNegadas = await Promise.all([
+    page.request.post(`${API}/api/clientes`, {
+      headers: { Authorization: `Bearer ${token}` }, data: {}
+    }),
+    page.request.post(`${API}/api/fornecedores`, {
+      headers: { Authorization: `Bearer ${token}` }, data: {}
+    }),
+    page.request.post(`${API}/api/fornecedores/1/fechamentos/gerar`, {
+      headers: { Authorization: `Bearer ${token}` }, data: {}
+    }),
+    page.request.post(`${API}/api/pedidos`, {
+      headers: { Authorization: `Bearer ${token}` }, data: {}
+    })
+  ]);
+  expect(mutacoesNegadas.map(resposta => resposta.status()))
+    .toEqual([403, 403, 403, 403]);
 });
 
 test('navegador estorna pagamento real e cancela na transação', async ({ page }) => {

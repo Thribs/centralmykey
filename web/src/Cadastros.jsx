@@ -431,7 +431,7 @@ function ModalCadastro({
   );
 }
 
-function ModalServicosFornecedor({ token, fornecedor, aoFechar }) {
+function ModalServicosFornecedor({ token, fornecedor, podeEditar, aoFechar }) {
   const [catalogo, setCatalogo] = useState([]);
   const [regras, setRegras] = useState([]);
   const [formulario, setFormulario] = useState(SERVICO_FORNECEDOR_INICIAL);
@@ -550,7 +550,7 @@ function ModalServicosFornecedor({ token, fornecedor, aoFechar }) {
           </button>
         </header>
 
-        <form onSubmit={salvar}>
+        {podeEditar && <form onSubmit={salvar}>
           {erro && <div className="registry-error">{erro}</div>}
           <div className="registry-form">
             <label className="wide">
@@ -649,7 +649,7 @@ function ModalServicosFornecedor({ token, fornecedor, aoFechar }) {
               {salvando ? 'Salvando...' : editandoId ? 'Atualizar regra' : 'Adicionar regra'}
             </button>
           </footer>
-        </form>
+        </form>}
 
         <div className="registry-service-list">
           {carregando ? (
@@ -692,7 +692,7 @@ function ModalServicosFornecedor({ token, fornecedor, aoFechar }) {
                         </span>
                       </td>
                       <td>
-                        <div className="registry-row-actions">
+                        {podeEditar && <div className="registry-row-actions">
                           <button type="button" title="Editar regra" onClick={() => editar(regra)}>
                             <Pencil size={16} />
                           </button>
@@ -703,7 +703,7 @@ function ModalServicosFornecedor({ token, fornecedor, aoFechar }) {
                           >
                             {regra.ativo ? <Ban size={16} /> : <CheckCircle2 size={16} />}
                           </button>
-                        </div>
+                        </div>}
                       </td>
                     </tr>
                   ))}
@@ -717,7 +717,7 @@ function ModalServicosFornecedor({ token, fornecedor, aoFechar }) {
   );
 }
 
-function Cabecalho({ tipo, carregando, aoAtualizar, aoNovo }) {
+function Cabecalho({ tipo, carregando, podeCriar, aoAtualizar, aoNovo }) {
   const cliente = tipo === 'cliente';
 
   return (
@@ -736,10 +736,10 @@ function Cabecalho({ tipo, carregando, aoAtualizar, aoNovo }) {
           <RefreshCw size={16} className={carregando ? 'rotating' : ''} />
           Atualizar
         </button>
-        <button type="button" className="registry-new" onClick={aoNovo}>
+        {podeCriar && <button type="button" className="registry-new" onClick={aoNovo}>
           <Plus size={17} />
           {cliente ? 'Novo cliente' : 'Novo fornecedor'}
-        </button>
+        </button>}
       </div>
     </div>
   );
@@ -782,9 +782,14 @@ function Indicadores({ tipo, resumo }) {
   );
 }
 
-function TelaCadastro({ tipo, buscaInicial = '' }) {
+function TelaCadastro({ tipo, buscaInicial = '', permissoes = [] }) {
   const cliente = tipo === 'cliente';
   const token = useMemo(() => obterToken(), []);
+  const permissao = permissoes.find(item =>
+    item.codigo === (cliente ? 'CLIENTES' : 'FORNECEDORES')
+  ) || {};
+  const podeCriar = Number(permissao.criar) === 1;
+  const podeEditar = Number(permissao.editar) === 1;
   const [dados, setDados] = useState([]);
   const [resumo, setResumo] = useState({});
   const [busca, setBusca] = useState(buscaInicial);
@@ -914,6 +919,7 @@ function TelaCadastro({ tipo, buscaInicial = '' }) {
       <Cabecalho
         tipo={tipo}
         carregando={carregando}
+        podeCriar={podeCriar}
         aoAtualizar={carregar}
         aoNovo={() => setModal({})}
       />
@@ -1059,15 +1065,15 @@ function TelaCadastro({ tipo, buscaInicial = '' }) {
                           <Wrench size={16} />
                         </button>
                       )}
-                      <button
+                      {podeEditar && <button
                         type="button"
                         title="Editar"
                         aria-label={`Editar ${registro.nome}`}
                         onClick={() => setModal(registro)}
                       >
                         <Pencil size={16} />
-                      </button>
-                      <button
+                      </button>}
+                      {podeEditar && <button
                         type="button"
                         title={registro.ativo ? 'Bloquear' : 'Reativar'}
                         aria-label={`${registro.ativo ? 'Bloquear' : 'Reativar'} ${registro.nome}`}
@@ -1076,7 +1082,7 @@ function TelaCadastro({ tipo, buscaInicial = '' }) {
                         {registro.ativo
                           ? <Ban size={16} />
                           : <CheckCircle2 size={16} />}
-                      </button>
+                      </button>}
                     </div>
                   </td>
                 </tr>
@@ -1108,6 +1114,7 @@ function TelaCadastro({ tipo, buscaInicial = '' }) {
         <ModalServicosFornecedor
           token={token}
           fornecedor={servicosFornecedor}
+          podeEditar={podeEditar}
           aoFechar={() => setServicosFornecedor(null)}
         />
       )}
@@ -1115,10 +1122,10 @@ function TelaCadastro({ tipo, buscaInicial = '' }) {
   );
 }
 
-export function Clientes({ buscaInicial = '' }) {
-  return <TelaCadastro tipo="cliente" buscaInicial={buscaInicial} />;
+export function Clientes({ buscaInicial = '', permissoes = [] }) {
+  return <TelaCadastro tipo="cliente" buscaInicial={buscaInicial} permissoes={permissoes} />;
 }
 
-export function Fornecedores({ buscaInicial = '' }) {
-  return <TelaCadastro tipo="fornecedor" buscaInicial={buscaInicial} />;
+export function Fornecedores({ buscaInicial = '', permissoes = [] }) {
+  return <TelaCadastro tipo="fornecedor" buscaInicial={buscaInicial} permissoes={permissoes} />;
 }

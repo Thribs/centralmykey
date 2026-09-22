@@ -194,8 +194,11 @@ function DetalheFechamentoFornecedor({ dados, aoFechar }) {
   );
 }
 
-export default function Financeiro() {
+export default function Financeiro({ permissoes = [] }) {
   const token = useMemo(() => tokenLocal(), []);
+  const permissao = permissoes.find(item => item.codigo === 'FINANCEIRO') || {};
+  const podeEditar = Number(permissao.editar) === 1;
+  const podeAprovar = Number(permissao.aprovar) === 1;
   const [resumo, setResumo] = useState({
     lancamentos: [],
     faturas: [],
@@ -473,9 +476,9 @@ export default function Financeiro() {
                   <option key={item.id} value={item.id}>{item.nome}</option>
                 ))}
               </select>
-              <button type="button" onClick={gerarFechamento}>
+              {podeEditar && <button type="button" onClick={gerarFechamento}>
                 Gerar última semana
-              </button>
+              </button>}
             </>
           )}
 
@@ -587,7 +590,7 @@ export default function Financeiro() {
                       </span>
                     </td>
                     <td>
-                      {item.status === 'RASCUNHO' && (
+                      {podeAprovar && item.status === 'RASCUNHO' && (
                         <button
                           type="button"
                           onClick={evento => {
@@ -598,7 +601,7 @@ export default function Financeiro() {
                           Aprovar
                         </button>
                       )}
-                      {item.status === 'FECHADO' && (
+                      {podeAprovar && item.status === 'FECHADO' && (
                         <button
                           type="button"
                           onClick={evento => {

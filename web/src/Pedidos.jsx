@@ -117,7 +117,7 @@ function EstadoVazio() {
   );
 }
 
-function ListaComunicacoes({ itens, vazio, pedido, aoReprocessar }) {
+function ListaComunicacoes({ itens, vazio, pedido, podeEditar, aoReprocessar }) {
   if (itens.length === 0) {
     return <p className="order-section-empty">{vazio}</p>;
   }
@@ -148,7 +148,7 @@ function ListaComunicacoes({ itens, vazio, pedido, aoReprocessar }) {
                     : 'Verifique a configuração da integração.'}
             </p>
           )}
-          {['FALHOU', 'INCERTA'].includes(comunicacao.status) && (
+          {podeEditar && ['FALHOU', 'INCERTA'].includes(comunicacao.status) && (
             <button
               type="button"
               className="order-payment-button"
@@ -166,6 +166,7 @@ function ListaComunicacoes({ itens, vazio, pedido, aoReprocessar }) {
 
 function DetalhePedido({
   dados,
+  podeEditar,
   aoFechar,
   aoConfirmarPagamento,
   aoRegistrarResultado,
@@ -217,7 +218,7 @@ function DetalhePedido({
               {STATUS[pedido.status] || pedido.status}
             </span>
             <small>Criado em {dataHora(pedido.criado_em)}</small>
-              {pedido.status === 'AGUARDANDO_PAGAMENTO' && (
+              {podeEditar && pedido.status === 'AGUARDANDO_PAGAMENTO' && (
                 <button
                   type="button"
                   className="order-payment-button"
@@ -227,7 +228,7 @@ function DetalhePedido({
                   Confirmar pagamento
                 </button>
               )}
-              {pedido.status === 'EM_CONSULTA' && (
+              {podeEditar && pedido.status === 'EM_CONSULTA' && (
                 <button
                   type="button"
                   className="order-payment-button"
@@ -237,7 +238,7 @@ function DetalhePedido({
                   Informar resultado
                 </button>
               )}
-              {['ABERTO', 'ERRO'].includes(pedido.status) && (
+              {podeEditar && ['ABERTO', 'ERRO'].includes(pedido.status) && (
                 <button
                   type="button"
                   className="order-payment-button"
@@ -247,7 +248,7 @@ function DetalhePedido({
                   Tentar novamente
                 </button>
               )}
-              {pedido.status === 'AGUARDANDO_DADOS' && (
+              {podeEditar && pedido.status === 'AGUARDANDO_DADOS' && (
                 <button
                   type="button"
                   className="order-payment-button"
@@ -257,7 +258,7 @@ function DetalhePedido({
                   Corrigir dados
                 </button>
               )}
-              {!['CONCLUIDO', 'CANCELADO'].includes(pedido.status) && (
+              {podeEditar && !['CONCLUIDO', 'CANCELADO'].includes(pedido.status) && (
                 <button
                   type="button"
                   className="gm-incorrect-button"
@@ -364,7 +365,7 @@ function DetalhePedido({
                 ))}
               </div>
             )}
-            {resultadoPendente && (
+            {podeEditar && resultadoPendente && (
               <div className="gm-result-actions">
                 <button
                   type="button"
@@ -392,6 +393,7 @@ function DetalhePedido({
               itens={consultasFornecedor}
               vazio="Nenhum envio ao fornecedor foi registrado."
               pedido={pedido}
+              podeEditar={podeEditar}
               aoReprocessar={aoReprocessarComunicacao}
             />
           </section>
@@ -402,6 +404,7 @@ function DetalhePedido({
               itens={entregasCliente}
               vazio="O resultado ainda não foi preparado para entrega."
               pedido={pedido}
+              podeEditar={podeEditar}
               aoReprocessar={aoReprocessarComunicacao}
             />
           </section>
@@ -432,8 +435,11 @@ function DetalhePedido({
   );
 }
 
-export default function Pedidos({ buscaInicial = '' }) {
+export default function Pedidos({ buscaInicial = '', permissoes = [] }) {
   const token = localStorage.getItem('central_mykey_token');
+  const permissao = permissoes.find(item => item.codigo === 'PEDIDOS_SENHAS') || {};
+  const podeCriar = Number(permissao.criar) === 1;
+  const podeEditar = Number(permissao.editar) === 1;
   const [resumo, setResumo] = useState(null);
   const [pedidos, setPedidos] = useState([]);
   const [total, setTotal] = useState(0);
@@ -621,14 +627,14 @@ export default function Pedidos({ buscaInicial = '' }) {
           <h2>Pedidos e senhas</h2>
           <p>Acompanhe consultas, fornecedores e resultados em tempo real.</p>
         </div>
-        <button
+        {podeCriar && <button
           type="button"
           onClick={() => setNovoPedido(true)}
           title="Criar novo pedido"
         >
           <Plus size={18} />
           Novo pedido
-        </button>
+        </button>}
         <button
           type="button"
           onClick={() => setAtualizacao(valor => valor + 1)}
@@ -752,6 +758,7 @@ export default function Pedidos({ buscaInicial = '' }) {
       {detalhe && (
         <DetalhePedido
           dados={detalhe}
+          podeEditar={podeEditar}
           aoFechar={() => setDetalhe(null)}
           aoConfirmarPagamento={setPagamento}
           aoRegistrarResultado={setResultado}
