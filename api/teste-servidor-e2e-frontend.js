@@ -191,6 +191,21 @@ async function prepararFixture() {
      ) ENGINE=InnoDB`
   );
   await connection.query(
+    `CREATE TEMPORARY TABLE integracao_status_mapeamentos (
+       id BIGINT AUTO_INCREMENT PRIMARY KEY,
+       provedor ENUM('WBUY','BLING') NOT NULL,
+       dominio ENUM('PEDIDO','PAGAMENTO') NOT NULL,
+       status_externo_id VARCHAR(80) NOT NULL,
+       status_externo_nome VARCHAR(160),
+       situacao ENUM('PENDENTE','CONFIRMADO','CANCELADO','IGNORADO') NOT NULL,
+       ativo TINYINT(1) DEFAULT 1,
+       criado_por BIGINT, atualizado_por BIGINT,
+       criado_em DATETIME DEFAULT CURRENT_TIMESTAMP,
+       atualizado_em DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+       UNIQUE KEY uk_status (provedor, dominio, status_externo_id)
+     ) ENGINE=InnoDB`
+  );
+  await connection.query(
     `CREATE TEMPORARY TABLE fornecedor_servicos (
        id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
        fornecedor_id BIGINT NOT NULL,
@@ -1127,8 +1142,19 @@ async function iniciar() {
                     AND a.entidade_id=ia.dominio) AS auditorias
            FROM integracao_autoridades ia WHERE ia.dominio='PEDIDO' LIMIT 1`
       );
+      const [[statusMapeado]] = await connection.query(
+        `SELECT ism.id, ism.provedor, ism.dominio, ism.status_externo_id,
+                ism.situacao,
+                (SELECT COUNT(*) FROM auditoria a
+                  WHERE a.entidade='integracao_status_mapeamentos'
+                    AND a.entidade_id=CAST(ism.id AS CHAR)) AS auditorias
+           FROM integracao_status_mapeamentos ism
+          WHERE ism.provedor='WBUY' AND ism.dominio='PAGAMENTO'
+          ORDER BY ism.id DESC LIMIT 1`
+      );
       return res.json({ ok: true, mapeamento: mapeamento || null,
         modelo: modelo || null, autoridade: autoridade || null,
+        status_mapeado: statusMapeado || null,
         pagamento_tardio: pagamentoTardio || null });
     }
     if (req.query.cenario === 'cadastros') {
@@ -1464,6 +1490,7 @@ async function encerrar(codigo = 0) {
            (SELECT COUNT(*) FROM integracao_produto_mapeamentos
              WHERE produto_externo_id = ?) AS mapeamentos_integracao,
            (SELECT COUNT(*) FROM integracao_autoridades) AS autoridades_integracao,
+           (SELECT COUNT(*) FROM integracao_status_mapeamentos) AS status_integracao,
            (SELECT COUNT(*) FROM whatsapp_modelos
              WHERE nome = ?) AS modelos_whatsapp,
            (SELECT COUNT(*) FROM banco_senhas

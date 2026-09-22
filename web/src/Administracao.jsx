@@ -29,10 +29,12 @@ import {
   listarAutoridadesIntegracoes,
   listarEventosIntegracao,
   listarMapeamentosIntegracoes,
+  listarMapeamentosStatusIntegracoes,
   listarModelosWhatsapp,
   listarPerfis,
   listarUsuarios,
   salvarMapeamentoIntegracao,
+  salvarMapeamentoStatusIntegracao,
   salvarConfiguracao,
   salvarPermissoesUsuario,
   alterarStatusMapeamentoIntegracao,
@@ -500,6 +502,8 @@ export function Integracoes({ permissoes: permissoesSessao = [] }) {
   const [servicos, setServicos] = useState([]);
   const [autoridades, setAutoridades] = useState([]);
   const [opcoesAutoridade, setOpcoesAutoridade] = useState([]);
+  const [statusMapeamentos, setStatusMapeamentos] = useState([]);
+  const [opcoesStatus, setOpcoesStatus] = useState({ provedores: [], dominios: [], situacoes: [] });
   const [resumo, setResumo] = useState({});
   const [prontidaoWhatsapp, setProntidaoWhatsapp] = useState(null);
   const [filtrosEventos, setFiltrosEventos] = useState({
@@ -514,6 +518,10 @@ export function Integracoes({ permissoes: permissoesSessao = [] }) {
   const [salvando, setSalvando] = useState(false);
   const [novoMapeamento, setNovoMapeamento] = useState({
     provedor: 'WBUY', produto_externo_id: '', sku: '', nome_externo: '', servico_id: ''
+  });
+  const [novoStatus, setNovoStatus] = useState({
+    provedor: 'WBUY', dominio: 'PAGAMENTO', status_externo_id: '',
+    status_externo_nome: '', situacao: 'PENDENTE'
   });
   const [pedidoWBuyId, setPedidoWBuyId] = useState('');
   const [resultadoWBuy, setResultadoWBuy] = useState('');
@@ -531,12 +539,13 @@ export function Integracoes({ permissoes: permissoesSessao = [] }) {
 
     try {
       const [dadosIntegracoes, dadosModelos, dadosEventos,
-        dadosMapeamentos, dadosAutoridades] = await Promise.all([
+        dadosMapeamentos, dadosAutoridades, dadosStatus] = await Promise.all([
         buscarIntegracoes(token),
         listarModelosWhatsapp(token),
         listarEventosIntegracao(token, { ...filtrosEventos, limite: 30 }),
         listarMapeamentosIntegracoes(token),
-        listarAutoridadesIntegracoes(token)
+        listarAutoridadesIntegracoes(token),
+        listarMapeamentosStatusIntegracoes(token)
       ]);
 
       setIntegracoes(dadosIntegracoes.integracoes || []);
@@ -548,6 +557,9 @@ export function Integracoes({ permissoes: permissoesSessao = [] }) {
       setServicos(dadosMapeamentos.servicos || []);
       setAutoridades(dadosAutoridades.dados || []);
       setOpcoesAutoridade(dadosAutoridades.opcoes || []);
+      setStatusMapeamentos(dadosStatus.dados || []);
+      setOpcoesStatus({ provedores: dadosStatus.provedores || [],
+        dominios: dadosStatus.dominios || [], situacoes: dadosStatus.situacoes || [] });
     } catch (falha) {
       setErro(falha.message);
     }
@@ -628,6 +640,17 @@ export function Integracoes({ permissoes: permissoesSessao = [] }) {
     } finally {
       setSalvando(false);
     }
+  }
+
+  async function salvarStatus(evento) {
+    evento.preventDefault();
+    if (!window.confirm('Confirma este mapeamento de status externo?')) return;
+    setSalvando(true); setErro('');
+    try {
+      await salvarMapeamentoStatusIntegracao(token, novoStatus);
+      setNovoStatus({ ...novoStatus, status_externo_id: '', status_externo_nome: '' });
+      await carregar();
+    } catch (falha) { setErro(falha.message); } finally { setSalvando(false); }
   }
 
   async function sincronizarWBuy(evento) {
@@ -869,6 +892,37 @@ export function Integracoes({ permissoes: permissoesSessao = [] }) {
             </tbody>
           </table>
         </div>
+      </div>
+
+      <div className="admin-panel integration-panel">
+        <header><div><span>ESTADOS EXTERNOS</span><h2>Mapa de status</h2></div>
+          <div className="integration-counts"><span>Mapeados: <strong>{statusMapeamentos.length}</strong></span></div>
+        </header>
+        {podeEditar && <form className="integration-form" onSubmit={salvarStatus}>
+          <select aria-label="Provedor do status" value={novoStatus.provedor}
+            onChange={e => setNovoStatus({ ...novoStatus, provedor: e.target.value })}>
+            {opcoesStatus.provedores.map(item => <option key={item}>{item}</option>)}</select>
+          <select aria-label="Domínio do status" value={novoStatus.dominio}
+            onChange={e => setNovoStatus({ ...novoStatus, dominio: e.target.value })}>
+            {opcoesStatus.dominios.map(item => <option key={item}>{item}</option>)}</select>
+          <input aria-label="ID do status externo" value={novoStatus.status_externo_id}
+            onChange={e => setNovoStatus({ ...novoStatus, status_externo_id: e.target.value })}
+            placeholder="ID do status" required />
+          <input aria-label="Nome do status externo" value={novoStatus.status_externo_nome}
+            onChange={e => setNovoStatus({ ...novoStatus, status_externo_nome: e.target.value })}
+            placeholder="Nome externo" />
+          <select aria-label="Situação interna" value={novoStatus.situacao}
+            onChange={e => setNovoStatus({ ...novoStatus, situacao: e.target.value })}>
+            {opcoesStatus.situacoes.map(item => <option key={item}>{item}</option>)}</select>
+          <button type="submit" disabled={salvando}>Mapear status</button>
+        </form>}
+        <div className="admin-table-wrap"><table className="admin-table">
+          <thead><tr><th>Provedor</th><th>Domínio</th><th>Status externo</th><th>Situação</th></tr></thead>
+          <tbody>{statusMapeamentos.length === 0 && <tr><td colSpan="4" className="admin-empty">Nenhum status mapeado.</td></tr>}
+            {statusMapeamentos.map(item => <tr key={item.id}><td>{item.provedor}</td>
+              <td>{item.dominio}</td><td>{item.status_externo_id}{item.status_externo_nome ? ` · ${item.status_externo_nome}` : ''}</td>
+              <td>{item.situacao}</td></tr>)}</tbody>
+        </table></div>
       </div>
 
       <div className="admin-panel integration-panel">

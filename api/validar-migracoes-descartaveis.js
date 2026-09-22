@@ -18,7 +18,8 @@ const MIGRACOES = [
   '20260921_mapeamentos_produtos_externos.sql',
   '20260921_referencias_pagamento.sql',
   '20260921_identidade_cache_joelpires.sql',
-  '20260922_autoridades_integracoes.sql'
+  '20260922_autoridades_integracoes.sql',
+  '20260922_status_integracoes.sql'
 ];
 
 const TABELAS_ESPERADAS = [
@@ -32,7 +33,8 @@ const TABELAS_ESPERADAS = [
   'pedido_partes',
   'integracao_produto_mapeamentos',
   'integracao_referencias_pagamento',
-  'integracao_autoridades'
+  'integracao_autoridades',
+  'integracao_status_mapeamentos'
 ];
 
 function executar(comando, argumentos, opcoes = {}) {

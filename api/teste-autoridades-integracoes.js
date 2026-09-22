@@ -65,11 +65,16 @@ async function executar() {
   let servidor;
   let erro;
   let auditoriasAntes = 0;
+  let auditoriasStatusAntes = 0;
   try {
     const [[base]] = await connection.query(
       "SELECT COUNT(*) AS total FROM auditoria WHERE entidade='integracao_autoridades'"
     );
     auditoriasAntes = Number(base.total);
+    const [[baseStatus]] = await connection.query(
+      "SELECT COUNT(*) AS total FROM auditoria WHERE entidade='integracao_status_mapeamentos'"
+    );
+    auditoriasStatusAntes = Number(baseStatus.total);
     await connection.beginTransaction();
     await connection.query(`CREATE TEMPORARY TABLE integracao_autoridades (
       dominio ENUM('PEDIDO','PAGAMENTO','CLIENTE','COMPRADOR','PAGADOR','FISCAL','ESTOQUE')
@@ -78,6 +83,19 @@ async function executar() {
       atualizado_por BIGINT,
       criado_em DATETIME DEFAULT CURRENT_TIMESTAMP,
       atualizado_em DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB`);
+    await connection.query(`CREATE TEMPORARY TABLE integracao_status_mapeamentos (
+      id BIGINT AUTO_INCREMENT PRIMARY KEY,
+      provedor ENUM('WBUY','BLING') NOT NULL,
+      dominio ENUM('PEDIDO','PAGAMENTO') NOT NULL,
+      status_externo_id VARCHAR(80) NOT NULL,
+      status_externo_nome VARCHAR(160),
+      situacao ENUM('PENDENTE','CONFIRMADO','CANCELADO','IGNORADO') NOT NULL,
+      ativo TINYINT(1) DEFAULT 1,
+      criado_por BIGINT, atualizado_por BIGINT,
+      criado_em DATETIME DEFAULT CURRENT_TIMESTAMP,
+      atualizado_em DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      UNIQUE KEY uk_status (provedor, dominio, status_externo_id)
     ) ENGINE=InnoDB`);
     const api = await iniciarApi(connection);
     servidor = api.servidor;
@@ -127,6 +145,25 @@ async function executar() {
       'CENTRAL');
     assert.strictEqual(resposta.corpo.pendentes.length, 6);
 
+    resposta = await requisitar(`${api.url}/api/integracoes/mapeamentos-status`);
+    assert.strictEqual(resposta.status, 200);
+    assert.strictEqual(resposta.corpo.total, 0);
+    resposta = await requisitar(
+      `${api.url}/api/integracoes/mapeamentos-status`, 'POST',
+      { provedor: 'WBUY', dominio: 'PAGAMENTO', status_externo_id: '2',
+        status_externo_nome: 'Pagamento confirmado', situacao: 'CONFIRMADO' }
+    );
+    assert.strictEqual(resposta.status, 201);
+    const statusId = resposta.corpo.dados.id;
+    resposta = await requisitar(
+      `${api.url}/api/integracoes/mapeamentos-status`, 'POST',
+      { provedor: 'WBUY', dominio: 'PAGAMENTO', status_externo_id: '2',
+        status_externo_nome: 'Pagamento confirmado', situacao: 'CONFIRMADO' }
+    );
+    assert.strictEqual(resposta.status, 200);
+    assert.strictEqual(resposta.corpo.alterada, false);
+    assert.strictEqual(resposta.corpo.dados.id, statusId);
+
     const [[estado]] = await connection.query(
       `SELECT COUNT(*) AS autoridades,
               (SELECT COUNT(*) FROM auditoria
@@ -135,6 +172,14 @@ async function executar() {
     );
     assert.strictEqual(Number(estado.autoridades), 1);
     assert.strictEqual(Number(estado.auditorias), auditoriasAntes + 2);
+    const [[estadoStatus]] = await connection.query(
+      `SELECT COUNT(*) AS mapeamentos,
+              (SELECT COUNT(*) FROM auditoria
+                WHERE entidade='integracao_status_mapeamentos') AS auditorias
+         FROM integracao_status_mapeamentos`
+    );
+    assert.strictEqual(Number(estadoStatus.mapeamentos), 1);
+    assert.strictEqual(Number(estadoStatus.auditorias), auditoriasStatusAntes + 1);
   } catch (falha) {
     erro = falha;
   } finally {
@@ -147,6 +192,10 @@ async function executar() {
                   WHERE entidade='integracao_autoridades') AS auditorias`
       );
       assert.strictEqual(Number(residuos.auditorias), auditoriasAntes);
+      const [[residuosStatus]] = await connection.query(
+        "SELECT COUNT(*) AS total FROM auditoria WHERE entidade='integracao_status_mapeamentos'"
+      );
+      assert.strictEqual(Number(residuosStatus.total), auditoriasStatusAntes);
     } catch (limpeza) {
       erro = erro || limpeza;
     } finally {

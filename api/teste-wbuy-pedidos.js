@@ -77,6 +77,19 @@ async function criarMatrizAutoridade(connection) {
     criado_em DATETIME DEFAULT CURRENT_TIMESTAMP,
     atualizado_em DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
   ) ENGINE=InnoDB`);
+  await connection.query(`CREATE TEMPORARY TABLE integracao_status_mapeamentos (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    provedor ENUM('WBUY','BLING') NOT NULL,
+    dominio ENUM('PEDIDO','PAGAMENTO') NOT NULL,
+    status_externo_id VARCHAR(80) NOT NULL,
+    status_externo_nome VARCHAR(160),
+    situacao ENUM('PENDENTE','CONFIRMADO','CANCELADO','IGNORADO') NOT NULL,
+    ativo TINYINT(1) DEFAULT 1,
+    criado_por BIGINT, atualizado_por BIGINT,
+    criado_em DATETIME DEFAULT CURRENT_TIMESTAMP,
+    atualizado_em DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uk_status (provedor, dominio, status_externo_id)
+  ) ENGINE=InnoDB`);
 }
 
 function pedido(id, total = '22.00') {

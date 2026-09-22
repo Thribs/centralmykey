@@ -40,6 +40,14 @@ async function analisarPedidoWBuy(connection, pedido) {
   const [autoridades] = await connection.query(
     `SELECT dominio, autoridade FROM integracao_autoridades`
   );
+  const statusExternoId = texto(pedido?.status?.id, 80);
+  const [statusMapeados] = await connection.query(
+    `SELECT situacao FROM integracao_status_mapeamentos
+      WHERE provedor='WBUY' AND dominio='PAGAMENTO'
+        AND status_externo_id=? AND ativo=1 LIMIT 1`,
+    [statusExternoId]
+  );
+  const situacaoPagamento = statusMapeados[0]?.situacao || null;
   const autoridadePorDominio = Object.fromEntries(
     autoridades.map(item => [item.dominio, item.autoridade])
   );
@@ -67,7 +75,11 @@ async function analisarPedidoWBuy(connection, pedido) {
       servico_nome: mapeamento?.servico_nome || null
     };
   });
-  const pendencias = ['STATUS_PAGAMENTO_NAO_MAPEADO', 'MOEDA_NAO_INFORMADA'];
+  const pendencias = ['MOEDA_NAO_INFORMADA'];
+  if (!situacaoPagamento) pendencias.push('STATUS_PAGAMENTO_NAO_MAPEADO');
+  else if (situacaoPagamento !== 'CONFIRMADO') {
+    pendencias.push('PAGAMENTO_EXTERNO_NAO_CONFIRMADO');
+  }
   if (!autoridadePorDominio.PEDIDO) {
     pendencias.push('AUTORIDADE_PEDIDO_NAO_DEFINIDA');
   }
@@ -102,6 +114,7 @@ async function analisarPedidoWBuy(connection, pedido) {
         'FISCAL', 'ESTOQUE'].every(dominio => Boolean(autoridadePorDominio[dominio])),
       dados: autoridadePorDominio
     },
+    pagamento: { mapeado: Boolean(situacaoPagamento), situacao: situacaoPagamento },
     pendencias,
     pronto_para_converter: false
   };

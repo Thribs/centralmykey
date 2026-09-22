@@ -1465,6 +1465,13 @@ test('integrações administram modelos e mapeamentos sem chamar serviços exter
   await autoridadePedido.selectOption('WBUY');
   await expect(autoridadePedido).toHaveValue('WBUY');
   await expect(page.getByText('Definidos:', { exact: false })).toContainText('1/7');
+  await page.getByLabel('ID do status externo').fill('2');
+  await page.getByLabel('Nome do status externo').fill('Pagamento confirmado');
+  await page.getByLabel('Situação interna').selectOption('CONFIRMADO');
+  page.once('dialog', dialogo => dialogo.accept());
+  await page.getByRole('button', { name: 'Mapear status' }).click();
+  await expect(page.locator('tr', { hasText: 'Pagamento confirmado' }))
+    .toContainText('CONFIRMADO');
 
   const linhaBling = page.locator('tr', {
     hasText: contexto.referencia_evento_bling
@@ -1533,7 +1540,7 @@ test('integrações administram modelos e mapeamentos sem chamar serviços exter
   await page.getByPlaceholder('SKU').fill(contexto.sku);
   await page.getByPlaceholder('Nome do produto').fill(contexto.nome_externo);
   await page.getByLabel('Serviço MyKey').selectOption(String(contexto.servico_id));
-  await page.getByRole('button', { name: 'Mapear' }).click();
+  await page.getByRole('button', { name: 'Mapear', exact: true }).click();
   let linhaMapeamento = page.locator('tr', { hasText: contexto.produto_externo_id });
   await expect(linhaMapeamento).toContainText(contexto.servico_codigo);
   await expect(linhaMapeamento).toContainText('ATIVO');
@@ -1572,6 +1579,9 @@ test('integrações administram modelos e mapeamentos sem chamar serviços exter
   expect(verificacao.autoridade.dominio).toBe('PEDIDO');
   expect(verificacao.autoridade.autoridade).toBe('WBUY');
   expect(Number(verificacao.autoridade.auditorias)).toBeGreaterThanOrEqual(1);
+  expect(verificacao.status_mapeado.status_externo_id).toBe('2');
+  expect(verificacao.status_mapeado.situacao).toBe('CONFIRMADO');
+  expect(Number(verificacao.status_mapeado.auditorias)).toBeGreaterThanOrEqual(1);
   expect(verificacao.pagamento_tardio.pedido_status).toBe('CANCELADO');
   expect(verificacao.pagamento_tardio.evento_status).toBe('IGNORADO');
   expect(verificacao.pagamento_tardio.erro_codigo).toBe('PAGAMENTO_ESTORNADO');
@@ -1889,6 +1899,7 @@ test('visualizador não vê ações de usuário e recebe 403 ao forçar criaçã
   await expect(page.getByLabel('Nome do modelo')).toHaveCount(0);
   await expect(page.getByLabel(/Status do modelo/)).toHaveCount(0);
   await expect(page.getByLabel(/Autoridade de/)).toHaveCount(0);
+  await expect(page.getByLabel('ID do status externo')).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Ativar', exact: true }))
     .toHaveCount(0);
   const integracoes = contextoCompleto.integracoes;

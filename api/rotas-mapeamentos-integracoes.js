@@ -5,6 +5,8 @@ const DOMINIOS_AUTORIDADE = [
   'PEDIDO', 'PAGAMENTO', 'CLIENTE', 'COMPRADOR', 'PAGADOR', 'FISCAL', 'ESTOQUE'
 ];
 const AUTORIDADES = ['CENTRAL', 'WBUY', 'BLING', 'MANUAL'];
+const DOMINIOS_STATUS = ['PEDIDO', 'PAGAMENTO'];
+const SITUACOES_STATUS = ['PENDENTE', 'CONFIRMADO', 'CANCELADO', 'IGNORADO'];
 
 function texto(valor, limite) {
   const resultado = String(valor ?? '').trim();
@@ -258,6 +260,90 @@ module.exports = function registrarRotasMapeamentosIntegracoes(app, pool) {
         return res.status(500).json({
           ok: false, error: 'Erro ao salvar autoridade de integração'
         });
+      } finally {
+        connection.release();
+      }
+    });
+
+  app.get('/api/integracoes/mapeamentos-status', autenticarToken,
+    exigirPermissao('INTEGRACOES', 'visualizar'), async (req, res) => {
+      try {
+        const [dados] = await pool.query(
+          `SELECT id, provedor, dominio, status_externo_id, status_externo_nome,
+                  situacao, ativo, atualizado_em
+             FROM integracao_status_mapeamentos
+            ORDER BY provedor, dominio, status_externo_id`
+        );
+        return res.json({ ok: true, total: dados.length, dados,
+          provedores: PROVEDORES, dominios: DOMINIOS_STATUS,
+          situacoes: SITUACOES_STATUS });
+      } catch (error) {
+        console.error('Erro ao listar mapeamentos de status:', error);
+        return res.status(500).json({ ok: false,
+          error: 'Erro ao consultar mapeamentos de status' });
+      }
+    });
+
+  app.post('/api/integracoes/mapeamentos-status', autenticarToken,
+    exigirPermissao('INTEGRACOES', 'editar'), async (req, res) => {
+      const provedor = String(req.body?.provedor || '').trim().toUpperCase();
+      const dominio = String(req.body?.dominio || '').trim().toUpperCase();
+      const statusExternoId = texto(req.body?.status_externo_id, 80);
+      const statusExternoNome = texto(req.body?.status_externo_nome, 160);
+      const situacao = String(req.body?.situacao || '').trim().toUpperCase();
+      if (!PROVEDORES.includes(provedor) || !DOMINIOS_STATUS.includes(dominio) ||
+          !statusExternoId || !SITUACOES_STATUS.includes(situacao)) {
+        return res.status(400).json({ ok: false,
+          error: 'Provedor, domínio, status externo e situação são obrigatórios' });
+      }
+      const connection = await pool.getConnection();
+      try {
+        await connection.beginTransaction();
+        const [[antes]] = await connection.query(
+          `SELECT id, provedor, dominio, status_externo_id, status_externo_nome,
+                  situacao, ativo
+             FROM integracao_status_mapeamentos
+            WHERE provedor=? AND dominio=? AND status_externo_id=?
+            LIMIT 1 FOR UPDATE`,
+          [provedor, dominio, statusExternoId]
+        );
+        const [gravacao] = await connection.query(
+          `INSERT INTO integracao_status_mapeamentos
+             (provedor, dominio, status_externo_id, status_externo_nome,
+              situacao, ativo, criado_por, atualizado_por)
+           VALUES (?, ?, ?, ?, ?, 1, ?, ?)
+           ON DUPLICATE KEY UPDATE id=LAST_INSERT_ID(id),
+             status_externo_nome=VALUES(status_externo_nome),
+             situacao=VALUES(situacao), ativo=1,
+             atualizado_por=VALUES(atualizado_por), atualizado_em=NOW()`,
+          [provedor, dominio, statusExternoId, statusExternoNome, situacao,
+            req.usuario?.id || null, req.usuario?.id || null]
+        );
+        const id = Number(gravacao.insertId);
+        const [[depois]] = await connection.query(
+          `SELECT id, provedor, dominio, status_externo_id, status_externo_nome,
+                  situacao, ativo
+             FROM integracao_status_mapeamentos WHERE id=?`, [id]
+        );
+        const alterada = JSON.stringify(antes || null) !== JSON.stringify(depois);
+        if (alterada) {
+          await connection.query(
+            `INSERT INTO auditoria
+               (usuario_id, modulo, acao, entidade, entidade_id, descricao,
+                dados_antes, dados_depois, ip)
+             VALUES (?, 'INTEGRACOES', 'MAPEAR_STATUS_EXTERNO',
+                     'integracao_status_mapeamentos', ?, ?, ?, ?, ?)`,
+            [req.usuario?.id || null, String(id),
+              `Status ${provedor}/${dominio} mapeado como ${situacao}`,
+              antes ? JSON.stringify(antes) : null, JSON.stringify(depois), req.ip || null]
+          );
+        }
+        await connection.commit();
+        return res.status(antes ? 200 : 201).json({ ok: true, alterada, dados: depois });
+      } catch (error) {
+        await connection.rollback();
+        console.error('Erro ao mapear status externo:', error);
+        return res.status(500).json({ ok: false, error: 'Erro ao salvar mapeamento de status' });
       } finally {
         connection.release();
       }
