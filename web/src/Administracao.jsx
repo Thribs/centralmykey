@@ -598,9 +598,13 @@ export function Integracoes({ permissoes: permissoesSessao = [] }) {
     setResultadoWBuy('');
     try {
       const resultado = await sincronizarPedidoWBuy(token, pedidoWBuyId.trim());
+      const analise = resultado.analise || {};
+      const resumo = `${Number(analise.produtos_mapeados || 0)} de ` +
+        `${Number(analise.produtos_total || 0)} produtos mapeados`;
       setResultadoWBuy(resultado.idempotente
-        ? `Pedido ${resultado.pedido_externo_id} já estava sincronizado.`
-        : `Pedido ${resultado.pedido_externo_id} recebido na fila.`);
+        ? `Pedido ${resultado.pedido_externo_id} já estava sincronizado · ${resumo}.`
+        : `Pedido ${resultado.pedido_externo_id} recebido na fila · ${resumo}. ` +
+          'Conversão aguarda regras comerciais.');
       setPedidoWBuyId('');
       await carregar();
     } catch (falha) {

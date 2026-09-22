@@ -43,6 +43,31 @@ async function criarTabelaEventos(connection) {
   ) ENGINE=InnoDB`);
 }
 
+async function criarMapeamento(connection) {
+  await connection.query(`CREATE TEMPORARY TABLE integracao_produto_mapeamentos (
+    id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    provedor ENUM('WBUY','BLING') NOT NULL,
+    produto_externo_id VARCHAR(160), sku VARCHAR(120), nome_externo VARCHAR(255),
+    servico_id BIGINT NOT NULL, ativo TINYINT(1) NOT NULL DEFAULT 1,
+    criado_por BIGINT, atualizado_por BIGINT,
+    criado_em DATETIME DEFAULT CURRENT_TIMESTAMP,
+    atualizado_em DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uk_produto (provedor, produto_externo_id),
+    UNIQUE KEY uk_sku (provedor, sku)
+  ) ENGINE=InnoDB`);
+  const [[servico]] = await connection.query(
+    'SELECT id, codigo FROM servicos WHERE ativo=1 ORDER BY id LIMIT 1'
+  );
+  assert.ok(servico, 'É necessário ao menos um serviço ativo');
+  await connection.query(
+    `INSERT INTO integracao_produto_mapeamentos
+       (provedor, produto_externo_id, sku, nome_externo, servico_id, ativo)
+     VALUES ('WBUY', '10', 'GM-TESTE', 'Consulta GM fictícia', ?, 1)`,
+    [servico.id]
+  );
+  return servico;
+}
+
 function pedido(id, total = '22.00') {
   return {
     id: String(id), identificacao: `WBUY-${id}`,
@@ -50,8 +75,12 @@ function pedido(id, total = '22.00') {
     cliente: { id: '55', nome: 'Cliente Fictício WBuy',
       email: 'cliente.ficticio@example.invalid', telefone1: '(00) 00000-0000',
       doc1: '000.000.000-00' },
-    produtos: [{ produto_id: '10', produto: 'Consulta GM fictícia',
-      sku: 'GM-TESTE', qtd: '1', valor: total }],
+    produtos: [
+      { produto_id: '10', produto: 'Consulta GM fictícia',
+        sku: 'GM-TESTE', qtd: '1', valor: total },
+      { produto_id: '99', produto: 'Produto sem vínculo',
+        sku: 'SEM-MAPEAMENTO', qtd: '1', valor: '1.00' }
+    ],
     valor_total: { subtotal: total, desconto: '0', total }
   };
 }
@@ -103,6 +132,7 @@ async function executar() {
   try {
     await connection.beginTransaction();
     await criarTabelaEventos(connection);
+    const servico = await criarMapeamento(connection);
     const api = await iniciarApi(connection);
     servidor = api.servidor;
 
@@ -115,6 +145,16 @@ async function executar() {
     assert.strictEqual(primeira.corpo.idempotente, false);
     assert.strictEqual(primeira.corpo.status, 'RECEBIDO');
     assert.strictEqual(primeira.corpo.pedido_externo_id, pedidoId);
+    assert.strictEqual(primeira.corpo.analise.produtos_total, 2);
+    assert.strictEqual(primeira.corpo.analise.produtos_mapeados, 1);
+    assert.strictEqual(primeira.corpo.analise.produtos_pendentes, 1);
+    assert.strictEqual(primeira.corpo.analise.pronto_para_converter, false);
+    assert.ok(primeira.corpo.analise.pendencias.includes('PRODUTO_NAO_MAPEADO'));
+    assert.ok(primeira.corpo.analise.pendencias.includes('STATUS_PAGAMENTO_NAO_MAPEADO'));
+    assert.strictEqual(primeira.corpo.analise.itens[0].servico_id, Number(servico.id));
+    assert.strictEqual(primeira.corpo.analise.itens[1].situacao, 'NAO_MAPEADO');
+    assert.ok(!JSON.stringify(primeira.corpo.analise).includes('cliente.ficticio'),
+      'A análise administrativa não deve expor dados pessoais do cliente');
 
     const chamada = api.chamadas.at(-1);
     assert.strictEqual(chamada.url, `https://wbuy.invalid/api/v1/order/${pedidoId}`);

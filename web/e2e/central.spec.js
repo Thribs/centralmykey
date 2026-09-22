@@ -1352,6 +1352,8 @@ test('integrações administram modelos e mapeamentos sem chamar serviços exter
   await page.getByLabel('ID do pedido WBuy').fill(contexto.pedido_wbuy_id);
   await page.getByRole('button', { name: 'Sincronizar pedido WBuy' }).click();
   await expect(page.getByRole('status')).toContainText('recebido na fila');
+  await expect(page.getByRole('status')).toContainText('0 de 1 produtos mapeados');
+  await expect(page.getByRole('status')).toContainText('aguarda regras comerciais');
   const linhaWBuy = page.locator('tr', { hasText: contexto.pedido_wbuy_id });
   await expect(linhaWBuy).toContainText('WBUY');
   await expect(linhaWBuy).toContainText('ORDER.SNAPSHOT');

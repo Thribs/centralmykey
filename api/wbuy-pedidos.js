@@ -23,6 +23,73 @@ function jsonCanonico(valor) {
   return JSON.stringify(valor);
 }
 
+function texto(valor, limite) {
+  const resultado = String(valor ?? '').trim();
+  return resultado ? resultado.slice(0, limite) : null;
+}
+
+async function analisarPedidoWBuy(connection, pedido) {
+  const produtos = Array.isArray(pedido?.produtos) ? pedido.produtos : [];
+  const [mapeamentos] = await connection.query(
+    `SELECT m.id, m.produto_externo_id, m.sku, m.servico_id,
+            s.codigo AS servico_codigo, s.nome AS servico_nome
+       FROM integracao_produto_mapeamentos m
+       JOIN servicos s ON s.id=m.servico_id
+      WHERE m.provedor='WBUY' AND m.ativo=1 AND s.ativo=1`
+  );
+  const itens = produtos.map(produto => {
+    const produtoExternoId = texto(produto?.produto_id, 160);
+    const sku = texto(produto?.sku ?? produto?.cod, 120)?.toUpperCase() || null;
+    const candidatos = mapeamentos.filter(item =>
+      (produtoExternoId && String(item.produto_externo_id || '') === produtoExternoId) ||
+      (sku && String(item.sku || '').toUpperCase() === sku)
+    );
+    const servicos = [...new Set(candidatos.map(item => Number(item.servico_id)))];
+    let situacao = 'NAO_MAPEADO';
+    if (servicos.length === 1) situacao = 'MAPEADO';
+    else if (servicos.length > 1) situacao = 'CONFLITO';
+    const mapeamento = situacao === 'MAPEADO'
+      ? candidatos.find(item => Number(item.servico_id) === servicos[0])
+      : null;
+    return {
+      produto_externo_id: produtoExternoId,
+      sku,
+      quantidade: texto(produto?.qtd, 30),
+      situacao,
+      servico_id: mapeamento ? Number(mapeamento.servico_id) : null,
+      servico_codigo: mapeamento?.servico_codigo || null,
+      servico_nome: mapeamento?.servico_nome || null
+    };
+  });
+  const pendencias = [
+    'AUTORIDADE_PEDIDO_NAO_DEFINIDA',
+    'STATUS_PAGAMENTO_NAO_MAPEADO',
+    'PAPEIS_CLIENTE_COMPRADOR_PAGADOR_NAO_CONFIRMADOS',
+    'MOEDA_NAO_INFORMADA'
+  ];
+  if (itens.some(item => item.situacao === 'NAO_MAPEADO')) {
+    pendencias.push('PRODUTO_NAO_MAPEADO');
+  }
+  if (itens.some(item => item.situacao === 'CONFLITO')) {
+    pendencias.push('MAPEAMENTO_CONFLITANTE');
+  }
+  return {
+    pedido_externo_id: texto(pedido?.id, 120),
+    identificacao_externa: texto(pedido?.identificacao, 120),
+    status_externo: {
+      id: texto(pedido?.status?.id, 80),
+      nome: texto(pedido?.status?.nome, 160)
+    },
+    valor_total_externo: texto(pedido?.valor_total?.total, 40),
+    produtos_total: itens.length,
+    produtos_mapeados: itens.filter(item => item.situacao === 'MAPEADO').length,
+    produtos_pendentes: itens.filter(item => item.situacao !== 'MAPEADO').length,
+    itens,
+    pendencias,
+    pronto_para_converter: false
+  };
+}
+
 async function consultarPedidoWBuy(config, pedidoExternoId, opcoes = {}) {
   const id = pedidoIdValido(pedidoExternoId);
   if (!id) throw falha('ID do pedido WBuy inválido', 'PEDIDO_WBUY_INVALIDO', 400);
@@ -106,6 +173,7 @@ async function sincronizarPedidoWBuy(pool, config, pedidoExternoId, opcoes = {})
       [eventoExternoId]
     );
     const idempotente = gravacao.affectedRows !== 1;
+    const analise = await analisarPedidoWBuy(connection, consulta.pedido);
     await connection.query(
       `INSERT INTO auditoria
          (usuario_id, modulo, acao, entidade, entidade_id, descricao,
@@ -128,7 +196,8 @@ async function sincronizarPedidoWBuy(pool, config, pedidoExternoId, opcoes = {})
       evento_id: Number(persistido.id),
       pedido_externo_id: consulta.id,
       status: persistido.status,
-      tentativas: Number(persistido.tentativas)
+      tentativas: Number(persistido.tentativas),
+      analise
     };
   } catch (erro) {
     await connection.rollback();
@@ -139,6 +208,7 @@ async function sincronizarPedidoWBuy(pool, config, pedidoExternoId, opcoes = {})
 }
 
 module.exports = {
+  analisarPedidoWBuy,
   consultarPedidoWBuy,
   jsonCanonico,
   pedidoIdValido,
