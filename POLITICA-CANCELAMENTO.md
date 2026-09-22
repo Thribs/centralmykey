@@ -9,7 +9,7 @@ O código posterior à `v0.5.0` permite cancelar apenas pedidos sem obrigação 
 - nenhuma consulta ao fornecedor enviada, em processamento ou com resultado incerto;
 - item de faturamento semanal, quando existente, ainda pertence a uma fatura `ABERTA`.
 
-Nesses casos, o sistema cancela comunicações pendentes, remove o item da fatura aberta, recalcula o total, cancela a fatura que ficar vazia e zera fornecedor, origem e custo do pedido.
+Nesses casos, o sistema cancela comunicações pendentes, remove o item da fatura aberta, recalcula o total a partir dos itens restantes, cancela a fatura que ficar vazia e zera fornecedor, origem e custo do pedido. O valor armazenado anteriormente na fatura não é usado como base da reconciliação.
 
 ## Pagamento manual já recebido
 

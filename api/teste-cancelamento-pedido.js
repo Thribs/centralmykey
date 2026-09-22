@@ -138,6 +138,7 @@ async function executar() {
       fornecedor.insertId,
       22
     );
+    const pedidoFaturaRestante = await criarPedido('R', 'ABERTO');
     const pedidoEnviado = await criarPedido(
       'E',
       'EM_CONSULTA',
@@ -150,13 +151,18 @@ async function executar() {
       `INSERT INTO faturas_clientes
          (cliente_id, periodo_inicio, periodo_fim, vencimento,
           moeda, valor_total, status)
-       VALUES (?, CURDATE(), CURDATE(), CURDATE(), 'BRL', 50, 'ABERTA')`,
+       VALUES (?, CURDATE(), CURDATE(), CURDATE(), 'BRL', 999, 'ABERTA')`,
       [cliente.insertId]
     );
     await connection.query(
       `INSERT INTO fatura_itens (fatura_id, pedido_senha_id, valor)
-       VALUES (?, ?, 50)`,
-      [fatura.insertId, pedidoFaturado]
+       VALUES (?, ?, 50), (?, ?, 30)`,
+      [
+        fatura.insertId,
+        pedidoFaturado,
+        fatura.insertId,
+        pedidoFaturaRestante
+      ]
     );
 
     for (const [pedidoId, status] of [
@@ -214,6 +220,23 @@ async function executar() {
       faturado.corpo.cancelamento.faturas_ajustadas,
       [fatura.insertId]
     );
+    const [[faturaDepoisPrimeiroCancelamento]] = await connection.query(
+      `SELECT status, valor_total,
+              (SELECT COUNT(*) FROM fatura_itens WHERE fatura_id = ?) AS itens
+         FROM faturas_clientes
+        WHERE id = ?`,
+      [fatura.insertId, fatura.insertId]
+    );
+    assert.strictEqual(faturaDepoisPrimeiroCancelamento.status, 'ABERTA');
+    assert.strictEqual(Number(faturaDepoisPrimeiroCancelamento.valor_total), 30);
+    assert.strictEqual(Number(faturaDepoisPrimeiroCancelamento.itens), 1);
+
+    const restante = await cancelar(api.url, pedidoFaturaRestante);
+    assert.strictEqual(restante.resposta.status, 200);
+    assert.deepStrictEqual(
+      restante.corpo.cancelamento.faturas_ajustadas,
+      [fatura.insertId]
+    );
 
     const enviado = await cancelar(api.url, pedidoEnviado);
     assert.strictEqual(enviado.resposta.status, 409);
@@ -228,7 +251,7 @@ async function executar() {
     const [[estado]] = await connection.query(
       `SELECT
          (SELECT COUNT(*) FROM pedidos_senha
-           WHERE id IN (?, ?) AND status = 'CANCELADO') AS cancelados,
+           WHERE id IN (?, ?, ?) AND status = 'CANCELADO') AS cancelados,
          (SELECT COUNT(*) FROM pedido_historico
            WHERE pedido_id = ? AND tipo = 'PEDIDO_CANCELADO') AS historicos,
          (SELECT COUNT(*) FROM auditoria
@@ -245,6 +268,7 @@ async function executar() {
       [
         pedidoAberto,
         pedidoFaturado,
+        pedidoFaturaRestante,
         pedidoAberto,
         String(pedidoAberto),
         pedidoFaturado,
@@ -256,7 +280,7 @@ async function executar() {
     );
     assert.deepStrictEqual(
       Object.values(estado).map(Number),
-      [2, 1, 1, 0, 1, 1, 2]
+      [3, 1, 1, 0, 1, 1, 2]
     );
   } catch (falha) {
     erro = falha;

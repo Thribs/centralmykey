@@ -238,7 +238,7 @@ Na branch `feature/pagamento-manual-idempotente`, ainda não publicada:
 - resultados confirmados são preparados uma única vez para entrega ao cliente pela outbox, tanto na resposta automática da API quanto após confirmação do fornecedor;
 - a interface separa consulta ao fornecedor de entrega ao cliente e mostra pendências e falhas de cada finalidade;
 - o webhook assinado da Meta registra `ENTREGUE` e `LIDA` sem permitir regressão, com teste funcional e rollback;
-- o cancelamento seguro possui rota, interface, histórico, auditoria e teste HTTP com rollback; pedidos sem obrigação externa cancelam comunicações e ajustam fatura aberta;
+- o cancelamento seguro possui rota, interface, histórico, auditoria e teste HTTP com rollback; pedidos sem obrigação externa cancelam comunicações, removem o item da fatura aberta e recalculam seu total pelos itens restantes, inclusive cancelando a fatura vazia;
 - pagamentos existentes, consulta já enviada, fatura fechada e pedido concluído são bloqueados com códigos explícitos até existir política de estorno e custo aprovada;
 - o fechamento semanal de fornecedores apura somente resultados confirmados, impede duplicidade, cria uma despesa após aprovação e registra o pagamento manual de forma idempotente;
 - a interface financeira permite gerar a última semana concluída, conferir os itens, aprovar e registrar o pagamento; períodos ainda abertos não podem ser aprovados;

@@ -111,22 +111,32 @@ async function cancelarPedido(connection, {
     );
   }
 
-  const faturasAjustadas = [];
-  for (const item of itensFatura) {
-    await connection.query('DELETE FROM fatura_itens WHERE id = ?', [item.id]);
+  const faturasAjustadas = [
+    ...new Set(itensFatura.map(item => Number(item.fatura_id)))
+  ];
+  await connection.query(
+    'DELETE FROM fatura_itens WHERE pedido_senha_id = ?',
+    [pedido.id]
+  );
+  for (const faturaId of faturasAjustadas) {
+    const [[totalAtual]] = await connection.query(
+      `SELECT COUNT(*) AS quantidade_itens,
+              COALESCE(SUM(valor), 0) AS valor_total
+         FROM fatura_itens
+        WHERE fatura_id = ?`,
+      [faturaId]
+    );
     await connection.query(
       `UPDATE faturas_clientes
-          SET valor_total = GREATEST(valor_total - ?, 0),
-              status = CASE
-                WHEN NOT EXISTS (
-                  SELECT 1 FROM fatura_itens fi WHERE fi.fatura_id = ?
-                ) THEN 'CANCELADA'
-                ELSE status
-              END
+          SET valor_total = ?,
+              status = IF(? = 0, 'CANCELADA', status)
         WHERE id = ?`,
-      [Number(item.valor), item.fatura_id, item.fatura_id]
+      [
+        Number(totalAtual.valor_total),
+        Number(totalAtual.quantidade_itens),
+        faturaId
+      ]
     );
-    faturasAjustadas.push(Number(item.fatura_id));
   }
 
   await connection.query(
