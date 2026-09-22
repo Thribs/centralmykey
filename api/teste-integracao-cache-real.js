@@ -1,12 +1,21 @@
 'use strict';
 
-require('dotenv').config({ override: true });
+const path = require('path');
+require('dotenv').config({
+  path: process.env.CENTRALMYKEY_ENV_PATH || path.join(__dirname, '.env'),
+  override: true,
+  quiet: true
+});
 const mysql = require('mysql2/promise');
 const {
   buscarSenhaFonteVerdade
 } = require('./consulta-api-joelpires');
 
 (async () => {
+  if (String(process.env.AMBIENTE_API_JOELPIRES || 'teste').toLowerCase() !== 'teste') {
+    throw new Error('SMOKE_JOELPIRES_SOMENTE_STAGING');
+  }
+
   const db = await mysql.createConnection({
     host: process.env.DB_HOST,
     port: Number(process.env.DB_PORT || 3306),
@@ -21,10 +30,13 @@ const {
       chassi: process.env.CHASSI_TESTE_JOELPIRES || 'MB197925',
       codigoServico: process.env.SERVICO_TESTE_JOELPIRES || 'GM_SENHA',
       marca: process.env.MARCA_TESTE_JOELPIRES || 'GM'
-    });
+    }, { ignorarCache: true });
 
     if (resultado.status !== 'ENCONTRADO') {
       throw new Error(`Resultado inesperado: ${resultado.status}`);
+    }
+    if (resultado.origem !== 'API_JOELPIRES') {
+      throw new Error('Smoke não consultou a API externa');
     }
 
     const senha = resultado.senha;
@@ -49,9 +61,6 @@ const {
       resultado: 'APROVADO',
       status: resultado.status,
       origem: resultado.origem,
-      contingencia: Boolean(resultado.contingencia),
-      banco_senha_id_temporario: senha.id,
-      chassi: senha.chassi,
       codigos_presentes: codigosPresentes
     });
   } finally {
@@ -62,8 +71,7 @@ const {
 })().catch(erro => {
   console.error({
     resultado: 'FALHA',
-    codigo: erro.codigo || erro.code || null,
-    mensagem: erro.message
+    codigo: erro.codigo || erro.code || 'SMOKE_JOELPIRES_FALHOU'
   });
   process.exitCode = 1;
 });

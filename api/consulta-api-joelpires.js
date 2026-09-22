@@ -294,7 +294,9 @@ async function buscarSenhaFonteVerdade(connection, entrada, opcoes = {}) {
     marca: entrada.marca,
     modelo: entrada.modelo
   };
-  const cache = await buscarCache(connection, contexto);
+  const cache = opcoes.ignorarCache
+    ? null
+    : await buscarCache(connection, contexto);
   if (cache) return formatarCache(cache, 'CACHE_JOELPIRES');
 
   try {

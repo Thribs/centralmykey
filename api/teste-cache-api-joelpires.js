@@ -104,6 +104,28 @@ async function executar() {
     assert.strictEqual(valido.senha.codigo_mecanico, 'CODIGO-CACHE-VALIDO');
     assert.strictEqual(chamadas, 0);
 
+    const consultaForcada = await buscarSenhaFonteVerdade(
+      connection,
+      entrada(chassis[0]),
+      {
+        ignorarCache: true,
+        fetchImpl: async () => {
+          chamadas += 1;
+          return resposta(200, [{
+            id: idsApi[0],
+            id_montadora: 1,
+            chassis: chassis[0],
+            cod_mecanico: 'CODIGO-CONSULTA-FORCADA'
+          }]);
+        }
+      }
+    );
+    assert.strictEqual(consultaForcada.status, 'ENCONTRADO');
+    assert.strictEqual(consultaForcada.origem, 'API_JOELPIRES');
+    assert.strictEqual(consultaForcada.senha.codigo_mecanico,
+      'CODIGO-CONSULTA-FORCADA');
+    assert.strictEqual(chamadas, 1);
+
     const cacheVencidoId = await inserir(connection, {
       chassi: chassis[1], codigo: 'CODIGO-VENCIDO',
       apiSenhaId: idsApi[1], fonte: 'API_JOELPIRES',
@@ -177,7 +199,7 @@ async function executar() {
   }
 
   if (erro) throw erro;
-  console.log('OK: cache Joel Pires respeita origem, TTL e renovação (rollback confirmado)');
+  console.log('OK: cache Joel Pires respeita origem, TTL, bypass e renovação (rollback confirmado)');
 }
 
 executar().catch(erro => {

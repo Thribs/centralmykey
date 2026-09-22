@@ -7,7 +7,8 @@
 - A Central consulta apenas entradas de cache marcadas com `API_JOELPIRES`.
 - Registros antigos do banco local não decidem mais o atendimento automático.
 - Fornecedor externo somente pode ser escolhido quando a API responder que não encontrou.
-- Falha de comunicação não pode provocar compra externa; cache vencido pode ser usado como contingência.
+- Falha de comunicação não pode provocar compra externa nem reutilizar cache
+  vencido; o pedido deve aguardar reprocessamento.
 
 ## Fluxo
 
@@ -45,3 +46,18 @@ node --check rotas-pedidos.js
 node --check processar-pedido-pago.js
 node --check consulta-api-joelpires.js
 ```
+
+O smoke opcional abaixo chama exclusivamente o ambiente de staging, ignora o
+cache na leitura, grava qualquer atualização local dentro de uma transação e
+sempre executa rollback. Ele não integra o `npm test`, não imprime chassi nem
+valores retornados e recusa execução quando a configuração aponta para o
+ambiente público.
+
+```bash
+cd /opt/centralmykey-source/api
+CENTRALMYKEY_ENV_PATH=/opt/central-mykey-api/.env npm run test:joelpires:staging
+```
+
+Em 21/09/2026, esse smoke foi executado contra staging e confirmou resposta
+`ENCONTRADO` com origem `API_JOELPIRES` e códigos utilizáveis. O rollback local
+foi confirmado e nenhum valor de senha, chassi ou credencial foi exibido.
