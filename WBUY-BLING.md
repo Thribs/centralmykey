@@ -44,7 +44,8 @@ assinatura HMAC oficial e guarda eventos `order.*` idempotentes. A base OAuth
 Authorization Code usa `state` de uso único, solicita JWT, cifra os tokens e
 permite renovação segura, mas permanece desabilitada até cadastrar o aplicativo
 e o callback. Leitura detalhada, exportação de resultados e autoridade de status
-ainda não estão implementadas.
+continuam bloqueadas. A leitura canônica individual por ID já usa o OAuth,
+renova JWT expirado e versiona snapshots sem aplicar efeitos comerciais.
 Durante a transição, cada entidade deverá ter uma fonte de verdade explícita
 para evitar atualizações circulares entre WBuy, Bling e Central MyKey.
 

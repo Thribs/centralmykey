@@ -85,6 +85,10 @@ e a troca/renovação solicita JWT no servidor. Tokens são cifrados por chave
 dedicada do ambiente e nunca aparecem nas respostas ou na auditoria. A conexão
 permanece desabilitada até cadastrar o aplicativo e o callback; leitura e
 efeitos comerciais continuam bloqueados pela matriz e pelo mapa de estados.
+A administração também pode consultar um pedido Bling específico depois da
+conexão. A leitura usa `GET /pedidos/vendas/{id}`, renova o JWT se necessário e
+guarda um snapshot idempotente; nenhum cliente, pedido, pagamento ou lançamento
+é criado, e dados pessoais do payload não retornam à interface.
 
 ## PlugPay
 

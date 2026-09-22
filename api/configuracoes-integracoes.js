@@ -176,7 +176,8 @@ function resumirIntegracoes(config) {
         oauth_configurado: Boolean(config.blingClientId && config.blingClientSecret &&
           config.blingRedirectUri && config.blingTokenEncryptionKey),
         oauth_habilitado: verdadeiro(config.blingOAuthHabilitado),
-        sincronizacao: false
+        consulta_pedido: true,
+        processamento_pedido: false
       }
     }
   ];
@@ -324,7 +325,8 @@ async function obterConfiguracaoBling(pool) {
     clientSecret: config.blingClientSecret,
     redirectUri: config.blingRedirectUri,
     encryptionKey: config.blingTokenEncryptionKey,
-    habilitado: verdadeiro(config.blingOAuthHabilitado)
+    habilitado: verdadeiro(config.blingOAuthHabilitado),
+    apiUrl: 'https://api.bling.com.br/Api/v3'
   };
 }
 

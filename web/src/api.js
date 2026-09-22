@@ -986,6 +986,14 @@ export async function sincronizarPedidoWBuy(token, pedidoExternoId) {
   return lerResposta(resposta);
 }
 
+export async function sincronizarPedidoBling(token, pedidoExternoId) {
+  const resposta = await requisitar(
+    `${API_URL}/api/integracoes/bling/pedidos/${encodeURIComponent(pedidoExternoId)}/sincronizar`,
+    { method: 'POST', headers: cabecalhoAutenticado(token) }
+  );
+  return lerResposta(resposta);
+}
+
 export async function analisarSnapshotWBuy(token, eventoId) {
   const resposta = await requisitar(
     `${API_URL}/api/integracoes/wbuy/snapshots/${encodeURIComponent(eventoId)}/analise`,

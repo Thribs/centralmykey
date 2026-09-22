@@ -35,6 +35,11 @@ receptor deve responder em até cinco segundos.
   estado e datas de expiração.
 - O fluxo OAuth permanece desabilitado por padrão e ainda não lê nem escreve
   pedidos no Bling.
+- A rota administrativa autenticada consulta um pedido por ID em
+  `GET /pedidos/vendas/{id}`, renova o JWT quando necessário e guarda snapshots
+  idempotentes por ID e hash do conteúdo. A resposta e a auditoria omitem
+  contato, documento, e-mail e tokens; o payload completo fica restrito ao
+  banco. Essa leitura nunca cria nem atualiza pedido na Central ou no Bling.
 
 O webhook não cria cliente, pedido, pagamento ou lançamento financeiro. Essa
 decisão é intencional enquanto não estiver definido, por entidade e estado, se

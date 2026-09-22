@@ -327,6 +327,25 @@ async function renovarOAuthBling(pool, config, opcoes = {}) {
   }
 }
 
+async function obterAccessTokenBling(pool, config, opcoes = {}) {
+  validarConfiguracao(config);
+  let [[token]] = await pool.query(
+    `SELECT access_token_cifrado, access_expira_em, refresh_expira_em
+       FROM integracao_oauth_tokens WHERE provedor='BLING' LIMIT 1`
+  );
+  if (!token) {
+    throw falha('Autorização Bling necessária', 'AUTORIZACAO_BLING_NECESSARIA', 409);
+  }
+  if (new Date(token.access_expira_em).getTime() <= Date.now()) {
+    await renovarOAuthBling(pool, config, opcoes);
+    [[token]] = await pool.query(
+      `SELECT access_token_cifrado, access_expira_em, refresh_expira_em
+         FROM integracao_oauth_tokens WHERE provedor='BLING' LIMIT 1`
+    );
+  }
+  return descriptografarToken(token.access_token_cifrado, config.encryptionKey);
+}
+
 module.exports = {
   AUTORIZACAO_URL,
   TOKEN_URL,
@@ -334,6 +353,7 @@ module.exports = {
   concluirOAuthBling,
   descriptografarToken,
   iniciarOAuthBling,
+  obterAccessTokenBling,
   obterStatusOAuthBling,
   renovarOAuthBling,
   trocarCodigo

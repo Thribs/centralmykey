@@ -42,6 +42,7 @@ import {
   salvarConfiguracao,
   salvarPermissoesUsuario,
   alterarStatusMapeamentoIntegracao,
+  sincronizarPedidoBling,
   sincronizarPedidoWBuy
 } from './api';
 
@@ -534,6 +535,8 @@ export function Integracoes({ permissoes: permissoesSessao = [] }) {
   });
   const [pedidoWBuyId, setPedidoWBuyId] = useState('');
   const [resultadoWBuy, setResultadoWBuy] = useState('');
+  const [pedidoBlingId, setPedidoBlingId] = useState('');
+  const [resultadoBling, setResultadoBling] = useState('');
   const permissaoIntegracoes = permissoesSessao.find(
     item => item.codigo === 'INTEGRACOES'
   ) || {};
@@ -682,6 +685,23 @@ export function Integracoes({ permissoes: permissoesSessao = [] }) {
         : `Pedido ${resultado.pedido_externo_id} recebido na fila · ${resumo}. ` +
           'Conversão aguarda regras comerciais.');
       setPedidoWBuyId('');
+      await carregar();
+    } catch (falha) {
+      setErro(falha.message);
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  async function sincronizarBling(evento) {
+    evento.preventDefault();
+    setSalvando(true); setErro(''); setResultadoBling('');
+    try {
+      const resultado = await sincronizarPedidoBling(token, pedidoBlingId.trim());
+      setResultadoBling(resultado.idempotente
+        ? `Pedido Bling ${resultado.pedido_externo_id} já estava sincronizado.`
+        : `Pedido Bling ${resultado.pedido_externo_id} recebido sem efeitos comerciais.`);
+      setPedidoBlingId('');
       await carregar();
     } catch (falha) {
       setErro(falha.message);
@@ -931,6 +951,17 @@ export function Integracoes({ permissoes: permissoesSessao = [] }) {
             <RefreshCw size={15} /> Sincronizar pedido WBuy
           </button>
           {resultadoWBuy && <span role="status">{resultadoWBuy}</span>}
+        </form>}
+        {podeEditar && <form className="integration-form" onSubmit={sincronizarBling}>
+          <input aria-label="ID do pedido Bling" inputMode="numeric" pattern="[0-9]+"
+            value={pedidoBlingId} onChange={e => setPedidoBlingId(e.target.value)}
+            placeholder="ID do pedido Bling" required disabled={!oauthBling?.conectado} />
+          <button type="submit" disabled={salvando || !oauthBling?.conectado ||
+            !pedidoBlingId.trim()}>
+            <RefreshCw size={15} /> Sincronizar pedido Bling
+          </button>
+          {!oauthBling?.conectado && <span>Conecte o OAuth Bling para habilitar.</span>}
+          {resultadoBling && <span role="status">{resultadoBling}</span>}
         </form>}
         {podeEditar && <form className="integration-form" onSubmit={salvarMapeamento}>
           <select aria-label="Provedor do mapeamento" value={novoMapeamento.provedor}

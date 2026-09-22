@@ -10,6 +10,7 @@ const {
   processarWebhookSicoob
 } = require('./sicoob-pix');
 const { receberEventoBling } = require('./webhook-bling');
+const { sincronizarPedidoBling } = require('./bling-pedidos');
 const { analisarSnapshotWBuy, sincronizarPedidoWBuy } = require('./wbuy-pedidos');
 const {
   concluirOAuthBling,
@@ -107,6 +108,31 @@ module.exports = function registrarRotasIntegracoes(app, pool, opcoes = {}) {
       );
     }
   });
+
+  app.post('/api/integracoes/bling/pedidos/:id/sincronizar', autenticarToken,
+    exigirPermissao('INTEGRACOES', 'editar'), async (req, res) => {
+      try {
+        const resultado = await sincronizarPedidoBling(
+          pool, await configuracaoBling(), req.params.id, {
+            transporteApi: opcoes.transporteBlingApi,
+            transporteOAuth: opcoes.transporteBlingOAuth,
+            timeoutMs: opcoes.timeoutBlingMs,
+            usuarioId: req.usuario?.id || null,
+            ip: req.ip || null
+          }
+        );
+        return res.status(resultado.idempotente ? 200 : 201).json(resultado);
+      } catch (error) {
+        const status = Number(error.status) || 500;
+        if (status >= 500 && !error.codigo) {
+          console.error('Erro ao sincronizar pedido Bling:', error);
+        }
+        return res.status(status).json({ ok: false,
+          codigo: error.codigo || 'ERRO_BLING',
+          error: status >= 500 && !error.codigo
+            ? 'Erro ao sincronizar pedido Bling' : error.message });
+      }
+    });
 
   app.post('/webhooks/sicoob', async (req, res) => {
     try {

@@ -1466,6 +1466,9 @@ test('integrações administram modelos e mapeamentos sem chamar serviços exter
   await expect(linkBling).toHaveAttribute('href', /bling-e2e\.invalid/);
   await expect(linkBling).toHaveAttribute('href', /state=/);
   await expect(linkBling).not.toHaveAttribute('href', /bling-secret-e2e/);
+  await expect(page.getByLabel('ID do pedido Bling')).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Sincronizar pedido Bling' }))
+    .toBeDisabled();
   await expect(page.getByText('PRONTIDÃO WHATSAPP GM')).toBeVisible();
   const prontidaoWhatsapp = page.locator('.whatsapp-readiness', {
     hasText: 'PRONTIDÃO WHATSAPP GM'
@@ -1927,6 +1930,7 @@ test('visualizador não vê ações de usuário e recebe 403 ao forçar criaçã
     .toHaveCount(0);
   await expect(page.getByPlaceholder('ID externo')).toHaveCount(0);
   await expect(page.getByLabel('ID do pedido WBuy')).toHaveCount(0);
+  await expect(page.getByLabel('ID do pedido Bling')).toHaveCount(0);
   await expect(page.getByLabel('Nome do modelo')).toHaveCount(0);
   await expect(page.getByLabel(/Status do modelo/)).toHaveCount(0);
   await expect(page.getByLabel(/Autoridade de/)).toHaveCount(0);
@@ -1939,6 +1943,12 @@ test('visualizador não vê ações de usuário e recebe 403 ao forçar criaçã
     }
   );
   expect(oauthBlingNegado.status()).toBe(403);
+  const sincronizacaoBlingNegada = await page.request.post(
+    `${API}/api/integracoes/bling/pedidos/123/sincronizar`, {
+      headers: { Authorization: `Bearer ${token}` }
+    }
+  );
+  expect(sincronizacaoBlingNegada.status()).toBe(403);
   await expect(page.getByRole('button', { name: 'Ativar', exact: true }))
     .toHaveCount(0);
   const integracoes = contextoCompleto.integracoes;
