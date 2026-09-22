@@ -7,8 +7,10 @@ da aprovação dos testes.
 
 ## Estado comprovado
 
-- O commit `f200ba5` foi publicado em 21/09/2026, sem merge ou nova tag, com o
+- O commit `188c864` foi publicado em 21/09/2026, sem merge ou nova tag, com o
   serviço ativo e `/health` e `/health/ready` HTTP 200.
+- A instalação publicada usa `qs 6.16.0` e `npm audit --omit=dev` informa zero
+  vulnerabilidades conhecidas.
 - As nove migrações adicionadas depois da tag estão aplicadas e as dez tabelas
   esperadas foram verificadas.
 - `api/validar-migracoes-descartaveis.js` copia somente a estrutura atual para

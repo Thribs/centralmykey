@@ -180,7 +180,7 @@ O próximo marco técnico deve ser **definir a matriz de autoridade WBuy/Bling/C
 ## Progresso posterior à auditoria da v0.5.0
 
 Na branch `feature/pagamento-manual-idempotente`, publicada internamente no
-commit `f200ba5` em 21/09/2026, sem merge ou nova tag:
+commit `188c864` em 21/09/2026, sem merge ou nova tag:
 
 - cobranças Sicoob `PREPARADA` ou `REGISTRADA` cujo prazo terminou agora passam a `EXPIRADA` dentro da criação transacional, recebem histórico e auditoria minimizados e permitem um novo `txid`; o teste prova uma única referência ativa e pagamento posterior da referência renovada;
 - operadores com permissão financeira agora podem gerar a cobrança Sicoob no pedido e copiar o código Pix; a opção só aparece quando cobrança e webhook mTLS estão habilitados, ambos continuam desligados por padrão e o navegador comprova o fluxo em três tamanhos de tela com API simulada;

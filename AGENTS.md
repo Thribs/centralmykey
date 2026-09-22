@@ -9,9 +9,9 @@
 - Repositório remoto: `Thribs/centralmykey`.
 - Autor Git: `thribs-rodolfo <thribs-rodolfo@users.noreply.github.com>`.
 - Baseline validada em 2026-09-18: `main` no commit `065ea3e`, tag `v0.4.1`.
-- Publicação interna validada em 2026-09-21: commit `f200ba5` da branch
+- Publicação interna validada em 2026-09-21: commit `188c864` da branch
   `feature/pagamento-manual-idempotente`, sem merge ou nova tag; backup
-  `/opt/centralmykey-backups/20260922T024404Z`.
+  `/opt/centralmykey-backups/20260922T024848Z`.
 
 O repositório é a fonte das alterações. Nunca desenvolver diretamente nos diretórios publicados. Antes de iniciar trabalho, inspecionar o estado do Git, preservar modificações existentes e criar uma branch. Nunca usar `git reset --hard`.
 
