@@ -1,5 +1,8 @@
 const crypto = require('crypto');
 const { obterConfiguracaoWhatsapp } = require('./configuracoes-integracoes');
+const {
+  processarRespostaFornecedorWhatsapp
+} = require('./resposta-fornecedor-whatsapp');
 
 module.exports = function (app, pool) {
   // ============================================================
@@ -489,6 +492,21 @@ module.exports = function (app, pool) {
           if (duplicadas.length) {
             await conexao.rollback();
             continue;
+          }
+
+          if (tipoConteudo === 'TEXTO') {
+            const respostaFornecedor = await processarRespostaFornecedorWhatsapp(
+              conexao,
+              {
+                telefone,
+                texto: conteudo,
+                mensagemExternaId
+              }
+            );
+            if (respostaFornecedor.processada) {
+              await conexao.commit();
+              continue;
+            }
           }
 
           const [clientes] = await conexao.query(

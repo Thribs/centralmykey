@@ -16,6 +16,9 @@ const {
 } = require('./agendar-entrega-cliente');
 const { cancelarPedido } = require('./cancelar-pedido');
 const {
+  registrarResultadoFornecedor
+} = require('./resultado-fornecedor');
+const {
   prepararPartes,
   registrarPartesPedido,
   listarPartesPedido
@@ -35,38 +38,6 @@ module.exports = function (app, pool) {
       return {};
     }
   }
-
-  function valorResultado(valor) {
-    const texto = String(valor ?? '').trim();
-    return texto || null;
-  }
-
-  function jsonCanonico(valor) {
-    if (Array.isArray(valor)) {
-      return valor.map(jsonCanonico);
-    }
-    if (valor && typeof valor === 'object') {
-      return Object.fromEntries(
-        Object.keys(valor).sort().map(chave => [
-          chave,
-          jsonCanonico(valor[chave])
-        ])
-      );
-    }
-    return valor;
-  }
-
-  function mesmoResultadoFornecedor(registro, dados) {
-    if (!registro) return false;
-    const existente = objetoResultado(registro.resultado);
-    return registro.codigo_mecanico === dados.codigo_mecanico &&
-      registro.codigo_imobilizador === dados.codigo_imobilizador &&
-      registro.codigo_radio === dados.codigo_radio &&
-      registro.pin === dados.pin &&
-      JSON.stringify(jsonCanonico(existente)) ===
-        JSON.stringify(jsonCanonico(dados.resultado));
-  }
-
 
   // ============================================================
   // CENTRAL MYKEY - PEDIDOS DE SENHA
@@ -1084,215 +1055,38 @@ if (bancoProprio.length) {
       });
     }
 
-    const {
-      codigo_mecanico,
-      codigo_imobilizador,
-      codigo_radio,
-      codigo_alarme,
-      pin,
-      resultado
-    } = req.body || {};
-
-    const dadosRecebidos = {
-      codigo_mecanico: valorResultado(codigo_mecanico),
-      codigo_imobilizador: valorResultado(codigo_imobilizador),
-      codigo_radio: valorResultado(codigo_radio),
-      pin: valorResultado(pin),
-      resultado: {
-        ...(resultado && typeof resultado === 'object' ? resultado : {}),
-        codigo_alarme: valorResultado(codigo_alarme)
-      }
-    };
-
-    if (
-      !dadosRecebidos.codigo_mecanico &&
-      !dadosRecebidos.codigo_imobilizador &&
-      !dadosRecebidos.codigo_radio &&
-      !dadosRecebidos.resultado.codigo_alarme &&
-      !dadosRecebidos.pin
-    ) {
-      return res.status(400).json({
-        ok: false,
-        error: 'Informe pelo menos um resultado técnico'
-      });
-    }
-
     const connection = await pool.getConnection();
 
     try {
       await connection.beginTransaction();
-
-      const [pedidos] = await connection.query(
-        `SELECT
-           id,
-           protocolo,
-           status,
-           origem_id,
-           fornecedor_id,
-           custo
-         FROM pedidos_senha
-         WHERE id = ?
-         LIMIT 1
-         FOR UPDATE`,
-        [pedidoId]
-      );
-
-      if (!pedidos.length) {
-        await connection.rollback();
-
-        return res.status(404).json({
-          ok: false,
-          error: 'Pedido não encontrado'
-        });
-      }
-
-      const pedido = pedidos[0];
-
-      if (pedido.status === 'CONCLUIDO' && pedido.fornecedor_id) {
-        const [[resultadoExistente]] = await connection.query(
-          `SELECT
-             id, fornecedor_id, codigo_mecanico,
-             codigo_imobilizador, codigo_radio, pin, resultado
-           FROM pedido_resultados
-           WHERE pedido_id = ?
-             AND fornecedor_id = ?
-             AND status IN ('ENCONTRADO', 'CONFIRMADO')
-           ORDER BY id DESC
-           LIMIT 1`,
-          [pedido.id, pedido.fornecedor_id]
-        );
-
-        if (mesmoResultadoFornecedor(resultadoExistente, dadosRecebidos)) {
-          await connection.rollback();
-          return res.json({
-            ok: true,
-            idempotente: true,
-            message: 'Este resultado já havia sido registrado',
-            pedido: {
-              id: pedido.id,
-              protocolo: pedido.protocolo,
-              status: 'CONCLUIDO',
-              fornecedor_id: pedido.fornecedor_id,
-              custo: Number(pedido.custo || 0)
-            },
-            resultado: {
-              id: resultadoExistente.id,
-              codigo_mecanico: dadosRecebidos.codigo_mecanico,
-              codigo_imobilizador: dadosRecebidos.codigo_imobilizador,
-              codigo_radio: dadosRecebidos.codigo_radio,
-              codigo_alarme: dadosRecebidos.resultado.codigo_alarme,
-              pin: dadosRecebidos.pin
-            }
-          });
-        }
-      }
-
-      if (pedido.status !== 'EM_CONSULTA' || !pedido.fornecedor_id) {
-        await connection.rollback();
-
-        return res.status(409).json({
-          ok: false,
-          error: `Pedido no status ${pedido.status} não pode receber resultado de fornecedor`
-        });
-      }
-
-      const [registro] = await connection.query(
-        `INSERT INTO pedido_resultados (
-          pedido_id,
-          banco_senha_id,
-          origem_id,
-          fornecedor_id,
-          codigo_mecanico,
-          codigo_imobilizador,
-          codigo_radio,
-          pin,
-          resultado,
-          custo,
-          status
-        )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
-          pedido.id,
-          null,
-          pedido.origem_id || 2,
-          pedido.fornecedor_id,
-          dadosRecebidos.codigo_mecanico,
-          dadosRecebidos.codigo_imobilizador,
-          dadosRecebidos.codigo_radio,
-          dadosRecebidos.pin,
-          JSON.stringify(dadosRecebidos.resultado),
-          Number(pedido.custo || 0),
-          'ENCONTRADO'
-        ]
-      );
-
-      await connection.query(
-        `UPDATE pedidos_senha
-         SET status = 'CONCLUIDO',
-             concluido_em = NOW()
-         WHERE id = ?`,
-        [pedido.id]
-      );
-
-      await connection.query(
-        `UPDATE comunicacoes_outbox
-            SET status = 'CANCELADA',
-                erro_codigo = 'RESULTADO_RECEBIDO',
-                erro_detalhe =
-                  'Envio cancelado porque o resultado já foi recebido'
-          WHERE pedido_id = ?
-            AND finalidade = 'CONSULTA_FORNECEDOR'
-            AND status IN ('PENDENTE', 'FALHOU')`,
-        [pedido.id]
-      );
-
-      await connection.query(
-        `INSERT INTO pedido_historico (
-          pedido_id,
-          usuario_id,
-          tipo,
-          descricao,
-          dados
-        )
-        VALUES (?, ?, ?, ?, ?)`,
-        [
-          pedido.id,
-          req.usuario.id,
-          'RESULTADO_RECEBIDO',
-          'Resultado do fornecedor registrado e pedido concluído',
-          JSON.stringify({
-            resultado_id: registro.insertId,
-            fornecedor_id: pedido.fornecedor_id,
-            status_anterior: pedido.status,
-            status_novo: 'CONCLUIDO'
-          })
-        ]
-      );
+      const registrado = await registrarResultadoFornecedor(connection, {
+        pedidoId,
+        dados: req.body || {},
+        usuarioId: req.usuario.id
+      });
 
       await connection.commit();
 
-      return res.status(201).json({
+      return res.status(registrado.idempotente ? 200 : 201).json({
         ok: true,
-        message: 'Resultado registrado e pedido concluído',
-        pedido: {
-          id: pedido.id,
-          protocolo: pedido.protocolo,
-          status: 'CONCLUIDO',
-          fornecedor_id: pedido.fornecedor_id,
-          custo: Number(pedido.custo || 0)
-        },
-        resultado: {
-          id: registro.insertId,
-          codigo_mecanico: dadosRecebidos.codigo_mecanico,
-          codigo_imobilizador: dadosRecebidos.codigo_imobilizador,
-          codigo_radio: dadosRecebidos.codigo_radio,
-          codigo_alarme: dadosRecebidos.resultado.codigo_alarme,
-          pin: dadosRecebidos.pin
-        }
+        idempotente: registrado.idempotente,
+        message: registrado.idempotente
+          ? 'Este resultado já havia sido registrado'
+          : 'Resultado registrado e pedido concluído',
+        pedido: registrado.pedido,
+        resultado: registrado.resultado
       });
 
     } catch (error) {
       await connection.rollback();
+
+      if (error.statusHttp) {
+        return res.status(error.statusHttp).json({
+          ok: false,
+          codigo: error.codigo,
+          error: error.message
+        });
+      }
 
       console.error('Erro ao registrar resultado do pedido:', error);
 
