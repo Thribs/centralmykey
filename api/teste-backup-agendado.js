@@ -93,6 +93,12 @@ async function executar() {
     });
     assert.equal(recuperado.executado, true);
     assert.equal(recuperado.recuperou_trava_obsoleta, true);
+    assert.deepStrictEqual(recuperado.copia_externa, {
+      configurada: false,
+      copiada: false,
+      idempotente: false,
+      retencao: null
+    });
     assert.equal(verificacoes, 1);
     await assert.rejects(fsp.access(trava), erro => erro.code === 'ENOENT');
 

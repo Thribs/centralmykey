@@ -1787,6 +1787,8 @@ test('configuração é confirmada, auditada e monitorada sem expor valor', asyn
   await expect(page.getByText('Estado do backup', { exact: true })).toBeVisible();
   await expect(page.locator('.monitor-card', { hasText: 'Backup' }))
     .toContainText('Verificada');
+  await expect(page.locator('.monitor-card', { hasText: 'Backup' }))
+    .toContainText('Cópia externa');
   const dimensoes = await page.evaluate(() => ({
     largura: document.documentElement.scrollWidth,
     viewport: window.innerWidth

@@ -113,7 +113,8 @@ async function reconciliarAlertasOperacionais(pool, opcoes = {}) {
       outboxProcessando: Number(outbox.processando || 0),
       integracoesFalhas: Number(integracoes.falhas || 0),
       integracoesAtrasadas: Number(integracoes.atrasados || 0),
-      backupStatus: backup.status
+      backupStatus: backup.status,
+      backupExternoStatus: backup.externo?.status || 'NAO_CONFIGURADO'
     };
     const alertas = [
       {
@@ -173,6 +174,27 @@ async function reconciliarAlertasOperacionais(pool, opcoes = {}) {
         dados: {
           status: backup.status,
           limite_horas: backup.limite_horas
+        }
+      },
+      {
+        chave: 'MONITORAMENTO:BACKUP_EXTERNO',
+        ativo: totais.backupExternoStatus !== 'OK',
+        tipo: 'BACKUP_EXTERNO',
+        nivel: totais.backupExternoStatus === 'NAO_CONFIGURADO'
+          ? 'ATENCAO' : 'CRITICA',
+        modulo: 'CONFIGURACOES',
+        titulo: 'Cópia externa do backup exige atenção',
+        mensagem: totais.backupExternoStatus === 'NAO_CONFIGURADO'
+          ? 'A cópia externa do backup ainda não possui destino configurado.'
+          : totais.backupExternoStatus === 'ATRASADO'
+            ? 'A cópia externa do backup ultrapassou o limite operacional.'
+            : totais.backupExternoStatus === 'AUSENTE'
+              ? 'Nenhuma cópia externa gerenciada foi encontrada.'
+              : 'A cópia externa mais recente não passou na verificação de integridade.',
+        entidade: 'backup',
+        dados: {
+          status: totais.backupExternoStatus,
+          limite_horas: backup.externo?.limite_horas || backup.limite_horas
         }
       }
     ];

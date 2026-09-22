@@ -78,6 +78,24 @@ da resposta. `api/teste-monitoramento.js` e `api/teste-alertas-operacionais.js`
 usam MySQL dentro de transação e rollback para comprovar a exibição, a
 persistência estável do alerta e sua resolução.
 
+## Cópia externa
+
+`BACKUP_OFFSITE_DIR` pode apontar para um volume externo já montado no VPS. O
+agendador recusa o destino se ele estiver no mesmo dispositivo do backup local,
+copia o pacote para um nome temporário, valida os quatro artefatos pelos hashes
+do manifesto e só então publica o diretório definitivo. Uma repetição do mesmo
+pacote apenas verifica a cópia existente.
+
+A retenção externa usa 90 dias e mínimo de 30 pacotes por padrão, configuráveis
+por `BACKUP_OFFSITE_RETENCAO_DIAS` e `BACKUP_OFFSITE_RETENCAO_MINIMO`. Se a
+cópia externa falhar, o serviço de backup termina com erro e preserva o pacote
+local já verificado. O Monitoramento distingue `NAO_CONFIGURADO`, `OK`,
+`ATRASADO`, `AUSENTE` e `INVALIDO` sem retornar o caminho do volume.
+
+O volume externo ainda precisa ser fornecido e montado pela infraestrutura. Não
+se deve apontar `BACKUP_OFFSITE_DIR` para outro diretório do mesmo disco apenas
+para eliminar o alerta.
+
 `api/teste-backup-mysql.js` passa um dump fictício compactado pelo mesmo pipeline
 de restauração e pelo cliente MySQL real. O SQL cria apenas uma tabela
 temporária e executa duas inserções em transações revertidas; ao final, outra

@@ -4,6 +4,7 @@ const fs = require('fs');
 const fsp = fs.promises;
 const path = require('path');
 const { criarBackup, verificarBackup } = require('./backup-centralmykey');
+const { copiarBackupExterno } = require('./backup-offsite');
 
 const PADRAO_BACKUP = /^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})Z$/;
 
@@ -149,10 +150,36 @@ async function executarBackupAgendado(opcoes = {}) {
       dias: opcoes.diasRetencao ?? process.env.BACKUP_RETENCAO_DIAS,
       minimo: opcoes.minimoRetido ?? process.env.BACKUP_RETENCAO_MINIMO
     });
+    const destinoExterno = opcoes.destinoExterno === undefined
+      ? process.env.BACKUP_OFFSITE_DIR
+      : opcoes.destinoExterno;
+    const copiarExterno = opcoes.copiarExterno || copiarBackupExterno;
+    const copiaExterna = await copiarExterno(resultado.diretorio, {
+      destinoRaiz: destinoExterno,
+      verificar,
+      obterDispositivo: opcoes.obterDispositivoExterno
+    });
+    let retencaoExterna = null;
+    if (copiaExterna.configurado) {
+      retencaoExterna = await aplicarRetencao({
+        raiz: destinoExterno,
+        agora,
+        dias: opcoes.diasRetencaoExterna ??
+          process.env.BACKUP_OFFSITE_RETENCAO_DIAS ?? 90,
+        minimo: opcoes.minimoRetidoExterno ??
+          process.env.BACKUP_OFFSITE_RETENCAO_MINIMO ?? 30
+      });
+    }
     return {
       executado: true,
       diretorio: resultado.diretorio,
       retencao,
+      copia_externa: {
+        configurada: Boolean(copiaExterna.configurado),
+        copiada: Boolean(copiaExterna.copiado),
+        idempotente: Boolean(copiaExterna.idempotente),
+        retencao: retencaoExterna
+      },
       recuperou_trava_obsoleta: Boolean(trava.recuperouObsoleta)
     };
   } finally {

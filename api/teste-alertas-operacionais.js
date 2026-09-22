@@ -131,7 +131,10 @@ async function executar() {
       obterEstadoBackup: async () => ({
         status: 'ATRASADO', integridade: true,
         ultimo_backup_em: '2026-09-19T03:00:00.000Z',
-        idade_horas: 48, limite_horas: 30
+        idade_horas: 48, limite_horas: 30,
+        externo: { configurado: true, status: 'OK', integridade: true,
+          ultimo_backup_em: '2026-09-21T03:00:00.000Z',
+          idade_horas: 1, limite_horas: 30 }
       })
     });
     assert.strictEqual(primeiro.executado, true);
@@ -141,7 +144,8 @@ async function executar() {
       outboxProcessando: 1,
       integracoesFalhas: 1,
       integracoesAtrasadas: 1,
-      backupStatus: 'ATRASADO'
+      backupStatus: 'ATRASADO',
+      backupExternoStatus: 'OK'
     });
     assert.strictEqual(primeiro.alertas.filter(item => item.alterada).length, 4);
 
@@ -171,7 +175,10 @@ async function executar() {
       obterEstadoBackup: async () => ({
         status: 'ATRASADO', integridade: true,
         ultimo_backup_em: '2026-09-19T03:00:00.000Z',
-        idade_horas: 48, limite_horas: 30
+        idade_horas: 48, limite_horas: 30,
+        externo: { configurado: true, status: 'OK', integridade: true,
+          ultimo_backup_em: '2026-09-21T03:00:00.000Z',
+          idade_horas: 1, limite_horas: 30 }
       })
     });
     assert.strictEqual(segundo.alertas.filter(item => item.alterada).length, 0);
@@ -199,10 +206,52 @@ async function executar() {
       obterEstadoBackup: async () => ({
         status: 'OK', integridade: true,
         ultimo_backup_em: '2026-09-21T03:00:00.000Z',
-        idade_horas: 1, limite_horas: 30
+        idade_horas: 1, limite_horas: 30,
+        externo: { configurado: true, status: 'OK', integridade: true,
+          ultimo_backup_em: '2026-09-21T03:00:00.000Z',
+          idade_horas: 1, limite_horas: 30 }
       })
     });
     assert.strictEqual(resolvido.alertas.filter(item => item.alterada).length, 4);
+    const semDestinoExterno = await reconciliarAlertasOperacionais(pool, {
+      pedidoMinutos: 10,
+      outboxMinutos: 10,
+      eventoMinutos: 10,
+      obterEstadoBackup: async () => ({
+        status: 'OK', integridade: true,
+        ultimo_backup_em: '2026-09-21T03:00:00.000Z',
+        idade_horas: 1, limite_horas: 30,
+        externo: { configurado: false, status: 'NAO_CONFIGURADO',
+          integridade: false, ultimo_backup_em: null,
+          idade_horas: null, limite_horas: 30 }
+      })
+    });
+    assert.strictEqual(
+      semDestinoExterno.alertas.find(item =>
+        item.chave === 'MONITORAMENTO:BACKUP_EXTERNO').status,
+      'ATIVA'
+    );
+    const [[alertaExterno]] = await connection.query(
+      `SELECT nivel, status, dados FROM notificacoes
+        WHERE chave='MONITORAMENTO:BACKUP_EXTERNO'`
+    );
+    assert.strictEqual(alertaExterno.nivel, 'ATENCAO');
+    assert.strictEqual(alertaExterno.status, 'ATIVA');
+    assert.ok(!JSON.stringify(alertaExterno).includes('/backup/'));
+
+    await reconciliarAlertasOperacionais(pool, {
+      pedidoMinutos: 10,
+      outboxMinutos: 10,
+      eventoMinutos: 10,
+      obterEstadoBackup: async () => ({
+        status: 'OK', integridade: true,
+        ultimo_backup_em: '2026-09-21T03:00:00.000Z',
+        idade_horas: 1, limite_horas: 30,
+        externo: { configurado: true, status: 'OK', integridade: true,
+          ultimo_backup_em: '2026-09-21T03:00:00.000Z',
+          idade_horas: 1, limite_horas: 30 }
+      })
+    });
     const [[estadoFinal]] = await connection.query(
       `SELECT SUM(status='ATIVA') AS ativas,
               SUM(status='RESOLVIDA') AS resolvidas
@@ -210,7 +259,7 @@ async function executar() {
     );
     assert.deepStrictEqual(
       [Number(estadoFinal.ativas), Number(estadoFinal.resolvidas)],
-      [0, 4]
+      [0, 5]
     );
   } catch (falha) {
     erro = falha;

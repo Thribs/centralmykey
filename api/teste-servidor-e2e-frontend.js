@@ -1375,7 +1375,12 @@ async function iniciar() {
     obterEstadoBackup: async () => ({
       status: 'OK', integridade: true,
       ultimo_backup_em: '2026-09-21T03:00:00.000Z',
-      idade_horas: 2, limite_horas: 30
+      idade_horas: 2, limite_horas: 30,
+      externo: {
+        configurado: true, status: 'OK', integridade: true,
+        ultimo_backup_em: '2026-09-21T03:00:00.000Z',
+        idade_horas: 2, limite_horas: 30
+      }
     })
   });
   require('./rotas-integracoes')(app, pool, {

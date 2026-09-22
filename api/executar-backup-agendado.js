@@ -11,7 +11,8 @@ executarBackupAgendado().then(resultado => {
   }
   console.log(
     `Backup verificado em ${resultado.diretorio}; ` +
-    `${resultado.retencao.removidos.length} pacote(s) expirado(s) removido(s)`
+    `${resultado.retencao.removidos.length} pacote(s) expirado(s) removido(s); ` +
+    `cópia externa ${resultado.copia_externa.configurada ? 'verificada' : 'não configurada'}`
   );
 }).catch(erro => {
   console.error(`Falha no backup agendado: ${erro.message}`);

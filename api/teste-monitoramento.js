@@ -45,7 +45,12 @@ async function iniciarApi(connection) {
     obterEstadoBackup: async () => ({
       status: 'OK', integridade: true,
       ultimo_backup_em: '2026-09-21T03:00:00.000Z',
-      idade_horas: 2, limite_horas: 30
+      idade_horas: 2, limite_horas: 30,
+      externo: {
+        configurado: true, status: 'OK', integridade: true,
+        ultimo_backup_em: '2026-09-21T03:00:00.000Z',
+        idade_horas: 2, limite_horas: 30
+      }
     })
   });
   const servidor = await new Promise((resolve, reject) => {
@@ -210,6 +215,7 @@ async function executar() {
     assert.strictEqual(atual.corpo.status, 'CRITICO');
     assert.strictEqual(atual.corpo.backup.status, 'OK');
     assert.strictEqual(atual.corpo.backup.integridade, true);
+    assert.strictEqual(atual.corpo.backup.externo.status, 'OK');
     assert.strictEqual(atual.corpo.limites.pedido_atraso_minutos, 10);
     for (const campo of [
       'aguardando_pagamento_atrasados', 'aguardando_dados_atrasados',

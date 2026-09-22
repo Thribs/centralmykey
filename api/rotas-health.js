@@ -183,7 +183,8 @@ module.exports = function registrarRotasHealth(app, pool, opcoes = {}) {
           dados.comunicacoes.pendentes_atrasadas +
           dados.comunicacoes.processando_atrasadas +
           dados.integracoes.recebidos_atrasados +
-          dados.notificacoes.atencoes;
+          dados.notificacoes.atencoes +
+          (dados.backup.externo?.status === 'OK' ? 0 : 1);
 
         return res.json({
           ok: true,

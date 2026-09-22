@@ -173,6 +173,9 @@ export default function Monitoramento() {
             <div><dt>Integridade</dt><dd>{backup.integridade ? 'Verificada' : 'Pendente'}</dd></div>
             <div><dt>Último backup</dt><dd>{dataHora(backup.ultimo_backup_em)}</dd></div>
             <div><dt>Limite</dt><dd>{Number(backup.limite_horas || 0)} horas</dd></div>
+            <div><dt>Cópia externa</dt><dd>{backup.externo?.status || 'NAO_CONFIGURADO'}</dd></div>
+            <div><dt>Integridade externa</dt><dd>{backup.externo?.integridade
+              ? 'Verificada' : 'Pendente'}</dd></div>
           </dl>
         </section>
       </div>

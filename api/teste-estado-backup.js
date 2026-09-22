@@ -21,8 +21,18 @@ async function executar() {
   assert.deepStrictEqual(valido, {
     status: 'OK', integridade: true,
     ultimo_backup_em: '2026-09-21T10:00:00.000Z',
-    idade_horas: 2, limite_horas: 30
+    idade_horas: 2, limite_horas: 30,
+    externo: {
+      configurado: false, status: 'NAO_CONFIGURADO', integridade: false,
+      ultimo_backup_em: null, idade_horas: null, limite_horas: 30
+    }
   });
+
+  const comExterno = await obterEstadoBackup({
+    ...opcoes, destinoExterno: '/backup/externo'
+  });
+  assert.strictEqual(comExterno.externo.configurado, true);
+  assert.strictEqual(comExterno.externo.status, 'OK');
 
   const atrasado = await obterEstadoBackup({
     ...opcoes, listar: async () => backup(31)
