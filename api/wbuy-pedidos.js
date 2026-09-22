@@ -120,6 +120,46 @@ async function analisarPedidoWBuy(connection, pedido) {
   };
 }
 
+async function analisarSnapshotWBuy(pool, eventoId) {
+  const id = Number(eventoId);
+  if (!Number.isSafeInteger(id) || id <= 0) {
+    throw falha('Evento WBuy inválido', 'EVENTO_WBUY_INVALIDO', 400);
+  }
+  const [[evento]] = await pool.query(
+    `SELECT id, referencia_externa, payload, status, recebido_em
+       FROM integracao_eventos
+      WHERE id=? AND provedor='WBUY' AND tipo='ORDER.SNAPSHOT'
+      LIMIT 1`,
+    [id]
+  );
+  if (!evento) {
+    throw falha('Snapshot WBuy não encontrado', 'SNAPSHOT_WBUY_NAO_ENCONTRADO', 404);
+  }
+  let pedido = evento.payload;
+  if (Buffer.isBuffer(pedido)) pedido = pedido.toString('utf8');
+  if (typeof pedido === 'string') {
+    try {
+      pedido = JSON.parse(pedido);
+    } catch {
+      throw falha('Snapshot WBuy inválido', 'SNAPSHOT_WBUY_INVALIDO', 422);
+    }
+  }
+  if (!pedido || typeof pedido !== 'object' || Array.isArray(pedido) ||
+      !Array.isArray(pedido.produtos) || !pedido.status) {
+    throw falha('Snapshot WBuy inválido', 'SNAPSHOT_WBUY_INVALIDO', 422);
+  }
+  return {
+    ok: true,
+    evento: {
+      id: Number(evento.id),
+      referencia_externa: evento.referencia_externa || null,
+      status: evento.status,
+      recebido_em: evento.recebido_em
+    },
+    analise: await analisarPedidoWBuy(pool, pedido)
+  };
+}
+
 async function consultarPedidoWBuy(config, pedidoExternoId, opcoes = {}) {
   const id = pedidoIdValido(pedidoExternoId);
   if (!id) throw falha('ID do pedido WBuy inválido', 'PEDIDO_WBUY_INVALIDO', 400);
@@ -239,6 +279,7 @@ async function sincronizarPedidoWBuy(pool, config, pedidoExternoId, opcoes = {})
 
 module.exports = {
   analisarPedidoWBuy,
+  analisarSnapshotWBuy,
   consultarPedidoWBuy,
   jsonCanonico,
   pedidoIdValido,

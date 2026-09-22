@@ -1537,6 +1537,14 @@ test('integrações administram modelos e mapeamentos sem chamar serviços exter
   await expect(linhaWBuy).toContainText('WBUY');
   await expect(linhaWBuy).toContainText('ORDER.SNAPSHOT');
   await expect(linhaWBuy).toContainText('RECEBIDO');
+  await linhaWBuy.getByRole('button', { name: 'Analisar snapshot' }).click();
+  const previaWBuy = page.locator('.integration-result', {
+    hasText: 'PRÉVIA WBUY · SOMENTE LEITURA'
+  });
+  await expect(previaWBuy).toContainText('0 de 1 produtos mapeados');
+  await expect(previaWBuy).toContainText('Nenhum pedido ou pagamento foi criado');
+  await expect(previaWBuy).toContainText('PRODUTO NAO MAPEADO');
+  await expect(previaWBuy).not.toContainText('Cliente WBuy fictício E2E');
 
   await page.getByLabel('Filtrar status de eventos').selectOption('FALHOU');
   await expect(linhaSicoob).toBeVisible();

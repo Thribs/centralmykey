@@ -986,6 +986,14 @@ export async function sincronizarPedidoWBuy(token, pedidoExternoId) {
   return lerResposta(resposta);
 }
 
+export async function analisarSnapshotWBuy(token, eventoId) {
+  const resposta = await requisitar(
+    `${API_URL}/api/integracoes/wbuy/snapshots/${encodeURIComponent(eventoId)}/analise`,
+    { headers: cabecalhoAutenticado(token) }
+  );
+  return lerResposta(resposta);
+}
+
 export async function listarMapeamentosIntegracoes(token, provedor = '') {
   const parametros = new URLSearchParams();
   if (provedor) parametros.set('provedor', provedor);

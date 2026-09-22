@@ -10,7 +10,7 @@ const {
   processarWebhookSicoob
 } = require('./sicoob-pix');
 const { receberEventoBling } = require('./webhook-bling');
-const { sincronizarPedidoWBuy } = require('./wbuy-pedidos');
+const { analisarSnapshotWBuy, sincronizarPedidoWBuy } = require('./wbuy-pedidos');
 
 module.exports = function registrarRotasIntegracoes(app, pool, opcoes = {}) {
   const autenticarToken = app.locals.autenticarToken;
@@ -208,6 +208,23 @@ module.exports = function registrarRotasIntegracoes(app, pool, opcoes = {}) {
           error: status >= 500 && !error.codigo
             ? 'Integração WBuy indisponível'
             : error.message
+        });
+      }
+    });
+
+  app.get('/api/integracoes/wbuy/snapshots/:eventoId/analise', autenticarToken,
+    exigirPermissao('INTEGRACOES', 'visualizar'), async (req, res) => {
+      try {
+        return res.json(await analisarSnapshotWBuy(pool, req.params.eventoId));
+      } catch (error) {
+        const status = Number(error.status) || 500;
+        if (status >= 500) {
+          console.error('Erro ao analisar snapshot WBuy:', error.codigo || error.message);
+        }
+        return res.status(status).json({
+          ok: false,
+          codigo: error.codigo || 'ERRO_ANALISE_WBUY',
+          error: status >= 500 ? 'Erro ao analisar snapshot WBuy' : error.message
         });
       }
     });

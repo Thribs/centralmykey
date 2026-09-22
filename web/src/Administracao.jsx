@@ -17,6 +17,7 @@ import {
 import {
   alterarModeloWhatsapp,
   alterarStatusUsuario,
+  analisarSnapshotWBuy,
   atualizarUsuario,
   buscarIntegracoes,
   buscarPermissoesUsuario,
@@ -505,6 +506,8 @@ export function Integracoes({ permissoes: permissoesSessao = [] }) {
   const [opcoesAutoridade, setOpcoesAutoridade] = useState([]);
   const [statusMapeamentos, setStatusMapeamentos] = useState([]);
   const [prontidaoComercio, setProntidaoComercio] = useState(null);
+  const [analiseSnapshot, setAnaliseSnapshot] = useState(null);
+  const [analisandoSnapshotId, setAnalisandoSnapshotId] = useState(null);
   const [opcoesStatus, setOpcoesStatus] = useState({ provedores: [], dominios: [], situacoes: [] });
   const [resumo, setResumo] = useState({});
   const [prontidaoWhatsapp, setProntidaoWhatsapp] = useState(null);
@@ -677,6 +680,18 @@ export function Integracoes({ permissoes: permissoesSessao = [] }) {
       setErro(falha.message);
     } finally {
       setSalvando(false);
+    }
+  }
+
+  async function analisarSnapshot(evento) {
+    setAnalisandoSnapshotId(evento.id);
+    setErro('');
+    try {
+      setAnaliseSnapshot(await analisarSnapshotWBuy(token, evento.id));
+    } catch (falha) {
+      setErro(falha.message);
+    } finally {
+      setAnalisandoSnapshotId(null);
     }
   }
 
@@ -1005,7 +1020,13 @@ export function Integracoes({ permissoes: permissoesSessao = [] }) {
                   <td>{evento.erro_codigo || '—'}</td>
                   <td>{dataHora(evento.recebido_em)}</td>
                   <td>
-                    {podeAprovarFinanceiro &&
+                    {evento.provedor === 'WBUY' && evento.tipo === 'ORDER.SNAPSHOT' ? (
+                      <button type="button"
+                        disabled={analisandoSnapshotId === evento.id}
+                        onClick={() => analisarSnapshot(evento)}>
+                        {analisandoSnapshotId === evento.id ? 'Analisando…' : 'Analisar snapshot'}
+                      </button>
+                    ) : podeAprovarFinanceiro &&
                       evento.erro_codigo === 'PAGAMENTO_APOS_CANCELAMENTO_REQUER_ESTORNO' &&
                       evento.pagamento_id && evento.entidade_id ? (
                         <button
@@ -1022,6 +1043,28 @@ export function Integracoes({ permissoes: permissoesSessao = [] }) {
             </tbody>
           </table>
         </div>
+        {analiseSnapshot && <div className="integration-result" role="status">
+          <header><div><span>PRÉVIA WBUY · SOMENTE LEITURA</span>
+            <h3>Snapshot {analiseSnapshot.evento?.referencia_externa ||
+              analiseSnapshot.evento?.id}</h3></div>
+            <button type="button" aria-label="Fechar prévia WBuy"
+              onClick={() => setAnaliseSnapshot(null)}><X size={16} /></button>
+          </header>
+          <p>{Number(analiseSnapshot.analise?.produtos_mapeados || 0)} de{' '}
+            {Number(analiseSnapshot.analise?.produtos_total || 0)} produtos mapeados.
+            {' '}Nenhum pedido ou pagamento foi criado.</p>
+          <ul>{(analiseSnapshot.analise?.pendencias || []).map(item =>
+            <li key={item}>{item.replaceAll('_', ' ')}</li>)}</ul>
+          <div className="admin-table-wrap"><table className="admin-table">
+            <thead><tr><th>Produto externo</th><th>SKU</th><th>Situação</th><th>Serviço MyKey</th></tr></thead>
+            <tbody>{(analiseSnapshot.analise?.itens || []).map((item, indice) =>
+              <tr key={`${item.produto_externo_id || item.sku || 'item'}-${indice}`}>
+                <td>{item.produto_externo_id || '—'}</td><td>{item.sku || '—'}</td>
+                <td>{item.situacao}</td>
+                <td>{item.servico_codigo || '—'}</td>
+              </tr>)}</tbody>
+          </table></div>
+        </div>}
       </div>
 
       <div className="admin-panel integration-panel">

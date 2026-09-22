@@ -181,6 +181,32 @@ async function executar() {
     assert.ok(!JSON.stringify(primeira.corpo.analise).includes('cliente.ficticio'),
       'A análise administrativa não deve expor dados pessoais do cliente');
 
+    const previaResposta = await fetch(
+      `${api.url}/api/integracoes/wbuy/snapshots/${primeira.corpo.evento_id}/analise`
+    );
+    const previa = await previaResposta.json();
+    assert.strictEqual(previaResposta.status, 200);
+    assert.strictEqual(previa.evento.id, primeira.corpo.evento_id);
+    assert.strictEqual(previa.evento.referencia_externa, pedidoId);
+    assert.strictEqual(previa.analise.produtos_mapeados, 1);
+    assert.strictEqual(previa.analise.pronto_para_converter, false);
+    assert.ok(previa.analise.pendencias.includes('PRODUTO_NAO_MAPEADO'));
+    assert.ok(!JSON.stringify(previa).includes('Cliente Fictício WBuy'));
+    assert.ok(!JSON.stringify(previa).includes('cliente.ficticio'));
+    assert.ok(!JSON.stringify(previa).includes('000.000.000-00'));
+
+    const previaInvalida = await fetch(
+      `${api.url}/api/integracoes/wbuy/snapshots/abc/analise`
+    );
+    assert.strictEqual(previaInvalida.status, 400);
+    assert.strictEqual((await previaInvalida.json()).codigo, 'EVENTO_WBUY_INVALIDO');
+    const previaAusente = await fetch(
+      `${api.url}/api/integracoes/wbuy/snapshots/999999999999/analise`
+    );
+    assert.strictEqual(previaAusente.status, 404);
+    assert.strictEqual((await previaAusente.json()).codigo,
+      'SNAPSHOT_WBUY_NAO_ENCONTRADO');
+
     const chamada = api.chamadas.at(-1);
     assert.strictEqual(chamada.url, `https://wbuy.invalid/api/v1/order/${pedidoId}`);
     assert.strictEqual(chamada.opcoes.method, 'GET');
