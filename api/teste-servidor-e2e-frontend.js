@@ -19,6 +19,9 @@ const {
   criarTabelasNotificacoesTemporarias
 } = require('./teste-suporte-notificacoes');
 const {
+  criarTabelaReferenciasPagamentoTemporaria
+} = require('./teste-suporte-referencias-pagamento');
+const {
   prepararPartes,
   registrarPartesPedido
 } = require('./identidades-pedido');
@@ -154,6 +157,7 @@ async function prepararFixture() {
   await criarTabelaOutboxTemporaria(connection);
   await criarTabelaPartesPedidoTemporaria(connection);
   await criarTabelaEstornosTemporaria(connection);
+  await criarTabelaReferenciasPagamentoTemporaria(connection);
   await criarTabelasNotificacoesTemporarias(connection);
   await criarTabelaEventosIntegracaoTemporaria(connection);
   await criarTabelasFechamentoTemporarias(connection);

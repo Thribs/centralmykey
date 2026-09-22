@@ -11,6 +11,9 @@ const {
 const {
   criarTabelaEstornosTemporaria
 } = require('./teste-suporte-estornos');
+const {
+  criarTabelaReferenciasPagamentoTemporaria
+} = require('./teste-suporte-referencias-pagamento');
 
 dotenv.config({
   path: process.env.CENTRALMYKEY_ENV_PATH || path.join(__dirname, '.env'),
@@ -87,6 +90,7 @@ async function executar() {
     await connection.beginTransaction();
     await criarTabelaOutboxTemporaria(connection);
     await criarTabelaEstornosTemporaria(connection);
+    await criarTabelaReferenciasPagamentoTemporaria(connection);
     const [[servico]] = await connection.query(
       "SELECT id FROM servicos WHERE codigo='GM_SENHA' AND ativo=1 LIMIT 1"
     );
@@ -146,6 +150,14 @@ async function executar() {
       22
     );
     const pedidoPago = await criarPedido('P', 'ABERTO');
+
+    await connection.query(
+      `INSERT INTO integracao_referencias_pagamento
+         (provedor, entidade, entidade_id, referencia_provedor, valor, moeda,
+          expiracao_segundos, status)
+       VALUES ('SICOOB', 'PEDIDO', ?, ?, 50, 'BRL', 3600, 'REGISTRADA')`,
+      [pedidoAberto, `SICCANCEL${String(Date.now()).slice(-17)}`]
+    );
 
     const [fatura] = await connection.query(
       `INSERT INTO faturas_clientes
@@ -210,6 +222,10 @@ async function executar() {
     assert.strictEqual(aberto.resposta.status, 200);
     assert.strictEqual(aberto.corpo.cancelamento.status, 'CANCELADO');
     assert.strictEqual(aberto.corpo.cancelamento.idempotente, false);
+    assert.strictEqual(
+      aberto.corpo.cancelamento.referencias_pagamento_canceladas,
+      1
+    );
     const repetido = await cancelar(api.url, pedidoAberto);
     assert.strictEqual(repetido.resposta.status, 200);
     assert.strictEqual(repetido.corpo.cancelamento.idempotente, true);
@@ -263,6 +279,9 @@ async function executar() {
            WHERE id = ? AND valor_total = 0 AND status = 'CANCELADA') AS fatura_ajustada,
          (SELECT COUNT(*) FROM comunicacoes_outbox
            WHERE pedido_id = ? AND status = 'CANCELADA') AS comunicacoes_canceladas,
+         (SELECT COUNT(*) FROM integracao_referencias_pagamento
+           WHERE entidade='PEDIDO' AND entidade_id=?
+             AND status='CANCELADA' AND erro_codigo='PEDIDO_CANCELADO') AS referencias_canceladas,
          (SELECT COUNT(*) FROM pedidos_senha
            WHERE id IN (?, ?) AND status <> 'CANCELADO') AS bloqueados_preservados`,
       [
@@ -274,13 +293,14 @@ async function executar() {
         pedidoFaturado,
         fatura.insertId,
         pedidoFaturado,
+        pedidoAberto,
         pedidoEnviado,
         pedidoPago
       ]
     );
     assert.deepStrictEqual(
       Object.values(estado).map(Number),
-      [3, 1, 1, 0, 1, 1, 2]
+      [3, 1, 1, 0, 1, 1, 1, 2]
     );
   } catch (falha) {
     erro = falha;

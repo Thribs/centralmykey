@@ -90,10 +90,12 @@ async function executar() {
   const fetchOriginal = global.fetch;
   const sufixo = String(Date.now()).slice(-8);
   const protocolo = `TEP${process.pid}${sufixo}`.slice(0, 30);
+  const protocoloCancelado = `TEC${process.pid}${sufixo}`.slice(0, 30);
   const referencia = `E2E-TESTE-${process.pid}-${sufixo}`;
   const eventoId = `evt-sicoob-${process.pid}-${sufixo}`;
   const chassi = `9BGEV11A0${sufixo}`;
   let pedidoId;
+  let pedidoCanceladoId;
   let servidor;
   let erro;
   try {
@@ -125,6 +127,16 @@ async function executar() {
       [protocolo, cliente.id, servico.id, chassi, valor]
     );
     pedidoId = pedido.insertId;
+    const [pedidoCancelado] = await connection.query(
+      `INSERT INTO pedidos_senha
+         (protocolo, cliente_id, servico_id, chassi, marca, modelo, ano,
+          status, valor_venda, custo, moeda)
+       VALUES (?, ?, ?, ?, 'GM', 'TESTE EVENTO CANCELADO', 2026,
+               'CANCELADO', ?, 0, 'BRL')`,
+      [protocoloCancelado, cliente.id, servico.id,
+        `9BGEV12A0${sufixo}`, valor]
+    );
+    pedidoCanceladoId = pedidoCancelado.insertId;
     global.fetch = async url => {
       assert.match(String(url), /^https:\/\/mock\.joelpires\.invalid\//);
       return {
@@ -189,6 +201,20 @@ async function executar() {
     assert.strictEqual(divergente.status, 'FALHOU');
     assert.strictEqual(divergente.codigo, 'VALOR_OU_MOEDA_DIVERGENTE');
 
+    const pagamentoAposCancelamento = await processarEventoPagamentoPedido(pool, {
+      ...dados,
+      evento_externo_id: `${eventoId}-cancelado`,
+      referencia_externa: `${referencia}-cancelado`,
+      pedido_id: pedidoCanceladoId,
+      payload: { pedido: protocoloCancelado },
+      payload_bruto: JSON.stringify({ pedido: protocoloCancelado })
+    });
+    assert.strictEqual(pagamentoAposCancelamento.status, 'FALHOU');
+    assert.strictEqual(
+      pagamentoAposCancelamento.codigo,
+      'PEDIDO_NAO_AGUARDA_PAGAMENTO'
+    );
+
     const [[financeiro]] = await connection.query(
       `SELECT
         (SELECT COUNT(*) FROM pagamentos pg JOIN lancamentos_financeiros lf
@@ -204,7 +230,7 @@ async function executar() {
     );
     assert.deepStrictEqual(
       [...Object.values(financeiro), ...Object.values(eventos)].map(Number),
-      [1, 1, 2, 1]
+      [1, 1, 2, 2]
     );
 
     global.fetch = fetchOriginal;
@@ -213,7 +239,7 @@ async function executar() {
     const resposta = await fetch(`${api.url}/api/integracoes/eventos?provedor=SICOOB`);
     const corpo = await resposta.json();
     assert.strictEqual(resposta.status, 200);
-    assert.strictEqual(corpo.total, 3);
+    assert.strictEqual(corpo.total, 4);
     assert.ok(corpo.dados.every(item => !Object.hasOwn(item, 'payload')),
       'Consulta administrativa não deve expor payload');
   } catch (falha) {
@@ -225,11 +251,11 @@ async function executar() {
       await connection.rollback();
       const [[residuos]] = await connection.query(
         `SELECT
-          (SELECT COUNT(*) FROM pedidos_senha WHERE protocolo=?) AS pedidos,
+          (SELECT COUNT(*) FROM pedidos_senha WHERE protocolo IN (?, ?)) AS pedidos,
           (SELECT COUNT(*) FROM pagamentos WHERE referencia_externa LIKE ?) AS pagamentos,
           (SELECT COUNT(*) FROM lancamentos_financeiros
             WHERE pedido_senha_id=?) AS lancamentos`,
-        [protocolo, `${referencia}%`, pedidoId || -1]
+        [protocolo, protocoloCancelado, `${referencia}%`, pedidoId || -1]
       );
       assert.deepStrictEqual(Object.values(residuos).map(Number), [0, 0, 0],
         'Rollback deve remover pedido e efeitos financeiros fictícios');

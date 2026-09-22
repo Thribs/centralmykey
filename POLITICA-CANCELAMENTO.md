@@ -9,6 +9,13 @@ O código posterior à `v0.5.0` permite cancelar apenas pedidos sem obrigação 
 - nenhuma consulta ao fornecedor enviada, em processamento ou com resultado incerto;
 - item de faturamento semanal, quando existente, ainda pertence a uma fatura `ABERTA`.
 
+Ao cancelar, a Central também muda referências de pagamento `PREPARADA` ou
+`REGISTRADA` para `CANCELADA`. Isso encerra a cobrança no estado local e grava a
+quantidade no histórico e na auditoria do pedido. O cancelamento remoto no
+provedor continua dependendo do contrato homologado; se um pagamento externo
+for confirmado depois do cancelamento, o evento fica `FALHOU` com
+`PEDIDO_NAO_AGUARDA_PAGAMENTO`, sem criar receita, pagamento ou reabrir o pedido.
+
 Nesses casos, o sistema cancela comunicações pendentes, remove o item da fatura aberta, recalcula o total a partir dos itens restantes, cancela a fatura que ficar vazia e zera fornecedor, origem e custo do pedido. O valor armazenado anteriormente na fatura não é usado como base da reconciliação.
 
 ## Pagamento manual já recebido

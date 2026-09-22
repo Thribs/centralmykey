@@ -156,6 +156,19 @@ async function cancelarPedido(connection, {
         AND status IN ('PREVISTO', 'PENDENTE', 'VENCIDO')`,
     [pedido.id]
   );
+  const [referenciasCanceladas] = await connection.query(
+    `UPDATE integracao_referencias_pagamento
+        SET status = 'CANCELADA',
+            erro_codigo = 'PEDIDO_CANCELADO',
+            erro_detalhe = 'Cobrança cancelada junto com o pedido'
+      WHERE entidade = 'PEDIDO'
+        AND entidade_id = ?
+        AND status IN ('PREPARADA', 'REGISTRADA')`,
+    [pedido.id]
+  );
+  const quantidadeReferenciasCanceladas = Number(
+    referenciasCanceladas.affectedRows || 0
+  );
   await connection.query(
     `UPDATE pedidos_senha
         SET status = 'CANCELADO', custo = 0,
@@ -170,7 +183,8 @@ async function cancelarPedido(connection, {
     fornecedor_id: null,
     origem_id: null,
     motivo: motivoNormalizado,
-    faturas_ajustadas: faturasAjustadas
+    faturas_ajustadas: faturasAjustadas,
+    referencias_pagamento_canceladas: quantidadeReferenciasCanceladas
   };
   await connection.query(
     `INSERT INTO pedido_historico
@@ -211,7 +225,8 @@ async function cancelarPedido(connection, {
     pedido_id: pedido.id,
     protocolo: pedido.protocolo,
     status: 'CANCELADO',
-    faturas_ajustadas: faturasAjustadas
+    faturas_ajustadas: faturasAjustadas,
+    referencias_pagamento_canceladas: quantidadeReferenciasCanceladas
   };
 }
 
