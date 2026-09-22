@@ -34,6 +34,11 @@ pois o cadastro atual não possui cotação nem limite por moeda. Isso impede so
 monetárias inválidas; uma futura vertical nessas moedas deverá adicionar uma
 política própria antes de ser marcada como operacional.
 
+A listagem administrativa mostra, para cada cliente semanal, o saldo disponível
+e o limite em BRL. O comprometimento exibido vem das mesmas faturas `ABERTA`,
+`FECHADA` e `VENCIDA` consideradas na criação do pedido. Cliente sem limite
+configurado é identificado como "Sem teto automático".
+
 Cada cliente pode ter um único plano VIP. Os estados disponíveis são:
 
 - `ATIVO`;
@@ -49,6 +54,7 @@ ainda dependem da definição do meio de pagamento e serão tratadas no marco de
 integrações financeiras.
 
 O teste funcional `api/teste-clientes-vip.js` percorre as rotas HTTP de criação,
-validação, duplicidade, busca, detalhe, edição, bloqueio, reativação e ciclo VIP.
+validação, duplicidade, busca, detalhe, exposição de crédito, edição, bloqueio,
+reativação e ciclo VIP.
 Ele usa registros fictícios dentro de uma transação MySQL e confirma o rollback
 de clientes, plano VIP e auditoria ao final.

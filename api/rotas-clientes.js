@@ -213,6 +213,12 @@ module.exports = function registrarRotasClientes(app, pool) {
                   c.prazo_pagamento_dias, c.limite_credito,
                   c.credito_status, c.credito_observacao,
                   c.ativo, c.criado_em,
+                  (SELECT COALESCE(SUM(f.valor_total), 0)
+                     FROM faturas_clientes f
+                    WHERE f.cliente_id = c.id
+                      AND f.moeda = 'BRL'
+                      AND f.status IN ('ABERTA', 'FECHADA', 'VENCIDA')
+                  ) AS credito_comprometido_brl,
                   v.status AS vip_status, v.valor_mensalidade,
                   v.inicio AS vip_inicio, v.proximo_vencimento,
                   CASE
@@ -270,7 +276,13 @@ module.exports = function registrarRotasClientes(app, pool) {
                   (SELECT COUNT(*) FROM pedidos_senha p
                     WHERE p.cliente_id = c.id) AS total_pedidos,
                   (SELECT COUNT(*) FROM faturas_clientes f
-                    WHERE f.cliente_id = c.id) AS total_faturas
+                    WHERE f.cliente_id = c.id) AS total_faturas,
+                  (SELECT COALESCE(SUM(f.valor_total), 0)
+                     FROM faturas_clientes f
+                    WHERE f.cliente_id = c.id
+                      AND f.moeda = 'BRL'
+                      AND f.status IN ('ABERTA', 'FECHADA', 'VENCIDA')
+                  ) AS credito_comprometido_brl
              FROM clientes c
              LEFT JOIN cliente_vip v ON v.cliente_id = c.id
             WHERE c.id = ? LIMIT 1`,

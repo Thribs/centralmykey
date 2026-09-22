@@ -84,6 +84,13 @@ const SERVICO_CATALOGO_INICIAL = {
   moeda: 'BRL', exige_placa: 0, exige_chassi: 0, exige_documento: 0, ativo: 1
 };
 
+function dinheiroBRL(valor) {
+  return Number(valor || 0).toLocaleString('pt-BR', {
+    style: 'currency',
+    currency: 'BRL'
+  });
+}
+
 function obterToken() {
   const chaves = Object.keys(localStorage);
   const preferenciais = [
@@ -1230,6 +1237,19 @@ function TelaCadastro({ tipo, buscaInicial = '', permissoes = [] }) {
                         <span className={`registry-badge credit-${registro.credito_status}`}>
                           {registro.credito_status || 'LIBERADO'}
                         </span>
+                        {registro.tipo_cobranca === 'FATURAMENTO_SEMANAL' && (
+                          registro.limite_credito === null ? (
+                            <small>Sem teto automático</small>
+                          ) : (
+                            <small title={`${dinheiroBRL(registro.credito_comprometido_brl)} comprometidos`}>
+                              Saldo: {dinheiroBRL(Math.max(
+                                Number(registro.limite_credito) -
+                                Number(registro.credito_comprometido_brl || 0),
+                                0
+                              ))} de {dinheiroBRL(registro.limite_credito)}
+                            </small>
+                          )
+                        )}
                       </td>
                     </>
                   ) : (

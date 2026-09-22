@@ -154,6 +154,15 @@ async function executar() {
     }));
     assert.strictEqual(duplicado.resposta.status, 409);
 
+    await connection.query(
+      `INSERT INTO faturas_clientes
+         (cliente_id, periodo_inicio, periodo_fim, vencimento, moeda,
+          valor_total, status, observacao)
+       VALUES (?, '2026-09-14', '2026-09-20', '2026-09-27', 'BRL',
+               75, 'ABERTA', ?)`,
+      [clienteId, `Exposição fictícia ${sufixo}`]
+    );
+
     const lista = await requisitar(
       `${api.url}/api/clientes?busca=${encodeURIComponent(sufixo)}`
     );
@@ -162,6 +171,7 @@ async function executar() {
     assert.strictEqual(lista.corpo.dados[0].id, clienteId);
     assert.strictEqual(lista.corpo.dados[0].vip_status, 'ATIVO');
     assert.strictEqual(Number(lista.corpo.dados[0].vip_elegivel), 1);
+    assert.strictEqual(Number(lista.corpo.dados[0].credito_comprometido_brl), 75);
 
     const detalhe = await requisitar(`${api.url}/api/clientes/${clienteId}`);
     assert.strictEqual(detalhe.resposta.status, 200);
@@ -170,6 +180,7 @@ async function executar() {
     assert.strictEqual(Number(detalhe.corpo.cliente.dia_fechamento), 5);
     assert.strictEqual(Number(detalhe.corpo.cliente.prazo_pagamento_dias), 7);
     assert.strictEqual(Number(detalhe.corpo.cliente.limite_credito), 200);
+    assert.strictEqual(Number(detalhe.corpo.cliente.credito_comprometido_brl), 75);
 
     const dadosEdicao = {
       nome: `${marcador} EDITADO`,
@@ -269,12 +280,13 @@ async function executar() {
         `SELECT
            (SELECT COUNT(*) FROM clientes WHERE nome LIKE ?) AS clientes,
            (SELECT COUNT(*) FROM cliente_vip WHERE cliente_id = ?) AS vips,
+           (SELECT COUNT(*) FROM faturas_clientes WHERE cliente_id = ?) AS faturas,
            (SELECT COUNT(*) FROM auditoria
              WHERE entidade = 'clientes' AND entidade_id = ?) AS auditorias`,
-        [`${marcador}%`, clienteId || -1, String(clienteId || -1)]
+        [`${marcador}%`, clienteId || -1, clienteId || -1, String(clienteId || -1)]
       );
-      assert.deepStrictEqual(Object.values(residuos).map(Number), [0, 0, 0],
-        'Rollback deve remover cliente, VIP e auditoria fictícios');
+      assert.deepStrictEqual(Object.values(residuos).map(Number), [0, 0, 0, 0],
+        'Rollback deve remover cliente, VIP, fatura e auditoria fictícios');
     } catch (falhaLimpeza) {
       erro = erro || falhaLimpeza;
     } finally {

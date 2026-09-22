@@ -1220,6 +1220,7 @@ test('clientes VIP e fornecedores são cadastrados pelas rotas reais', async ({ 
   let linha = page.locator('tr', { hasText: contexto.cliente_nome });
   await expect(linha).toContainText('Semanal');
   await expect(linha).toContainText('VIP: ATIVO');
+  await expect(linha).toContainText('Saldo: R$ 500,00 de R$ 500,00');
   page.once('dialog', dialogo => dialogo.accept());
   await linha.getByRole('button', { name: `Bloquear ${contexto.cliente_nome}` }).click();
   await page.getByLabel('Status do cadastro').selectOption('0');
