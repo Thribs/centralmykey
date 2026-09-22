@@ -24,6 +24,16 @@ const INICIAL = {
   pagador_email: ''
 };
 
+function precoParaCliente(servico, cliente) {
+  const temPrecoVip = servico.preco_vip !== null &&
+    servico.preco_vip !== undefined && servico.preco_vip !== '';
+  const vip = Number(cliente?.vip_elegivel) === 1 && temPrecoVip;
+  return {
+    valor: vip ? servico.preco_vip : servico.preco_base,
+    tabela: vip ? 'VIP' : 'BASE'
+  };
+}
+
 export default function NovoPedido({
   token,
   aoFechar,
@@ -173,11 +183,13 @@ export default function NovoPedido({
                   required
                 >
                   <option value="">Selecione o serviço</option>
-                  {servicos.map(servico => (
-                    <option key={servico.id} value={servico.id}>
-                      {servico.nome} — {servico.moeda || 'BRL'} {servico.preco_base}
-                    </option>
-                  ))}
+                  {servicos.map(servico => {
+                    const preco = precoParaCliente(servico, clienteSelecionado);
+                    return <option key={servico.id} value={servico.id}>
+                      {servico.nome} — {preco.tabela === 'VIP' ? 'VIP ' : ''}
+                      {servico.moeda || 'BRL'} {preco.valor}
+                    </option>;
+                  })}
                 </select>
               </label>
 

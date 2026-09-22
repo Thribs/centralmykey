@@ -116,6 +116,16 @@ async function executar() {
         telefoneTeste
       ]
     );
+    await connection.query(
+      `INSERT INTO cliente_vip
+         (cliente_id, status, valor_mensalidade, inicio, proximo_vencimento)
+       VALUES (?, 'ATIVO', 90, '2026-09-01', '2026-10-19')`,
+      [cliente.insertId]
+    );
+    await connection.query(
+      'UPDATE servicos SET preco_base=100, preco_vip=75 WHERE id=?',
+      [servico.id]
+    );
 
     const [servicoNaoSuportado] = await connection.query(
       `INSERT INTO servicos
@@ -243,6 +253,8 @@ async function executar() {
     assert.strictEqual(resposta.status, 201);
     assert.strictEqual(corpo.ok, true);
     assert.strictEqual(corpo.pedido.status, 'EM_CONSULTA');
+    assert.strictEqual(Number(corpo.pedido.valor_venda), 75);
+    assert.strictEqual(corpo.pedido.tabela_preco, 'VIP');
     assert.strictEqual(corpo.pedido.fornecedor_id, fornecedor.insertId);
     assert.strictEqual(corpo.pedido.envio_fornecedor.status, 'PENDENTE');
     protocolo = corpo.pedido.protocolo;
@@ -341,6 +353,10 @@ async function executar() {
       "UPDATE clientes SET tipo_cobranca = 'ANTECIPADO' WHERE id = ?",
       [cliente.insertId]
     );
+    await connection.query(
+      "UPDATE cliente_vip SET proximo_vencimento='2026-09-18' WHERE cliente_id=?",
+      [cliente.insertId]
+    );
     const respostaAntecipada = await global.fetch(`${api.url}/api/pedidos`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -356,6 +372,8 @@ async function executar() {
     const antecipada = await respostaAntecipada.json();
     assert.strictEqual(respostaAntecipada.status, 201);
     assert.strictEqual(antecipada.pedido.status, 'AGUARDANDO_PAGAMENTO');
+    assert.strictEqual(Number(antecipada.pedido.valor_venda), 100);
+    assert.strictEqual(antecipada.pedido.tabela_preco, 'BASE');
     protocoloAntecipado = antecipada.pedido.protocolo;
     const [[partesAntecipadas]] = await connection.query(
       `SELECT COUNT(*) AS total, COUNT(DISTINCT nome) AS nomes
@@ -531,7 +549,8 @@ async function executar() {
     const [[periodoFatura]] = await connection.query(
       `SELECT DATE_FORMAT(f.periodo_inicio, '%Y-%m-%d') AS inicio,
               DATE_FORMAT(f.periodo_fim, '%Y-%m-%d') AS fim,
-              DATE_FORMAT(f.vencimento, '%Y-%m-%d') AS vencimento
+              DATE_FORMAT(f.vencimento, '%Y-%m-%d') AS vencimento,
+              f.valor_total, fi.valor AS valor_item
          FROM fatura_itens fi
          INNER JOIN faturas_clientes f ON f.id=fi.fatura_id
         WHERE fi.pedido_senha_id=?`,
@@ -540,7 +559,9 @@ async function executar() {
     assert.deepStrictEqual(periodoFatura, {
       inicio: '2026-09-17',
       fim: '2026-09-23',
-      vencimento: '2026-09-26'
+      vencimento: '2026-09-26',
+      valor_total: '150.00',
+      valor_item: '75.00'
     });
   } catch (falha) {
     erro = falha;

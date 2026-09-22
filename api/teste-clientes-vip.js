@@ -97,6 +97,9 @@ async function executar() {
 
   try {
     await connection.beginTransaction();
+    await connection.query(
+      "SET timestamp = UNIX_TIMESTAMP('2026-09-21 12:00:00')"
+    );
     const [[usuario]] = await connection.query(
       "SELECT id, nome FROM usuarios WHERE status='ATIVO' ORDER BY id LIMIT 1"
     );
@@ -158,6 +161,7 @@ async function executar() {
     assert.strictEqual(lista.corpo.total, 1);
     assert.strictEqual(lista.corpo.dados[0].id, clienteId);
     assert.strictEqual(lista.corpo.dados[0].vip_status, 'ATIVO');
+    assert.strictEqual(Number(lista.corpo.dados[0].vip_elegivel), 1);
 
     const detalhe = await requisitar(`${api.url}/api/clientes/${clienteId}`);
     assert.strictEqual(detalhe.resposta.status, 200);

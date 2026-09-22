@@ -11,6 +11,11 @@ de fechamento, incluindo o próprio dia quando o pedido é criado nele, começa
 seis dias antes e vence após o prazo configurado. No modo antecipado, dia de
 fechamento e prazo semanal são removidos.
 
+Pedidos usam `preco_vip` somente quando o plano está `ATIVO` e o próximo
+vencimento é nulo ou ainda não passou. Um plano vencido usa `preco_base` mesmo
+antes da reconciliação administrativa do estado, e o pedido registra a tabela
+de preço aplicada.
+
 O limite de crédito é cadastrado e exibido, mas ainda não bloqueia pedidos. A
 política precisa definir quais faturas entram no saldo e como comparar serviços
 em BRL, USD e PYG antes dessa automação ser ativada.

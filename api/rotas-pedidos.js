@@ -27,6 +27,7 @@ const {
   calcularPeriodoFaturamentoSemanal
 } = require('./periodo-faturamento-semanal');
 const { servicoImplementado } = require('./servicos-implementados');
+const { calcularPrecoPedido } = require('./preco-pedido');
 
 module.exports = function (app, pool) {
   const autenticarToken = app.locals.autenticarToken;
@@ -182,7 +183,7 @@ module.exports = function (app, pool) {
 
 const [clientes] = await connection.query(
   `SELECT
-      id,
+      clientes.id AS id,
       nome,
       tipo_cobranca,
       dia_fechamento,
@@ -194,13 +195,21 @@ const [clientes] = await connection.query(
       cpf,
       cnpj,
       email,
+      vip.status AS vip_status,
+      vip.proximo_vencimento AS vip_proximo_vencimento,
+      CASE
+        WHEN vip.status = 'ATIVO'
+         AND (vip.proximo_vencimento IS NULL OR vip.proximo_vencimento >= CURDATE())
+        THEN 1 ELSE 0
+      END AS vip_elegivel,
       (SELECT ct.telefone_normalizado
          FROM cliente_telefones ct
         WHERE ct.cliente_id = clientes.id
         ORDER BY ct.id LIMIT 1) AS telefone_alternativo
    FROM clientes
-   WHERE id = ?
-     AND ativo = 1
+   LEFT JOIN cliente_vip vip ON vip.cliente_id = clientes.id
+   WHERE clientes.id = ?
+     AND clientes.ativo = 1
    LIMIT 1
    FOR UPDATE`,
   [cliente_id]
@@ -216,6 +225,7 @@ if (!clientes.length) {
 }
 
 const cliente = clientes[0];
+const precoPedido = calcularPrecoPedido(servico, cliente);
 let partesPedido;
 try {
   partesPedido = prepararPartes(cliente, comprador, pagador);
@@ -287,7 +297,7 @@ if (cliente.tipo_cobranca === 'ANTECIPADO') {
       marca || servico.marca || null,
       modelo || null,
       ano || null,
-      Number(servico.preco_base || 0),
+      precoPedido.valor,
       req.usuario.id
     ]
   );
@@ -313,7 +323,8 @@ if (cliente.tipo_cobranca === 'ANTECIPADO') {
       'Pedido criado aguardando confirmacao do pagamento',
       JSON.stringify({
         tipo_cobranca: cliente.tipo_cobranca,
-        valor: Number(servico.preco_base || 0),
+        valor: precoPedido.valor,
+        tabela_preco: precoPedido.tabela,
         moeda: servico.moeda || 'BRL'
       })
     ]
@@ -328,7 +339,8 @@ if (cliente.tipo_cobranca === 'ANTECIPADO') {
       status: 'AGUARDANDO_PAGAMENTO',
       servico_id: Number(servico_id),
       tipo_cobranca: cliente.tipo_cobranca,
-      valor: Number(servico.preco_base || 0),
+      valor: precoPedido.valor,
+      tabela_preco: precoPedido.tabela,
       moeda: servico.moeda || 'BRL'
     },
     ip: req.ip || null
@@ -344,7 +356,8 @@ if (cliente.tipo_cobranca === 'ANTECIPADO') {
       protocolo: protocoloPagamento,
       cliente: cliente.nome,
       servico: servico.nome,
-      valor_venda: Number(servico.preco_base || 0),
+      valor_venda: precoPedido.valor,
+      tabela_preco: precoPedido.tabela,
       moeda: servico.moeda || 'BRL',
       status: 'AGUARDANDO_PAGAMENTO',
       pagamento_necessario: true
@@ -493,7 +506,7 @@ if (bancoProprio.length) {
           modelo || null,
           ano || null,
           statusPedidoCriado || (fornecedorId ? 'EM_CONSULTA' : 'ABERTO'),
-          Number(servico.preco_base || 0),
+          precoPedido.valor,
           custo,
           fornecedorId,
           origemId,
@@ -553,7 +566,7 @@ if (bancoProprio.length) {
           periodoFatura.fim,
           periodoFatura.vencimento,
           servico.moeda || 'BRL',
-          Number(servico.preco_base || 0)
+          precoPedido.valor
         ]
       );
 
@@ -584,7 +597,7 @@ if (bancoProprio.length) {
         [
           fatura.insertId,
           resultado.insertId,
-          Number(servico.preco_base || 0)
+          precoPedido.valor
         ]
       );
 
@@ -608,7 +621,8 @@ if (bancoProprio.length) {
             dia_fechamento: periodoFatura.diaFechamento,
             prazo_pagamento_dias:
               periodoFatura.prazoPagamentoDias,
-            valor: Number(servico.preco_base || 0),
+            valor: precoPedido.valor,
+            tabela_preco: precoPedido.tabela,
             moeda: servico.moeda || 'BRL'
           })
         ]
@@ -750,7 +764,8 @@ if (bancoProprio.length) {
           status: statusFinalPedido,
           servico_id: Number(servico_id),
           tipo_cobranca: cliente.tipo_cobranca,
-          valor: Number(servico.preco_base || 0),
+          valor: precoPedido.valor,
+          tabela_preco: precoPedido.tabela,
           moeda: servico.moeda || 'BRL',
           fornecedor_atribuido: Boolean(fornecedorId),
           resultado_automatico: Boolean(bancoProprio.length)
@@ -771,7 +786,8 @@ if (bancoProprio.length) {
           custo,
           envio_fornecedor: envioFornecedor,
           entrega_cliente: entregaCliente,
-          valor_venda: Number(servico.preco_base || 0),
+          valor_venda: precoPedido.valor,
+          tabela_preco: precoPedido.tabela,
           status: statusFinalPedido,
             resultado_automatico: bancoProprio.length
               ? {

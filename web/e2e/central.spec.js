@@ -236,6 +236,7 @@ test('formulários GM permanecem acessíveis em celular tablet e desktop', async
           id: 720001,
           nome: 'CLIENTE RESPONSIVO E2E',
           telefone: '5500000000000',
+          vip_elegivel: 1,
           ativo: 1
         }]
       });
@@ -249,6 +250,7 @@ test('formulários GM permanecem acessíveis em celular tablet e desktop', async
           codigo: 'GM_SENHA',
           nome: 'Senha GM',
           preco_base: 60,
+          preco_vip: 50,
           moeda: 'BRL',
           exige_placa: 0,
           exige_chassi: 1,
@@ -338,6 +340,9 @@ test('formulários GM permanecem acessíveis em celular tablet e desktop', async
     await page.getByRole('button', { name: 'Novo pedido' }).click();
     let modal = page.getByRole('dialog', { name: 'Novo pedido' });
     await modal.locator('select[name="cliente_id"]').selectOption('720001');
+    await expect(modal.locator('select[name="servico_id"] option', {
+      hasText: 'Senha GM'
+    })).toContainText('VIP BRL 50');
     await modal.locator('select[name="servico_id"]').selectOption('730001');
     await expect(modal.getByLabel('Chassi')).toHaveAttribute('required', '');
     await expect(modal.getByLabel('Placa para consulta')).toHaveCount(0);

@@ -214,7 +214,13 @@ module.exports = function registrarRotasClientes(app, pool) {
                   c.credito_status, c.credito_observacao,
                   c.ativo, c.criado_em,
                   v.status AS vip_status, v.valor_mensalidade,
-                  v.inicio AS vip_inicio, v.proximo_vencimento
+                  v.inicio AS vip_inicio, v.proximo_vencimento,
+                  CASE
+                    WHEN v.status = 'ATIVO'
+                     AND (v.proximo_vencimento IS NULL
+                          OR v.proximo_vencimento >= CURDATE())
+                    THEN 1 ELSE 0
+                  END AS vip_elegivel
              FROM clientes c
              LEFT JOIN cliente_vip v ON v.cliente_id = c.id
              ${filtro}
