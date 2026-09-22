@@ -1290,7 +1290,30 @@ test('integrações administram modelos e mapeamentos sem chamar serviços exter
   await expect(page.locator('.integration-grid article', { hasText: 'API Joel Pires' }))
     .toBeVisible();
 
-  await page.getByLabel('Provedor').selectOption('WBUY');
+  const linhaBling = page.locator('tr', {
+    hasText: contexto.referencia_evento_bling
+  });
+  const linhaSicoob = page.locator('tr', {
+    hasText: contexto.referencia_evento_sicoob
+  });
+  await expect(page.getByRole('heading', {
+    name: 'Recebimentos e processamento'
+  })).toBeVisible();
+  await expect(linhaBling).toContainText('BLING');
+  await expect(linhaBling).toContainText('order.updated');
+  await expect(linhaBling).toContainText('RECEBIDO');
+  await expect(linhaBling).toContainText('2');
+  await expect(linhaSicoob).toContainText('REFERENCIA_NAO_ENCONTRADA');
+
+  await page.getByLabel('Filtrar status de eventos').selectOption('FALHOU');
+  await expect(linhaSicoob).toBeVisible();
+  await expect(linhaBling).toHaveCount(0);
+  await page.getByLabel('Filtrar status de eventos').selectOption('');
+  await page.getByLabel('Filtrar provedor de eventos').selectOption('BLING');
+  await expect(linhaBling).toBeVisible();
+  await expect(linhaSicoob).toHaveCount(0);
+
+  await page.getByLabel('Provedor do mapeamento').selectOption('WBUY');
   await page.getByPlaceholder('ID externo').fill(contexto.produto_externo_id);
   await page.getByPlaceholder('SKU').fill(contexto.sku);
   await page.getByPlaceholder('Nome do produto').fill(contexto.nome_externo);

@@ -487,6 +487,9 @@ export function Integracoes({ permissoes: permissoesSessao = [] }) {
   const [mapeamentos, setMapeamentos] = useState([]);
   const [servicos, setServicos] = useState([]);
   const [resumo, setResumo] = useState({});
+  const [filtrosEventos, setFiltrosEventos] = useState({
+    provedor: '', status: ''
+  });
   const [erro, setErro] = useState('');
   const [novo, setNovo] = useState({
     nome: '',
@@ -510,7 +513,7 @@ export function Integracoes({ permissoes: permissoesSessao = [] }) {
         dadosMapeamentos] = await Promise.all([
         buscarIntegracoes(token),
         listarModelosWhatsapp(token),
-        listarEventosIntegracao(token, { limite: 30 }),
+        listarEventosIntegracao(token, { ...filtrosEventos, limite: 30 }),
         listarMapeamentosIntegracoes(token)
       ]);
 
@@ -523,7 +526,7 @@ export function Integracoes({ permissoes: permissoesSessao = [] }) {
     } catch (falha) {
       setErro(falha.message);
     }
-  }, [token]);
+  }, [token, filtrosEventos]);
 
   useEffect(() => {
     carregar();
@@ -627,7 +630,7 @@ export function Integracoes({ permissoes: permissoesSessao = [] }) {
           </div>
         </header>
         {podeEditar && <form className="integration-form" onSubmit={salvarMapeamento}>
-          <select aria-label="Provedor" value={novoMapeamento.provedor}
+          <select aria-label="Provedor do mapeamento" value={novoMapeamento.provedor}
             onChange={e => setNovoMapeamento({ ...novoMapeamento, provedor: e.target.value })}>
             <option value="WBUY">WBuy</option><option value="BLING">Bling</option>
           </select>
@@ -679,27 +682,55 @@ export function Integracoes({ permissoes: permissoesSessao = [] }) {
       <div className="admin-panel integration-panel">
         <header>
           <div>
-            <span>EVENTOS FINANCEIROS</span>
-            <h2>Recebimentos das integrações</h2>
+            <span>EVENTOS DE INTEGRAÇÃO</span>
+            <h2>Recebimentos e processamento</h2>
           </div>
           <div className="integration-counts">
             <span>Últimos: <strong>{eventos.length}</strong></span>
           </div>
         </header>
+        <div className="integration-form">
+          <select aria-label="Filtrar provedor de eventos"
+            value={filtrosEventos.provedor}
+            onChange={e => setFiltrosEventos({
+              ...filtrosEventos, provedor: e.target.value
+            })}>
+            <option value="">Todos os provedores</option>
+            <option value="SICOOB">Sicoob</option>
+            <option value="PLUGPAY">PlugPay</option>
+            <option value="WBUY">WBuy</option>
+            <option value="BLING">Bling</option>
+          </select>
+          <select aria-label="Filtrar status de eventos"
+            value={filtrosEventos.status}
+            onChange={e => setFiltrosEventos({
+              ...filtrosEventos, status: e.target.value
+            })}>
+            <option value="">Todos os status</option>
+            <option value="RECEBIDO">Recebido</option>
+            <option value="PROCESSADO">Processado</option>
+            <option value="IGNORADO">Ignorado</option>
+            <option value="FALHOU">Falhou</option>
+          </select>
+        </div>
         <div className="admin-table-wrap">
           <table className="admin-table">
-            <thead><tr><th>Provedor</th><th>Evento</th><th>Referência</th><th>Pedido</th><th>Status</th><th>Recebido</th></tr></thead>
+            <thead><tr><th>Provedor</th><th>Evento</th><th>Referência</th><th>Entidade</th><th>Status</th><th>Tentativas</th><th>Falha</th><th>Recebido</th></tr></thead>
             <tbody>
               {eventos.length === 0 && (
-                <tr><td colSpan="6" className="admin-empty">Nenhum evento financeiro recebido.</td></tr>
+                <tr><td colSpan="8" className="admin-empty">Nenhum evento encontrado.</td></tr>
               )}
               {eventos.map(evento => (
                 <tr key={evento.id}>
                   <td><strong>{evento.provedor}</strong></td>
                   <td>{evento.tipo}</td>
                   <td>{evento.referencia_externa || '—'}</td>
-                  <td>{evento.entidade_id || '—'}</td>
+                  <td>{evento.entidade
+                    ? `${evento.entidade}${evento.entidade_id ? ` · ${evento.entidade_id}` : ''}`
+                    : '—'}</td>
                   <td><span className={`admin-status status-${evento.status}`}>{evento.status}</span></td>
+                  <td>{Number(evento.tentativas || 0)}</td>
+                  <td>{evento.erro_codigo || '—'}</td>
                   <td>{dataHora(evento.recebido_em)}</td>
                 </tr>
               ))}

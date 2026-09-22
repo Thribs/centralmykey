@@ -368,6 +368,23 @@ async function prepararFixture() {
      VALUES (?, ?, 'Configuração fictícia para E2E integrado')`,
     [chaveConfiguracao, valorConfiguracaoInicial]
   );
+  const referenciaEventoBling = `BLING-E2E-${marcador}`;
+  const referenciaEventoSicoob = `SICOOB-E2E-${marcador}`;
+  await connection.query(
+    `INSERT INTO integracao_eventos
+       (provedor, evento_externo_id, tipo, referencia_externa, entidade,
+        payload_hash, payload, status, tentativas, erro_codigo, erro_detalhe)
+     VALUES
+       ('BLING', ?, 'order.updated', ?, 'PEDIDO_EXTERNO',
+        ?, JSON_OBJECT('fixture', TRUE), 'RECEBIDO', 2, NULL, NULL),
+       ('SICOOB', ?, 'PIX_RECEBIDO', ?, 'PAGAMENTO',
+        ?, JSON_OBJECT('fixture', TRUE), 'FALHOU', 3,
+        'REFERENCIA_NAO_ENCONTRADA', 'Falha fictícia para teste')`,
+    [
+      `bling-event-${marcador}`, referenciaEventoBling, 'b'.repeat(64),
+      `sicoob-event-${marcador}`, referenciaEventoSicoob, 'c'.repeat(64)
+    ]
+  );
 
   const [cliente] = await connection.query(
     `INSERT INTO clientes
@@ -693,7 +710,9 @@ async function prepararFixture() {
       sku: skuIntegracao,
       nomeExterno: `Produto fictício E2E ${marcador}`,
       servicoId: servico.id,
-      servicoCodigo: servico.codigo
+      servicoCodigo: servico.codigo,
+      referenciaEventoBling,
+      referenciaEventoSicoob
     },
     nomeCliente,
     nomeFornecedor,
@@ -876,7 +895,9 @@ async function iniciar() {
       sku: contexto.integracoes.sku,
       nome_externo: contexto.integracoes.nomeExterno,
       servico_id: contexto.integracoes.servicoId,
-      servico_codigo: contexto.integracoes.servicoCodigo
+      servico_codigo: contexto.integracoes.servicoCodigo,
+      referencia_evento_bling: contexto.integracoes.referenciaEventoBling,
+      referencia_evento_sicoob: contexto.integracoes.referenciaEventoSicoob
     },
     cliente: contexto.nomeCliente
   }));
