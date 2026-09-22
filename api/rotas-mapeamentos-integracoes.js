@@ -1,6 +1,10 @@
 'use strict';
 
 const PROVEDORES = ['WBUY', 'BLING'];
+const DOMINIOS_AUTORIDADE = [
+  'PEDIDO', 'PAGAMENTO', 'CLIENTE', 'COMPRADOR', 'PAGADOR', 'FISCAL', 'ESTOQUE'
+];
+const AUTORIDADES = ['CENTRAL', 'WBUY', 'BLING', 'MANUAL'];
 
 function texto(valor, limite) {
   const resultado = String(valor ?? '').trim();
@@ -174,6 +178,86 @@ module.exports = function registrarRotasMapeamentosIntegracoes(app, pool) {
         await connection.rollback();
         console.error('Erro ao alterar mapeamento externo:', error);
         return res.status(500).json({ ok: false, error: 'Erro ao alterar mapeamento externo' });
+      } finally {
+        connection.release();
+      }
+    });
+
+  app.get('/api/integracoes/autoridades', autenticarToken,
+    exigirPermissao('INTEGRACOES', 'visualizar'), async (req, res) => {
+      try {
+        const [linhas] = await pool.query(
+          `SELECT dominio, autoridade, atualizado_em
+             FROM integracao_autoridades ORDER BY dominio`
+        );
+        const porDominio = new Map(linhas.map(item => [item.dominio, item]));
+        const dados = DOMINIOS_AUTORIDADE.map(dominio => porDominio.get(dominio) || {
+          dominio, autoridade: null, atualizado_em: null
+        });
+        const pendentes = dados.filter(item => !item.autoridade)
+          .map(item => item.dominio);
+        return res.json({
+          ok: true,
+          completa: pendentes.length === 0,
+          pendentes,
+          dados,
+          opcoes: AUTORIDADES
+        });
+      } catch (error) {
+        console.error('Erro ao listar matriz de autoridade:', error);
+        return res.status(500).json({
+          ok: false, error: 'Erro ao consultar matriz de autoridade'
+        });
+      }
+    });
+
+  app.put('/api/integracoes/autoridades/:dominio', autenticarToken,
+    exigirPermissao('INTEGRACOES', 'editar'), async (req, res) => {
+      const dominio = String(req.params.dominio || '').trim().toUpperCase();
+      const autoridade = String(req.body?.autoridade || '').trim().toUpperCase();
+      if (!DOMINIOS_AUTORIDADE.includes(dominio) || !AUTORIDADES.includes(autoridade)) {
+        return res.status(400).json({ ok: false,
+          error: 'Domínio ou autoridade inválida' });
+      }
+      const connection = await pool.getConnection();
+      try {
+        await connection.beginTransaction();
+        const [[antes]] = await connection.query(
+          `SELECT dominio, autoridade FROM integracao_autoridades
+            WHERE dominio=? LIMIT 1 FOR UPDATE`,
+          [dominio]
+        );
+        await connection.query(
+          `INSERT INTO integracao_autoridades
+             (dominio, autoridade, atualizado_por)
+           VALUES (?, ?, ?)
+           ON DUPLICATE KEY UPDATE autoridade=VALUES(autoridade),
+             atualizado_por=VALUES(atualizado_por), atualizado_em=NOW()`,
+          [dominio, autoridade, req.usuario?.id || null]
+        );
+        const depois = { dominio, autoridade };
+        const alterada = antes?.autoridade !== autoridade;
+        if (alterada) {
+          await connection.query(
+            `INSERT INTO auditoria
+               (usuario_id, modulo, acao, entidade, entidade_id, descricao,
+                dados_antes, dados_depois, ip)
+             VALUES (?, 'INTEGRACOES', 'DEFINIR_AUTORIDADE_INTEGRACAO',
+                     'integracao_autoridades', ?, ?, ?, ?, ?)`,
+            [req.usuario?.id || null, dominio,
+              `Autoridade do domínio ${dominio} definida como ${autoridade}`,
+              antes ? JSON.stringify(antes) : null,
+              JSON.stringify(depois), req.ip || null]
+          );
+        }
+        await connection.commit();
+        return res.json({ ok: true, alterada, dados: depois });
+      } catch (error) {
+        await connection.rollback();
+        console.error('Erro ao definir autoridade de integração:', error);
+        return res.status(500).json({
+          ok: false, error: 'Erro ao salvar autoridade de integração'
+        });
       } finally {
         connection.release();
       }

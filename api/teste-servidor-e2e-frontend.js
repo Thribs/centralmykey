@@ -180,6 +180,17 @@ async function prepararFixture() {
      ) ENGINE=InnoDB`
   );
   await connection.query(
+    `CREATE TEMPORARY TABLE integracao_autoridades (
+       dominio ENUM('PEDIDO','PAGAMENTO','CLIENTE','COMPRADOR','PAGADOR','FISCAL','ESTOQUE')
+         NOT NULL PRIMARY KEY,
+       autoridade ENUM('CENTRAL','WBUY','BLING','MANUAL') NOT NULL,
+       atualizado_por BIGINT NULL,
+       criado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+       atualizado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+         ON UPDATE CURRENT_TIMESTAMP
+     ) ENGINE=InnoDB`
+  );
+  await connection.query(
     `CREATE TEMPORARY TABLE fornecedor_servicos (
        id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
        fornecedor_id BIGINT NOT NULL,
@@ -1109,8 +1120,16 @@ async function iniciar() {
           contexto.integracoes.pedidoPagamentoTardioId,
           contexto.integracoes.eventoPagamentoTardio]
       );
+      const [[autoridade]] = await connection.query(
+        `SELECT ia.dominio, ia.autoridade,
+                (SELECT COUNT(*) FROM auditoria a
+                  WHERE a.entidade='integracao_autoridades'
+                    AND a.entidade_id=ia.dominio) AS auditorias
+           FROM integracao_autoridades ia WHERE ia.dominio='PEDIDO' LIMIT 1`
+      );
       return res.json({ ok: true, mapeamento: mapeamento || null,
-        modelo: modelo || null, pagamento_tardio: pagamentoTardio || null });
+        modelo: modelo || null, autoridade: autoridade || null,
+        pagamento_tardio: pagamentoTardio || null });
     }
     if (req.query.cenario === 'cadastros') {
       const [[cliente]] = await connection.query(
@@ -1444,6 +1463,7 @@ async function encerrar(codigo = 0) {
              WHERE entidade = 'configuracoes' AND entidade_id = ?) AS auditorias_configuracao,
            (SELECT COUNT(*) FROM integracao_produto_mapeamentos
              WHERE produto_externo_id = ?) AS mapeamentos_integracao,
+           (SELECT COUNT(*) FROM integracao_autoridades) AS autoridades_integracao,
            (SELECT COUNT(*) FROM whatsapp_modelos
              WHERE nome = ?) AS modelos_whatsapp,
            (SELECT COUNT(*) FROM banco_senhas

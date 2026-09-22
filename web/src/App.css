@@ -3859,6 +3859,7 @@ font-size:9px;font-style:normal;font-weight:800}
 .integration-panel>header{justify-content:space-between;padding:14px;border-bottom:1px solid #e6e9f1}
 .integration-panel h2{margin:3px 0 0;font-size:16px}
 .integration-counts{display:flex;gap:15px;color:#7b849b;font-size:10px}
+.integration-note{margin:0;padding:12px 14px;color:#687189;font-size:12px;border-bottom:1px solid #e6e9f1}
 .whatsapp-readiness{margin-bottom:14px;padding:16px}
 .whatsapp-readiness header{display:flex;align-items:flex-start;justify-content:space-between;gap:16px}
 .whatsapp-readiness header span{color:#fa6407;font-size:10px;font-weight:900;letter-spacing:.08em}

@@ -23,11 +23,11 @@ da aprovação dos testes.
   atenção `NAO_CONFIGURADO`, sem caminho ou credencial na notificação.
 - A instalação publicada usa `qs 6.16.0` e `npm audit --omit=dev` informa zero
   vulnerabilidades conhecidas.
-- As nove migrações adicionadas depois da tag estão aplicadas e as dez tabelas
+- As dez migrações adicionadas depois da tag estão aplicadas e as onze tabelas
   esperadas foram verificadas.
 - `api/validar-migracoes-descartaveis.js` copia somente a estrutura atual para
-  uma instância MySQL local sem rede, aplica as nove migrações duas vezes,
-  verifica dez tabelas, comprova o backfill das três partes de um pedido
+  uma instância MySQL local sem rede, aplica as dez migrações duas vezes,
+  verifica onze tabelas, comprova o backfill das três partes de um pedido
   inteiramente sintético e apaga integralmente a instância.
 - A validação descartável não lê linhas de negócio e não grava no banco real.
 
@@ -44,6 +44,7 @@ Ela pode ser repetida isoladamente com `cd api && npm run test:migrations`.
 7. `20260921_mapeamentos_produtos_externos.sql`
 8. `20260921_referencias_pagamento.sql`
 9. `20260921_identidade_cache_joelpires.sql`
+10. `20260922_autoridades_integracoes.sql`
 
 Todas usam criação idempotente. A migração de partes usa `INSERT IGNORE` no
 preenchimento inicial. A dupla aplicação no MySQL descartável comprova que uma
@@ -74,7 +75,7 @@ O script recusa working tree sujo e executa, nesta ordem:
 4. preparação local da API e do frontend fora dos diretórios publicados;
 5. backup integral verificado da API, frontend e banco;
 6. parada do serviço;
-7. aplicação das nove migrações;
+7. aplicação das dez migrações;
 8. cópia local dos artefatos, preservando `.env` e `storage`, e atualização do
    frontend efetivamente servido pelo Nginx em `/var/www/central-mykey-test`;
 9. reinício e validação de `/health`, `/health/ready` e dos artefatos públicos.

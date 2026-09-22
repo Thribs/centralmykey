@@ -23,8 +23,10 @@ import {
   buscarResumoUsuarios,
   cadastrarModeloWhatsapp,
   cadastrarUsuario,
+  definirAutoridadeIntegracao,
   estornarPagamentoPedido,
   listarConfiguracoesSeguras,
+  listarAutoridadesIntegracoes,
   listarEventosIntegracao,
   listarMapeamentosIntegracoes,
   listarModelosWhatsapp,
@@ -496,6 +498,8 @@ export function Integracoes({ permissoes: permissoesSessao = [] }) {
   const [eventos, setEventos] = useState([]);
   const [mapeamentos, setMapeamentos] = useState([]);
   const [servicos, setServicos] = useState([]);
+  const [autoridades, setAutoridades] = useState([]);
+  const [opcoesAutoridade, setOpcoesAutoridade] = useState([]);
   const [resumo, setResumo] = useState({});
   const [prontidaoWhatsapp, setProntidaoWhatsapp] = useState(null);
   const [filtrosEventos, setFiltrosEventos] = useState({
@@ -527,11 +531,12 @@ export function Integracoes({ permissoes: permissoesSessao = [] }) {
 
     try {
       const [dadosIntegracoes, dadosModelos, dadosEventos,
-        dadosMapeamentos] = await Promise.all([
+        dadosMapeamentos, dadosAutoridades] = await Promise.all([
         buscarIntegracoes(token),
         listarModelosWhatsapp(token),
         listarEventosIntegracao(token, { ...filtrosEventos, limite: 30 }),
-        listarMapeamentosIntegracoes(token)
+        listarMapeamentosIntegracoes(token),
+        listarAutoridadesIntegracoes(token)
       ]);
 
       setIntegracoes(dadosIntegracoes.integracoes || []);
@@ -541,6 +546,8 @@ export function Integracoes({ permissoes: permissoesSessao = [] }) {
       setEventos(dadosEventos.dados || []);
       setMapeamentos(dadosMapeamentos.dados || []);
       setServicos(dadosMapeamentos.servicos || []);
+      setAutoridades(dadosAutoridades.dados || []);
+      setOpcoesAutoridade(dadosAutoridades.opcoes || []);
     } catch (falha) {
       setErro(falha.message);
     }
@@ -603,6 +610,23 @@ export function Integracoes({ permissoes: permissoesSessao = [] }) {
       await carregar();
     } catch (falha) {
       setErro(falha.message);
+    }
+  }
+
+  async function alterarAutoridade(item, autoridade) {
+    if (!autoridade || autoridade === item.autoridade) return;
+    if (!window.confirm(
+      `Confirma ${autoridade} como autoridade para ${item.dominio}?`
+    )) return;
+    setSalvando(true);
+    setErro('');
+    try {
+      await definirAutoridadeIntegracao(token, item.dominio, autoridade);
+      await carregar();
+    } catch (falha) {
+      setErro(falha.message);
+    } finally {
+      setSalvando(false);
     }
   }
 
@@ -738,6 +762,45 @@ export function Integracoes({ permissoes: permissoesSessao = [] }) {
           })[codigo] || codigo}</li>)}
         </ul>}
       </div>}
+
+      <div className="admin-panel integration-panel">
+        <header>
+          <div>
+            <span>TRANSIÇÃO WBUY · BLING · CENTRAL</span>
+            <h2>Matriz de autoridade</h2>
+          </div>
+          <div className="integration-counts">
+            <span>Definidos: <strong>{autoridades.filter(item =>
+              item.autoridade).length}/{autoridades.length}</strong></span>
+          </div>
+        </header>
+        <p className="integration-note">
+          Registra qual sistema é a fonte de verdade de cada domínio. A matriz
+          não ativa conversão automática de pedidos.
+        </p>
+        <div className="admin-table-wrap">
+          <table className="admin-table">
+            <thead><tr><th>Domínio</th><th>Autoridade</th><th>Situação</th></tr></thead>
+            <tbody>
+              {autoridades.map(item => <tr key={item.dominio}>
+                <td><strong>{item.dominio}</strong></td>
+                <td>{podeEditar ? <select
+                  aria-label={`Autoridade de ${item.dominio}`}
+                  value={item.autoridade || ''}
+                  disabled={salvando}
+                  onChange={e => alterarAutoridade(item, e.target.value)}
+                >
+                  <option value="">Definir autoridade</option>
+                  {opcoesAutoridade.map(opcao => <option key={opcao} value={opcao}>
+                    {opcao}
+                  </option>)}
+                </select> : item.autoridade || 'PENDENTE'}</td>
+                <td>{item.autoridade ? 'DEFINIDO' : 'PENDENTE'}</td>
+              </tr>)}
+            </tbody>
+          </table>
+        </div>
+      </div>
 
       <div className="admin-panel integration-panel">
         <header>

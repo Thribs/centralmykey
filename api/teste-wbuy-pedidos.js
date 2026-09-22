@@ -68,6 +68,17 @@ async function criarMapeamento(connection) {
   return servico;
 }
 
+async function criarMatrizAutoridade(connection) {
+  await connection.query(`CREATE TEMPORARY TABLE integracao_autoridades (
+    dominio ENUM('PEDIDO','PAGAMENTO','CLIENTE','COMPRADOR','PAGADOR','FISCAL','ESTOQUE')
+      NOT NULL PRIMARY KEY,
+    autoridade ENUM('CENTRAL','WBUY','BLING','MANUAL') NOT NULL,
+    atualizado_por BIGINT,
+    criado_em DATETIME DEFAULT CURRENT_TIMESTAMP,
+    atualizado_em DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+  ) ENGINE=InnoDB`);
+}
+
 function pedido(id, total = '22.00') {
   return {
     id: String(id), identificacao: `WBUY-${id}`,
@@ -132,6 +143,7 @@ async function executar() {
   try {
     await connection.beginTransaction();
     await criarTabelaEventos(connection);
+    await criarMatrizAutoridade(connection);
     const servico = await criarMapeamento(connection);
     const api = await iniciarApi(connection);
     servidor = api.servidor;

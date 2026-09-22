@@ -37,6 +37,12 @@ async function analisarPedidoWBuy(connection, pedido) {
        JOIN servicos s ON s.id=m.servico_id
       WHERE m.provedor='WBUY' AND m.ativo=1 AND s.ativo=1`
   );
+  const [autoridades] = await connection.query(
+    `SELECT dominio, autoridade FROM integracao_autoridades`
+  );
+  const autoridadePorDominio = Object.fromEntries(
+    autoridades.map(item => [item.dominio, item.autoridade])
+  );
   const itens = produtos.map(produto => {
     const produtoExternoId = texto(produto?.produto_id, 160);
     const sku = texto(produto?.sku ?? produto?.cod, 120)?.toUpperCase() || null;
@@ -61,12 +67,18 @@ async function analisarPedidoWBuy(connection, pedido) {
       servico_nome: mapeamento?.servico_nome || null
     };
   });
-  const pendencias = [
-    'AUTORIDADE_PEDIDO_NAO_DEFINIDA',
-    'STATUS_PAGAMENTO_NAO_MAPEADO',
-    'PAPEIS_CLIENTE_COMPRADOR_PAGADOR_NAO_CONFIRMADOS',
-    'MOEDA_NAO_INFORMADA'
-  ];
+  const pendencias = ['STATUS_PAGAMENTO_NAO_MAPEADO', 'MOEDA_NAO_INFORMADA'];
+  if (!autoridadePorDominio.PEDIDO) {
+    pendencias.push('AUTORIDADE_PEDIDO_NAO_DEFINIDA');
+  }
+  if (!autoridadePorDominio.PAGAMENTO) {
+    pendencias.push('AUTORIDADE_PAGAMENTO_NAO_DEFINIDA');
+  }
+  if (['CLIENTE', 'COMPRADOR', 'PAGADOR'].some(
+    dominio => !autoridadePorDominio[dominio]
+  )) {
+    pendencias.push('PAPEIS_CLIENTE_COMPRADOR_PAGADOR_NAO_CONFIRMADOS');
+  }
   if (itens.some(item => item.situacao === 'NAO_MAPEADO')) {
     pendencias.push('PRODUTO_NAO_MAPEADO');
   }
@@ -85,6 +97,11 @@ async function analisarPedidoWBuy(connection, pedido) {
     produtos_mapeados: itens.filter(item => item.situacao === 'MAPEADO').length,
     produtos_pendentes: itens.filter(item => item.situacao !== 'MAPEADO').length,
     itens,
+    autoridades: {
+      completa: ['PEDIDO', 'PAGAMENTO', 'CLIENTE', 'COMPRADOR', 'PAGADOR',
+        'FISCAL', 'ESTOQUE'].every(dominio => Boolean(autoridadePorDominio[dominio])),
+      dados: autoridadePorDominio
+    },
     pendencias,
     pronto_para_converter: false
   };

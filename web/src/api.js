@@ -1016,6 +1016,24 @@ export async function alterarStatusMapeamentoIntegracao(token, id, ativo) {
   return lerResposta(resposta);
 }
 
+export async function listarAutoridadesIntegracoes(token) {
+  const resposta = await requisitar(`${API_URL}/api/integracoes/autoridades`, {
+    headers: cabecalhoAutenticado(token)
+  });
+  return lerResposta(resposta);
+}
+
+export async function definirAutoridadeIntegracao(token, dominio, autoridade) {
+  const resposta = await requisitar(
+    `${API_URL}/api/integracoes/autoridades/${encodeURIComponent(dominio)}`, {
+      method: 'PUT',
+      headers: cabecalhoAutenticado(token, { 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ autoridade })
+    }
+  );
+  return lerResposta(resposta);
+}
+
 export async function listarModelosWhatsapp(token) {
   const resposta = await requisitar(`${API_URL}/api/whatsapp/modelos`, {
     headers: cabecalhoAutenticado(token)

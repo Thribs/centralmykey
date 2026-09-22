@@ -1459,6 +1459,12 @@ test('integrações administram modelos e mapeamentos sem chamar serviços exter
   await expect(page.getByText('PRONTIDÃO WHATSAPP GM')).toBeVisible();
   await expect(page.locator('.whatsapp-readiness')).toContainText('Worker desabilitado');
   await expect(page.locator('.whatsapp-readiness')).not.toContainText(/\d{10,15}/);
+  const autoridadePedido = page.getByLabel('Autoridade de PEDIDO');
+  await expect(autoridadePedido).toHaveValue('');
+  page.once('dialog', dialogo => dialogo.accept());
+  await autoridadePedido.selectOption('WBUY');
+  await expect(autoridadePedido).toHaveValue('WBUY');
+  await expect(page.getByText('Definidos:', { exact: false })).toContainText('1/7');
 
   const linhaBling = page.locator('tr', {
     hasText: contexto.referencia_evento_bling
@@ -1563,6 +1569,9 @@ test('integrações administram modelos e mapeamentos sem chamar serviços exter
   expect(verificacao.modelo.status).toBe('APROVADO');
   expect(Number(verificacao.modelo.ativo)).toBe(1);
   expect(Number(verificacao.modelo.auditorias)).toBe(3);
+  expect(verificacao.autoridade.dominio).toBe('PEDIDO');
+  expect(verificacao.autoridade.autoridade).toBe('WBUY');
+  expect(Number(verificacao.autoridade.auditorias)).toBeGreaterThanOrEqual(1);
   expect(verificacao.pagamento_tardio.pedido_status).toBe('CANCELADO');
   expect(verificacao.pagamento_tardio.evento_status).toBe('IGNORADO');
   expect(verificacao.pagamento_tardio.erro_codigo).toBe('PAGAMENTO_ESTORNADO');
@@ -1879,6 +1888,7 @@ test('visualizador não vê ações de usuário e recebe 403 ao forçar criaçã
   await expect(page.getByLabel('ID do pedido WBuy')).toHaveCount(0);
   await expect(page.getByLabel('Nome do modelo')).toHaveCount(0);
   await expect(page.getByLabel(/Status do modelo/)).toHaveCount(0);
+  await expect(page.getByLabel(/Autoridade de/)).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Ativar', exact: true }))
     .toHaveCount(0);
   const integracoes = contextoCompleto.integracoes;
