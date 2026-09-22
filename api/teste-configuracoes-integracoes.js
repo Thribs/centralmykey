@@ -98,6 +98,7 @@ async function executar() {
     const resumo = resumirIntegracoes(carregada);
     const itemWhatsapp = resumo.find(item => item.codigo === 'WHATSAPP');
     const itemSicoob = resumo.find(item => item.codigo === 'SICOOB');
+    const itemPlugPay = resumo.find(item => item.codigo === 'PLUGPAY');
     const itemBling = resumo.find(item => item.codigo === 'BLING');
     const itemWbuy = resumo.find(item => item.codigo === 'WBUY');
     assert.strictEqual(itemWhatsapp.status, 'CONFIGURADO');
@@ -105,6 +106,9 @@ async function executar() {
     assert.strictEqual(itemSicoob.habilitado, false);
     assert.strictEqual(itemSicoob.componentes.cobranca_habilitada, false);
     assert.strictEqual(itemSicoob.componentes.webhook_publico_mtls, false);
+    assert.strictEqual(itemPlugPay.status, 'CONTRATO_NAO_IDENTIFICADO');
+    assert.strictEqual(itemPlugPay.configurado, false);
+    assert.strictEqual(itemPlugPay.componentes.identidade_provedor, false);
     assert.strictEqual(itemWbuy.status, 'CREDENCIAIS_SEM_CONECTOR');
     assert.strictEqual(itemWbuy.componentes.credencial_legada, true);
     assert.strictEqual(itemBling.status, 'PENDENTE');

@@ -9,6 +9,8 @@ produção:
 - uma referência Pix associa um `txid` único ao pedido e ao valor esperado;
 - uma referência cujo prazo terminou passa atomicamente a `EXPIRADA`, recebe
   histórico e auditoria e deixa uma nova cobrança gerar outro `txid`;
+- um reconciliador com trava executa na inicialização e periodicamente para
+  expirar referências vencidas mesmo que ninguém tente gerar outra cobrança;
 - o webhook padrão `{ "pix": [...] }` é validado antes do processamento;
 - o `endToEndId` identifica o evento e o pagamento para reentrega idempotente;
 - valor e moeda precisam coincidir exatamente com o pedido;
@@ -26,6 +28,10 @@ As chaves `SICOOB_COBRANCA_HABILITADA` e
 quando as credenciais exigidas estão configuradas e ambas as chaves estão
 habilitadas; assim, a Central não cria um Pix que ainda não possa ser conciliado
 por um webhook autenticado.
+
+`SICOOB_RECONCILIACAO_INTERVALO_MS` controla a reconciliação local, com padrão
+de cinco minutos. Essa rotina não chama o Sicoob e pode permanecer ativa mesmo
+com o conector externo desligado.
 
 A preparação local não afirma que uma cobrança existe no Sicoob. A referência
 só muda de `PREPARADA` para `REGISTRADA` quando o cliente da API confirma o

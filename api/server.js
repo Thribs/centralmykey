@@ -22,6 +22,9 @@ const {
   reconciliarVipsVencidos
 } = require('./reconciliar-vips-vencidos');
 const {
+  reconciliarCobrancasSicoobExpiradas
+} = require('./expirar-cobrancas-sicoob');
+const {
   registrarContextoRequisicao,
   registrarTratamentoFinal
 } = require('./middleware-erros');
@@ -286,6 +289,23 @@ async function executarReconciliacaoVips() {
   }
 }
 
+let reconciliacaoSicoobEmAndamento = false;
+
+async function executarReconciliacaoSicoob() {
+  if (reconciliacaoSicoobEmAndamento) return;
+  reconciliacaoSicoobEmAndamento = true;
+  try {
+    const resultado = await reconciliarCobrancasSicoobExpiradas(pool);
+    if (resultado.executado && resultado.atualizadas > 0) {
+      console.log('Cobranças Sicoob expiradas reconciliadas:', resultado.atualizadas);
+    }
+  } catch (error) {
+    console.error('Erro ao reconciliar cobranças Sicoob:', error.message);
+  } finally {
+    reconciliacaoSicoobEmAndamento = false;
+  }
+}
+
 require('./rotas-openai')(app, pool);
 registrarTratamentoFinal(app);
 
@@ -366,4 +386,16 @@ app.listen(port, '127.0.0.1', () => {
   );
 
   intervaloReconciliacaoVips.unref();
+
+  executarReconciliacaoSicoob();
+
+  const intervaloReconciliacaoSicoob = setInterval(
+    executarReconciliacaoSicoob,
+    inteiroConfiguradoIntervalo(
+      process.env.SICOOB_RECONCILIACAO_INTERVALO_MS,
+      5 * 60 * 1000
+    )
+  );
+
+  intervaloReconciliacaoSicoob.unref();
 });

@@ -638,6 +638,7 @@ export function Integracoes({ permissoes: permissoesSessao = [] }) {
                 CONFIGURADO_DESABILITADO: 'Configurado · desabilitado',
                 PARCIAL: 'Configuração parcial',
                 CREDENCIAIS_SEM_CONECTOR: 'Credenciais · conector pendente',
+                CONTRATO_NAO_IDENTIFICADO: 'Contrato não identificado',
                 PENDENTE: 'Pendente'
               }[item.status] || 'Pendente'}
             </i>

@@ -3,6 +3,9 @@
 const crypto = require('crypto');
 const { processarEventoPagamentoPedido } = require('./processar-evento-pagamento');
 const { criarCobranca } = require('./cliente-sicoob-pix');
+const {
+  expirarCobrancasPedidoSicoob
+} = require('./expirar-cobrancas-sicoob');
 
 const TXID = /^[A-Za-z0-9]{26,35}$/;
 const E2E = /^[A-Za-z0-9]{20,100}$/;
@@ -73,46 +76,11 @@ async function prepararReferenciaPedido(connection, pedidoId, txid = gerarTxid()
   if (pedido.moeda !== 'BRL' || Number(pedido.valor_venda) <= 0) {
     throw falha('Pedido incompatível com Pix', 'PEDIDO_INCOMPATIVEL_PIX', 422);
   }
-  const [expiracao] = await connection.query(
-    `UPDATE integracao_referencias_pagamento
-        SET status='EXPIRADA', erro_codigo='COBRANCA_EXPIRADA',
-            erro_detalhe='Prazo da cobrança Pix encerrado'
-      WHERE provedor='SICOOB' AND entidade='PEDIDO' AND entidade_id=?
-        AND status IN ('PREPARADA','REGISTRADA')
-        AND TIMESTAMPADD(
-              SECOND, COALESCE(expiracao_segundos, 3600), criada_em
-            ) <= NOW()`,
-    [pedido.id]
-  );
-  const quantidadeExpiradas = Number(expiracao.affectedRows || 0);
-  if (quantidadeExpiradas > 0) {
-    const dadosMudanca = {
-      quantidade: quantidadeExpiradas,
-      status_anterior: ['PREPARADA', 'REGISTRADA'],
-      status: 'EXPIRADA'
-    };
-    await connection.query(
-      `INSERT INTO pedido_historico
-         (pedido_id, usuario_id, tipo, descricao, dados)
-       VALUES (?, ?, 'COBRANCA_SICOOB_EXPIRADA', ?, ?)`,
-      [pedido.id, dados.usuarioId || null,
-        'Cobrança Pix Sicoob expirada antes de gerar nova referência',
-        JSON.stringify(dadosMudanca)]
-    );
-    await connection.query(
-      `INSERT INTO auditoria
-         (usuario_id, modulo, acao, entidade, entidade_id, descricao,
-          dados_antes, dados_depois, ip)
-       VALUES (?, 'INTEGRACOES', 'EXPIRAR_COBRANCA_SICOOB',
-               'pedidos_senha', ?, ?, ?, ?, ?)`,
-      [dados.usuarioId || null, String(pedido.id),
-        `Cobrança Sicoob do pedido ${pedido.id} expirada`,
-        JSON.stringify({ quantidade: quantidadeExpiradas,
-          status: ['PREPARADA', 'REGISTRADA'] }),
-        JSON.stringify({ quantidade: quantidadeExpiradas, status: 'EXPIRADA' }),
-        dados.ip || null]
-    );
-  }
+  await expirarCobrancasPedidoSicoob(connection, pedido.id, {
+    usuarioId: dados.usuarioId,
+    ip: dados.ip,
+    descricao: 'Cobrança Pix Sicoob expirada antes de gerar nova referência'
+  });
   const [existentes] = await connection.query(
     `SELECT id, referencia_provedor, valor, moeda, status,
             expiracao_segundos, solicitacao_pagador

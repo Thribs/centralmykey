@@ -130,7 +130,15 @@ function resumirIntegracoes(config) {
     {
       codigo: 'PLUGPAY',
       nome: 'PlugPay',
-      ...estadoConector({ implementado: false, requisitos: [Boolean(config.plugPayToken)] })
+      implementado: false,
+      configurado: false,
+      habilitado: false,
+      status: 'CONTRATO_NAO_IDENTIFICADO',
+      componentes: {
+        identidade_provedor: false,
+        contrato_assinatura: false,
+        conector: false
+      }
     },
     {
       codigo: 'WBUY',

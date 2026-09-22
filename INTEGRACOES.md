@@ -8,6 +8,8 @@ implementados. Os estados exibidos são:
   operacional desligado;
 - `PARCIAL`: somente parte dos requisitos foi preenchida;
 - `CREDENCIAIS_SEM_CONECTOR`: há credenciais, mas ainda não existe integração;
+- `CONTRATO_NAO_IDENTIFICADO`: o nome comercial não determina de forma segura
+  qual API, autenticação e assinatura devem ser implementadas;
 - `PENDENTE`: não há configuração suficiente.
 
 Valores do ambiente têm precedência sobre a tabela `configuracoes`. A API usa a
@@ -79,6 +81,10 @@ OAuth e do mapeamento de estados definido para a conta utilizada.
 O nome do produto ainda não identifica inequivocamente o provedor contratado.
 A base financeira aceita eventos normalizados `PLUGPAY`, mas nenhum endpoint
 externo será aberto antes de confirmar o fornecedor e seu contrato de assinatura.
+Uma variável legada `PLUGPAY_TOKEN` ou `PLUGPAY_API_KEY`, isoladamente, não muda
+esse estado: o painel informa `CONTRATO_NAO_IDENTIFICADO` e o conector permanece
+desabilitado. Existem produtos públicos distintos com nomes semelhantes, então
+uma credencial sem domínio e contrato não identifica uma API com segurança.
 
 ## Eventos financeiros externos
 

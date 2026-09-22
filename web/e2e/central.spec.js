@@ -1418,6 +1418,8 @@ test('integrações administram modelos e mapeamentos sem chamar serviços exter
     .toBeVisible();
   await expect(page.locator('.integration-grid article', { hasText: 'API Joel Pires' }))
     .toBeVisible();
+  await expect(page.locator('.integration-grid article', { hasText: 'PlugPay' }))
+    .toContainText('Contrato não identificado');
 
   const linhaBling = page.locator('tr', {
     hasText: contexto.referencia_evento_bling
