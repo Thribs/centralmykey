@@ -16,6 +16,8 @@ import {
   buscarFatura,
   buscarFechamentoFornecedor,
   buscarResumoFinanceiro,
+  confirmarPagamentoFatura,
+  fecharFaturaCliente,
   fecharFechamentoFornecedor,
   gerarFechamentoFornecedor,
   listarFechamentosFornecedores,
@@ -286,6 +288,41 @@ export default function Financeiro({ permissoes = [] }) {
     }
   }
 
+  async function fecharFatura(item) {
+    if (!window.confirm(
+      `Fechar a fatura #${item.id} e consolidar seus pedidos?`
+    )) return;
+    setCarregando(true);
+    setErro('');
+    try {
+      await fecharFaturaCliente(token, item.id);
+      await carregar();
+    } catch (falha) {
+      setErro(falha.message);
+      setCarregando(false);
+    }
+  }
+
+  async function pagarFatura(item) {
+    const referencia = window.prompt(
+      `Informe a referência do pagamento da fatura #${item.id}:`
+    );
+    if (!referencia?.trim()) return;
+    if (!window.confirm('Confirma que o pagamento da fatura foi recebido?')) return;
+    setCarregando(true);
+    setErro('');
+    try {
+      await confirmarPagamentoFatura(token, item.id, {
+        meio_pagamento: 'PIX',
+        referencia_externa: referencia.trim()
+      });
+      await carregar();
+    } catch (falha) {
+      setErro(falha.message);
+      setCarregando(false);
+    }
+  }
+
   async function gerarFechamento() {
     if (!fornecedorId) {
       setErro('Selecione um fornecedor para gerar o fechamento.');
@@ -530,11 +567,12 @@ export default function Financeiro({ permissoes = [] }) {
                   <th>Pedidos</th>
                   <th>Valor</th>
                   <th>Status</th>
+                  <th>Ações</th>
                 </tr>
               </thead>
               <tbody>
                 {!carregando && faturas.length === 0 && (
-                  <tr><td colSpan="7" className="finance-empty">
+                  <tr><td colSpan="8" className="finance-empty">
                     Nenhuma fatura encontrada.
                   </td></tr>
                 )}
@@ -553,6 +591,29 @@ export default function Financeiro({ permissoes = [] }) {
                       <span className={`finance-status status-${fatura.status}`}>
                         {fatura.status}
                       </span>
+                    </td>
+                    <td>
+                      {podeEditar &&
+                        (fatura.status_registrado || fatura.status) === 'ABERTA' && (
+                        <button type="button" disabled={carregando}
+                          onClick={evento => {
+                            evento.stopPropagation();
+                            fecharFatura(fatura);
+                          }}>
+                          Fechar
+                        </button>
+                      )}
+                      {podeAprovar && ['FECHADA', 'VENCIDA'].includes(
+                        fatura.status_registrado || fatura.status
+                      ) && (
+                        <button type="button" disabled={carregando}
+                          onClick={evento => {
+                            evento.stopPropagation();
+                            pagarFatura(fatura);
+                          }}>
+                          Registrar pagamento
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))}

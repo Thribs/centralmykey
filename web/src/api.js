@@ -731,6 +731,27 @@ export async function buscarFatura(token, faturaId) {
   return lerResposta(resposta);
 }
 
+export async function fecharFaturaCliente(token, faturaId) {
+  const resposta = await requisitar(`${API_URL}/api/faturas/${faturaId}/fechar`, {
+    method: 'POST',
+    headers: cabecalhoAutenticado(token, { 'Content-Type': 'application/json' }),
+    body: '{}'
+  });
+  return lerResposta(resposta);
+}
+
+export async function confirmarPagamentoFatura(token, faturaId, dados) {
+  const resposta = await requisitar(
+    `${API_URL}/api/faturas/${faturaId}/pagamento/confirmar-manual`,
+    {
+      method: 'POST',
+      headers: cabecalhoAutenticado(token, { 'Content-Type': 'application/json' }),
+      body: JSON.stringify(dados)
+    }
+  );
+  return lerResposta(resposta);
+}
+
 export async function listarFechamentosFornecedores(token, filtros = {}) {
   const parametros = new URLSearchParams();
   if (filtros.status) parametros.set('status', filtros.status);

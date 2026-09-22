@@ -943,11 +943,51 @@ module.exports = function (app, pool) {
         const fatura = faturas[0];
 
         if (fatura.status === 'PAGA') {
-          await connection.rollback();
+          const [pagamentosExistentes] = await connection.query(
+            `SELECT p.id, p.lancamento_id, p.meio_pagamento,
+                    p.referencia_externa
+               FROM pagamentos p
+               INNER JOIN lancamentos_financeiros l
+                 ON l.id = p.lancamento_id
+              WHERE l.fatura_id = ?
+              ORDER BY p.id DESC
+              LIMIT 1`,
+            [fatura.id]
+          );
+          const existente = pagamentosExistentes[0];
+          const referenciaInformada = referencia_externa
+            ? String(referencia_externa).trim()
+            : null;
+          if (
+            existente &&
+            existente.meio_pagamento === meio_pagamento &&
+            (existente.referencia_externa || null) === referenciaInformada
+          ) {
+            await connection.rollback();
+            return res.json({
+              ok: true,
+              idempotente: true,
+              mensagem: 'Pagamento da fatura já estava confirmado',
+              fatura: {
+                id: fatura.id,
+                cliente_id: fatura.cliente_id,
+                cliente: fatura.cliente,
+                status: 'PAGA',
+                valor: Number(fatura.valor_total),
+                moeda: fatura.moeda
+              },
+              pagamento: {
+                id: existente.id,
+                lancamento_id: existente.lancamento_id,
+                meio_pagamento: existente.meio_pagamento
+              }
+            });
+          }
 
+          await connection.rollback();
           return res.status(409).json({
             ok: false,
-            error: 'Fatura já está paga'
+            error: 'Fatura já está paga com outra referência'
           });
         }
 
@@ -957,6 +997,15 @@ module.exports = function (app, pool) {
           return res.status(409).json({
             ok: false,
             error: 'Fatura cancelada não pode receber pagamento'
+          });
+        }
+
+        if (!['FECHADA', 'VENCIDA'].includes(fatura.status)) {
+          await connection.rollback();
+          return res.status(409).json({
+            ok: false,
+            codigo: 'FATURA_NAO_FECHADA',
+            error: 'Feche a fatura antes de confirmar o pagamento'
           });
         }
 
@@ -1186,6 +1235,31 @@ module.exports = function (app, pool) {
         }
 
         const fatura = faturas[0];
+
+        if (['FECHADA', 'PAGA'].includes(fatura.status)) {
+          const [[totaisAtuais]] = await connection.query(
+            `SELECT COUNT(*) AS quantidade_itens,
+                    COALESCE(SUM(valor), 0) AS valor_total
+               FROM fatura_itens
+              WHERE fatura_id = ?`,
+            [fatura.id]
+          );
+          await connection.rollback();
+          return res.json({
+            ok: true,
+            idempotente: true,
+            mensagem: 'Fatura já estava fechada',
+            fatura: {
+              id: fatura.id,
+              cliente_id: fatura.cliente_id,
+              cliente: fatura.cliente,
+              status: fatura.status,
+              valor_total: Number(fatura.valor_total),
+              moeda: fatura.moeda,
+              quantidade_itens: Number(totaisAtuais.quantidade_itens || 0)
+            }
+          });
+        }
 
         if (fatura.status !== 'ABERTA') {
           await connection.rollback();

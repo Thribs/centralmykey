@@ -1016,6 +1016,50 @@ test('financeiro fecha e paga fornecedor uma única vez na transação', async (
   await esperarSemRolagemHorizontal(page);
 });
 
+test('financeiro fecha e recebe fatura semanal uma única vez na transação', async ({ page }) => {
+  const respostaContexto = await page.request.get(`${API}/api/e2e/contexto`);
+  expect(respostaContexto.ok()).toBe(true);
+  const contextoCompleto = await respostaContexto.json();
+  const contexto = contextoCompleto.fatura_semanal;
+
+  await autenticarIntegrado(page, contextoCompleto.autenticacao.administrador);
+  const dialogos = [
+    ['confirm'],
+    ['prompt', contexto.referencia],
+    ['confirm']
+  ];
+  page.on('dialog', async dialogo => {
+    const [tipo, valor] = dialogos.shift();
+    expect(dialogo.type()).toBe(tipo);
+    if (tipo === 'prompt') await dialogo.accept(valor);
+    else await dialogo.accept();
+  });
+
+  await page.goto('/');
+  await abrirModulo(page, 'Financeiro');
+  let linha = page.locator('tr', { hasText: `#${contexto.id}` });
+  await expect(linha).toContainText('VENCIDA');
+  await expect(linha.getByRole('button', { name: 'Registrar pagamento' }))
+    .toHaveCount(0);
+  await linha.getByRole('button', { name: 'Fechar', exact: true }).click();
+  linha = page.locator('tr', { hasText: `#${contexto.id}` });
+  await expect(linha).toContainText('VENCIDA');
+  await linha.getByRole('button', { name: 'Registrar pagamento' }).click();
+  await expect(linha).toContainText('PAGA');
+  expect(dialogos).toHaveLength(0);
+
+  const respostaVerificacao = await page.request.get(
+    `${API}/api/e2e/verificacao?cenario=fatura_semanal`
+  );
+  expect(respostaVerificacao.ok()).toBe(true);
+  const verificacao = await respostaVerificacao.json();
+  expect(verificacao.estado.status).toBe('PAGA');
+  expect(Number(verificacao.estado.valor_total)).toBeCloseTo(contexto.valor);
+  expect(Number(verificacao.estado.lancamentos)).toBe(1);
+  expect(Number(verificacao.estado.pagamentos)).toBe(1);
+  expect(Number(verificacao.estado.auditorias)).toBe(2);
+});
+
 test('financeiro e administração permanecem acessíveis em três larguras', async ({ page }) => {
   test.setTimeout(90000);
   const respostaContexto = await page.request.get(`${API}/api/e2e/contexto`);
@@ -1714,6 +1758,16 @@ test('visualizador não vê ações de usuário e recebe 403 ao forçar criaçã
   await dialogoServicos.getByRole('button', { name: 'Fechar' }).click();
 
   await page.getByRole('button', { name: 'Financeiro', exact: true }).click();
+  const faturaSomenteLeitura = page.locator('tr', {
+    hasText: `#${contextoCompleto.fatura_semanal.id}`
+  });
+  await expect(faturaSomenteLeitura).toBeVisible();
+  await expect(faturaSomenteLeitura.getByRole('button', {
+    name: 'Fechar', exact: true
+  })).toHaveCount(0);
+  await expect(faturaSomenteLeitura.getByRole('button', {
+    name: 'Registrar pagamento'
+  })).toHaveCount(0);
   await page.locator('.finance-tabs').getByRole('button', {
     name: 'Fornecedores', exact: true
   }).click();
@@ -1738,6 +1792,14 @@ test('visualizador não vê ações de usuário e recebe 403 ao forçar criaçã
     page.request.post(`${API}/api/fornecedores/1/fechamentos/gerar`, {
       headers: { Authorization: `Bearer ${token}` }, data: {}
     }),
+    page.request.post(
+      `${API}/api/faturas/${contextoCompleto.fatura_semanal.id}/fechar`,
+      { headers: { Authorization: `Bearer ${token}` }, data: {} }
+    ),
+    page.request.post(
+      `${API}/api/faturas/${contextoCompleto.fatura_semanal.id}/pagamento/confirmar-manual`,
+      { headers: { Authorization: `Bearer ${token}` }, data: {} }
+    ),
     page.request.post(`${API}/api/pedidos`, {
       headers: { Authorization: `Bearer ${token}` }, data: {}
     }),
@@ -1753,7 +1815,7 @@ test('visualizador não vê ações de usuário e recebe 403 ao forçar criaçã
     )
   ]);
   expect(mutacoesNegadas.map(resposta => resposta.status()))
-    .toEqual([403, 403, 403, 403, 403, 403]);
+    .toEqual([403, 403, 403, 403, 403, 403, 403, 403]);
 });
 
 test('navegador estorna pagamento real e cancela na transação', async ({ page }) => {

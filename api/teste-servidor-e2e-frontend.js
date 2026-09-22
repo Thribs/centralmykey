@@ -534,6 +534,21 @@ async function prepararFixture() {
              'CONFIRMADO', ?)`,
     [pedidoFechamento.insertId, fornecedor.insertId, `${periodoFechamento.inicio} 12:00:00`]
   );
+  const referenciaFaturaSemanal = `PIX-FATURA-E2E-${marcador}`;
+  const [faturaSemanal] = await connection.query(
+    `INSERT INTO faturas_clientes
+       (cliente_id, periodo_inicio, periodo_fim, vencimento, moeda,
+        valor_total, status, observacao)
+     VALUES (?, DATE_SUB(CURDATE(), INTERVAL 7 DAY), CURDATE(),
+             DATE_SUB(CURDATE(), INTERVAL 1 DAY), 'BRL', 1,
+             'ABERTA', ?)`,
+    [cliente.insertId, `FATURA E2E ${marcador}`]
+  );
+  await connection.query(
+    `INSERT INTO fatura_itens (fatura_id, pedido_senha_id, valor)
+     VALUES (?, ?, ?)`,
+    [faturaSemanal.insertId, pedidoFechamento.insertId, Number(servico.preco_base)]
+  );
   const [lancamentoEstorno] = await connection.query(
     `INSERT INTO lancamentos_financeiros
        (tipo, cliente_id, pedido_senha_id, descricao, valor, moeda,
@@ -659,6 +674,11 @@ async function prepararFixture() {
       periodoInicio: periodoFechamento.inicio,
       periodoFim: periodoFechamento.fim,
       referencia: `PIX-FECHAMENTO-${protocoloFechamento}`
+    },
+    faturaSemanal: {
+      id: faturaSemanal.insertId,
+      valor: Number(servico.preco_base),
+      referencia: referenciaFaturaSemanal
     },
     autenticacao: {
       administrador: { login: loginOperador, senha: senhaOperador },
@@ -850,6 +870,11 @@ async function iniciar() {
       periodo_inicio: contexto.fechamentoFornecedor.periodoInicio,
       periodo_fim: contexto.fechamentoFornecedor.periodoFim,
       referencia: contexto.fechamentoFornecedor.referencia
+    },
+    fatura_semanal: {
+      id: contexto.faturaSemanal.id,
+      valor: contexto.faturaSemanal.valor,
+      referencia: contexto.faturaSemanal.referencia
     },
     autenticacao: contexto.autenticacao,
     administracao: {
@@ -1116,6 +1141,24 @@ async function iniciar() {
           contexto.fechamentoFornecedor.periodoInicio,
           contexto.fechamentoFornecedor.periodoFim
         ]
+      );
+      return res.json({ ok: true, estado: estado || null });
+    }
+    if (req.query.cenario === 'fatura_semanal') {
+      const [[estado]] = await connection.query(
+        `SELECT f.status, f.valor_total,
+           (SELECT COUNT(*) FROM lancamentos_financeiros lf
+             WHERE lf.fatura_id=f.id AND lf.tipo='RECEITA'
+               AND lf.status='RECEBIDO') AS lancamentos,
+           (SELECT COUNT(*) FROM pagamentos pg
+             INNER JOIN lancamentos_financeiros lf
+               ON lf.id=pg.lancamento_id
+             WHERE lf.fatura_id=f.id AND pg.referencia_externa=?) AS pagamentos,
+           (SELECT COUNT(*) FROM auditoria a
+             WHERE a.entidade='faturas_clientes'
+               AND a.entidade_id=CAST(f.id AS CHAR)) AS auditorias
+         FROM faturas_clientes f WHERE f.id=? LIMIT 1`,
+        [contexto.faturaSemanal.referencia, contexto.faturaSemanal.id]
       );
       return res.json({ ok: true, estado: estado || null });
     }
