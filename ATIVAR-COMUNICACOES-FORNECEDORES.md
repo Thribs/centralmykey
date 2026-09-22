@@ -20,6 +20,7 @@ Este plano se refere ao código posterior à `v0.5.0`. Ele não autoriza publica
    Pelo menos um campo técnico deve ser informado. Campos sem valor podem ser omitidos.
 3. Ter um modelo de utilidade aprovado para entrega do resultado ao cliente, com os parâmetros: protocolo, código mecânico, imobilizador, rádio, alarme e PIN.
 4. Cadastrar o WhatsApp de Márcio e Emerson com código do país e DDD. A auditoria automatizada encontrou o fornecedor atualmente selecionado sem número válido; nenhum valor foi exibido ou alterado.
+5. Conferir o quadro **Prontidão WhatsApp GM** em Administração → Integrações. A homologação só deve começar quando o quadro não apresentar bloqueios; ele mostra apenas contagens e estados, sem expor contatos ou credenciais.
 5. Confirmar que os clientes atendidos possuem telefone normalizado válido.
 6. Manter `COMUNICACOES_OUTBOX_HABILITADO=false` durante migração e primeira publicação.
 7. Criar backup da API publicada e do schema antes da migração.
@@ -49,6 +50,7 @@ Este plano se refere ao código posterior à `v0.5.0`. Ele não autoriza publica
 - O identificador da mensagem da Meta torna o retorno idempotente. O resultado recebido fica como `ENCONTRADO` e exige a validação humana já existente antes de alimentar o cache ou preparar a entrega.
 - Texto comum, campo desconhecido, protocolo sem vínculo ou remetente divergente não altera o pedido automaticamente.
 - Cliente sem WhatsApp válido gera falha visível e permite reenvio após corrigir o cadastro.
+- A prontidão compara os nomes e idiomas configurados com modelos `APROVADO` e ativos, confere destinatários dos fornecedores GM e sinaliza mensagens em processamento ou estado incerto antes da homologação.
 
 ## Rollback operacional
 

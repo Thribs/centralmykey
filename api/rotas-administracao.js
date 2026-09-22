@@ -1,5 +1,6 @@
 const {
   carregarConfiguracoesIntegracoes,
+  diagnosticarProntidaoWhatsapp,
   resumirIntegracoes
 } = require('./configuracoes-integracoes');
 const {
@@ -562,6 +563,9 @@ module.exports = function(app, pool) {
       try {
         const configuracoes = await carregarConfiguracoesIntegracoes(pool);
         const grupos = resumirIntegracoes(configuracoes);
+        const prontidaoWhatsapp = await diagnosticarProntidaoWhatsapp(
+          pool, configuracoes
+        );
 
         const [modelos] = await pool.query(`
           SELECT
@@ -575,7 +579,8 @@ module.exports = function(app, pool) {
         return res.json({
           ok: true,
           integracoes: grupos,
-          modelos_whatsapp: modelos[0]
+          modelos_whatsapp: modelos[0],
+          prontidao_whatsapp: prontidaoWhatsapp
         });
       } catch (error) {
         console.error('Erro ao resumir integrações:', error);

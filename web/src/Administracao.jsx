@@ -497,6 +497,7 @@ export function Integracoes({ permissoes: permissoesSessao = [] }) {
   const [mapeamentos, setMapeamentos] = useState([]);
   const [servicos, setServicos] = useState([]);
   const [resumo, setResumo] = useState({});
+  const [prontidaoWhatsapp, setProntidaoWhatsapp] = useState(null);
   const [filtrosEventos, setFiltrosEventos] = useState({
     provedor: '', status: ''
   });
@@ -535,6 +536,7 @@ export function Integracoes({ permissoes: permissoesSessao = [] }) {
 
       setIntegracoes(dadosIntegracoes.integracoes || []);
       setResumo(dadosIntegracoes.modelos_whatsapp || {});
+      setProntidaoWhatsapp(dadosIntegracoes.prontidao_whatsapp || null);
       setModelos(dadosModelos.dados || []);
       setEventos(dadosEventos.dados || []);
       setMapeamentos(dadosMapeamentos.dados || []);
@@ -694,6 +696,48 @@ export function Integracoes({ permissoes: permissoesSessao = [] }) {
           </article>
         ))}
       </div>
+
+      {prontidaoWhatsapp && <div className="admin-panel whatsapp-readiness">
+        <header>
+          <div>
+            <span>PRONTIDÃO WHATSAPP GM</span>
+            <h2>{prontidaoWhatsapp.pronto_para_homologar
+              ? 'Pronto para homologação controlada'
+              : 'Homologação bloqueada'}</h2>
+          </div>
+          <strong>{prontidaoWhatsapp.worker_habilitado
+            ? 'Worker habilitado' : 'Worker desabilitado'}</strong>
+        </header>
+        <div className="whatsapp-readiness-metrics">
+          <span>Fornecedores GM <strong>{Number(
+            prontidaoWhatsapp.fornecedores_gm?.destinatarios_validos || 0
+          )}/{Number(prontidaoWhatsapp.fornecedores_gm?.total || 0)}</strong></span>
+          <span>Fila pendente <strong>{Number(
+            prontidaoWhatsapp.fila?.pendentes || 0
+          )}</strong></span>
+          <span>Falhas <strong>{Number(
+            prontidaoWhatsapp.fila?.falhas || 0
+          )}</strong></span>
+          <span>Incertas <strong>{Number(
+            prontidaoWhatsapp.fila?.incertas || 0
+          )}</strong></span>
+        </div>
+        {prontidaoWhatsapp.bloqueios?.length > 0 && <ul>
+          {prontidaoWhatsapp.bloqueios.map(codigo => <li key={codigo}>{({
+            TRANSPORTE_WHATSAPP_INCOMPLETO: 'Credenciais de transporte incompletas',
+            WEBHOOK_WHATSAPP_INCOMPLETO: 'Autenticação do webhook incompleta',
+            MODELO_CONSULTA_FORNECEDOR_NAO_HOMOLOGADO:
+              'Modelo de consulta ao fornecedor não está aprovado e ativo',
+            MODELO_ENTREGA_CLIENTE_NAO_HOMOLOGADO:
+              'Modelo de entrega ao cliente não está aprovado e ativo',
+            FORNECEDOR_GM_NAO_CADASTRADO: 'Nenhum fornecedor GM ativo cadastrado',
+            FORNECEDORES_GM_SEM_DESTINATARIO_VALIDO:
+              'Há fornecedor GM sem destinatário válido',
+            FILA_WHATSAPP_REQUER_REVISAO:
+              'A fila contém envio em processamento ou com estado incerto'
+          })[codigo] || codigo}</li>)}
+        </ul>}
+      </div>}
 
       <div className="admin-panel integration-panel">
         <header>

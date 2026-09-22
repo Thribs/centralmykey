@@ -1456,6 +1456,9 @@ test('integrações administram modelos e mapeamentos sem chamar serviços exter
     .toBeVisible();
   await expect(page.locator('.integration-grid article', { hasText: 'PlugPay' }))
     .toContainText('Contrato não identificado');
+  await expect(page.getByText('PRONTIDÃO WHATSAPP GM')).toBeVisible();
+  await expect(page.locator('.whatsapp-readiness')).toContainText('Worker desabilitado');
+  await expect(page.locator('.whatsapp-readiness')).not.toContainText(/\d{10,15}/);
 
   const linhaBling = page.locator('tr', {
     hasText: contexto.referencia_evento_bling

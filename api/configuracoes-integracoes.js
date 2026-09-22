@@ -170,6 +170,97 @@ function resumirIntegracoes(config) {
   ];
 }
 
+function destinatarioWhatsappValido(valor) {
+  const digitos = String(valor || '').replace(/\D/g, '');
+  return digitos.length >= 10 && digitos.length <= 15;
+}
+
+async function diagnosticarProntidaoWhatsapp(pool, config) {
+  const resumo = resumirIntegracoes(config).find(item => item.codigo === 'WHATSAPP');
+  const modeloFornecedor = config.modeloFornecedor || '';
+  const idiomaFornecedor = config.idiomaModeloFornecedor || 'pt_BR';
+  const modeloEntrega = config.modeloEntrega || '';
+  const idiomaEntrega = config.idiomaModeloEntrega || 'pt_BR';
+
+  const [resultadoModelos, resultadoFornecedores, resultadoFila] =
+    await Promise.all([
+      pool.query(
+        `SELECT nome, idioma, status, ativo
+           FROM whatsapp_modelos
+          WHERE (nome = ? AND idioma = ?)
+             OR (nome = ? AND idioma = ?)`,
+        [modeloFornecedor, idiomaFornecedor, modeloEntrega, idiomaEntrega]
+      ),
+      pool.query(
+        `SELECT DISTINCT f.id, f.whatsapp, f.telefone
+           FROM fornecedores f
+           INNER JOIN fornecedor_servicos fs ON fs.fornecedor_id = f.id
+          WHERE f.ativo = 1
+            AND fs.ativo = 1
+            AND fs.codigo_servico = 'GM_SENHA'`
+      ),
+      pool.query(
+        `SELECT
+           SUM(status = 'PENDENTE') AS pendentes,
+           SUM(status = 'PROCESSANDO') AS processando,
+           SUM(status = 'FALHOU') AS falhas,
+           SUM(status = 'INCERTA') AS incertas
+         FROM comunicacoes_outbox`
+      )
+    ]);
+
+  const modelos = resultadoModelos[0];
+  const fornecedores = resultadoFornecedores[0];
+  const fila = resultadoFila[0][0] || {};
+  const modeloOperacional = (nome, idioma) => Boolean(nome) && modelos.some(item =>
+    item.nome === nome && item.idioma === idioma &&
+    item.status === 'APROVADO' && Number(item.ativo) === 1
+  );
+  const fornecedorAprovado = modeloOperacional(modeloFornecedor, idiomaFornecedor);
+  const entregaAprovada = modeloOperacional(modeloEntrega, idiomaEntrega);
+  const fornecedoresValidos = fornecedores.filter(item =>
+    destinatarioWhatsappValido(item.whatsapp || item.telefone)
+  ).length;
+  const filaSegura = Number(fila.processando || 0) === 0 &&
+    Number(fila.incertas || 0) === 0;
+  const bloqueios = [];
+
+  if (!resumo.componentes.transporte) bloqueios.push('TRANSPORTE_WHATSAPP_INCOMPLETO');
+  if (!resumo.componentes.webhook) bloqueios.push('WEBHOOK_WHATSAPP_INCOMPLETO');
+  if (!fornecedorAprovado) bloqueios.push('MODELO_CONSULTA_FORNECEDOR_NAO_HOMOLOGADO');
+  if (!entregaAprovada) bloqueios.push('MODELO_ENTREGA_CLIENTE_NAO_HOMOLOGADO');
+  if (!fornecedores.length) bloqueios.push('FORNECEDOR_GM_NAO_CADASTRADO');
+  else if (fornecedoresValidos !== fornecedores.length) {
+    bloqueios.push('FORNECEDORES_GM_SEM_DESTINATARIO_VALIDO');
+  }
+  if (!filaSegura) bloqueios.push('FILA_WHATSAPP_REQUER_REVISAO');
+
+  return {
+    pronto_para_homologar: bloqueios.length === 0,
+    worker_habilitado: resumo.componentes.outbox,
+    bloqueios,
+    modelos: {
+      consulta_fornecedor: {
+        configurado: Boolean(modeloFornecedor), aprovado_e_ativo: fornecedorAprovado
+      },
+      entrega_cliente: {
+        configurado: Boolean(modeloEntrega), aprovado_e_ativo: entregaAprovada
+      }
+    },
+    fornecedores_gm: {
+      total: fornecedores.length,
+      destinatarios_validos: fornecedoresValidos,
+      destinatarios_invalidos: fornecedores.length - fornecedoresValidos
+    },
+    fila: {
+      pendentes: Number(fila.pendentes || 0),
+      processando: Number(fila.processando || 0),
+      falhas: Number(fila.falhas || 0),
+      incertas: Number(fila.incertas || 0)
+    }
+  };
+}
+
 async function obterConfiguracaoWhatsapp(pool) {
   const config = await carregarConfiguracoesIntegracoes(pool);
   return {
@@ -233,6 +324,7 @@ async function obterConfiguracaoWBuy(pool) {
 
 module.exports = {
   carregarConfiguracoesIntegracoes,
+  diagnosticarProntidaoWhatsapp,
   obterConfiguracaoBling,
   obterConfiguracaoWhatsapp,
   obterConfiguracaoSicoob,

@@ -5,6 +5,7 @@ const crypto = require('crypto');
 const express = require('express');
 const {
   carregarConfiguracoesIntegracoes,
+  diagnosticarProntidaoWhatsapp,
   obterConfiguracaoSicoob,
   obterConfiguracaoWhatsapp,
   resumirIntegracoes
@@ -115,6 +116,50 @@ async function executar() {
     assert.strictEqual(itemBling.componentes.webhook_assinado, true);
     assert.ok(resumo.every(item => !JSON.stringify(item).includes('ficticio')),
       'O resumo nunca pode expor valores de configuração');
+
+    const poolProntidao = {
+      query: async sql => {
+        if (/FROM whatsapp_modelos/.test(sql)) return [[
+          { nome: 'consulta_teste', idioma: 'pt_BR', status: 'APROVADO', ativo: 1 },
+          { nome: 'entrega_teste', idioma: 'pt_BR', status: 'APROVADO', ativo: 1 }
+        ]];
+        if (/FROM fornecedores/.test(sql)) return [[
+          { id: 1, whatsapp: '(11) 99999-9999', telefone: null },
+          { id: 2, whatsapp: null, telefone: '11988887777' }
+        ]];
+        if (/FROM comunicacoes_outbox/.test(sql)) return [[{
+          pendentes: 0, processando: 0, falhas: 1, incertas: 0
+        }]];
+        throw new Error('Consulta inesperada no diagnóstico');
+      }
+    };
+    const prontidao = await diagnosticarProntidaoWhatsapp(poolProntidao, carregada);
+    assert.strictEqual(prontidao.pronto_para_homologar, true);
+    assert.deepStrictEqual(prontidao.bloqueios, []);
+    assert.strictEqual(prontidao.fornecedores_gm.destinatarios_validos, 2);
+    assert.strictEqual(prontidao.fila.falhas, 1);
+    assert.ok(!JSON.stringify(prontidao).includes('99999'),
+      'O diagnóstico não deve expor telefones');
+
+    const prontidaoBloqueada = await diagnosticarProntidaoWhatsapp({
+      query: async sql => {
+        if (/FROM whatsapp_modelos/.test(sql)) return [[]];
+        if (/FROM fornecedores/.test(sql)) return [[
+          { id: 1, whatsapp: 'invalido', telefone: '' }
+        ]];
+        if (/FROM comunicacoes_outbox/.test(sql)) return [[{
+          pendentes: 2, processando: 1, falhas: 0, incertas: 1
+        }]];
+        throw new Error('Consulta inesperada no diagnóstico bloqueado');
+      }
+    }, { ...carregada, whatsappAccessToken: '', modeloEntrega: '' });
+    assert.strictEqual(prontidaoBloqueada.pronto_para_homologar, false);
+    assert.ok(prontidaoBloqueada.bloqueios.includes('TRANSPORTE_WHATSAPP_INCOMPLETO'));
+    assert.ok(prontidaoBloqueada.bloqueios.includes(
+      'MODELO_ENTREGA_CLIENTE_NAO_HOMOLOGADO'));
+    assert.ok(prontidaoBloqueada.bloqueios.includes(
+      'FORNECEDORES_GM_SEM_DESTINATARIO_VALIDO'));
+    assert.ok(prontidaoBloqueada.bloqueios.includes('FILA_WHATSAPP_REQUER_REVISAO'));
 
     const sicoobHabilitado = await obterConfiguracaoSicoob(poolFalso({
       SICOOB_CLIENT_ID: 'id-ficticio',
