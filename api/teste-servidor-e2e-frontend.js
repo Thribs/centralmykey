@@ -400,6 +400,26 @@ async function prepararFixture() {
      VALUES (?, ?, ?, 'COMPLETO', 1, 'ANTECIPADO', 'LIBERADO')`,
     [nomeCliente, telefone, telefone]
   );
+  const nomeClienteCredito = `CLIENTE LIMITE E2E ${marcador}`;
+  const telefoneClienteCredito = `5561${String(Date.now() + 17).slice(-8)}`;
+  const modeloLimiteCredito = `LIMITE CREDITO E2E ${marcador}`;
+  const chassiLimiteCredito = `9BGLC11A0${String(Date.now() + 17).slice(-8)}`;
+  const [clienteCredito] = await connection.query(
+    `INSERT INTO clientes
+       (nome, telefone, telefone_normalizado, cadastro_status, ativo,
+        tipo_cobranca, dia_fechamento, prazo_pagamento_dias,
+        limite_credito, credito_status)
+     VALUES (?, ?, ?, 'COMPLETO', 1, 'FATURAMENTO_SEMANAL', 0, 3,
+             50, 'LIBERADO')`,
+    [nomeClienteCredito, telefoneClienteCredito, telefoneClienteCredito]
+  );
+  await connection.query(
+    `INSERT INTO faturas_clientes
+       (cliente_id, periodo_inicio, periodo_fim, vencimento,
+        moeda, valor_total, status)
+     VALUES (?, CURDATE(), CURDATE(), CURDATE(), 'BRL', 50, 'ABERTA')`,
+    [clienteCredito.insertId]
+  );
   const protocoloPagamentoTardio = `PT${process.pid}${String(Date.now()).slice(-7)}`;
   const referenciaPagamentoTardio = `E2E-TARDIO-${marcador}`;
   const eventoPagamentoTardio = `sicoob-tardio-${marcador}`;
@@ -791,6 +811,14 @@ async function prepararFixture() {
       pagamentoTardioId: pagamentoTardio.insertId,
       pedidoWBuyId
     },
+    credito: {
+      clienteId: clienteCredito.insertId,
+      clienteNome: nomeClienteCredito,
+      servicoId: servico.id,
+      chassi: chassiLimiteCredito,
+      modelo: modeloLimiteCredito,
+      limite: 50
+    },
     nomeCliente,
     nomeFornecedor,
     usuario
@@ -987,9 +1015,31 @@ async function iniciar() {
       pedido_pagamento_tardio_id: contexto.integracoes.pedidoPagamentoTardioId,
       pedido_wbuy_id: contexto.integracoes.pedidoWBuyId
     },
+    credito: {
+      cliente_id: contexto.credito.clienteId,
+      cliente_nome: contexto.credito.clienteNome,
+      servico_id: contexto.credito.servicoId,
+      chassi: contexto.credito.chassi,
+      modelo: contexto.credito.modelo,
+      limite: contexto.credito.limite
+    },
     cliente: contexto.nomeCliente
   }));
   app.get('/api/e2e/verificacao', async (req, res) => {
+    if (req.query.cenario === 'limite_credito') {
+      const [[estado]] = await connection.query(
+        `SELECT c.limite_credito,
+                (SELECT COUNT(*) FROM pedidos_senha p
+                  WHERE p.cliente_id=c.id AND p.modelo=?) AS pedidos,
+                (SELECT COALESCE(SUM(f.valor_total), 0)
+                   FROM faturas_clientes f
+                  WHERE f.cliente_id=c.id AND f.moeda='BRL'
+                    AND f.status IN ('ABERTA','FECHADA','VENCIDA')) AS comprometido
+           FROM clientes c WHERE c.id=? LIMIT 1`,
+        [contexto.credito.modelo, contexto.credito.clienteId]
+      );
+      return res.json({ ok: true, estado: estado || null });
+    }
     if (req.query.cenario === 'banco_senhas') {
       const [[estado]] = await connection.query(
         `SELECT bs.id, bs.ativo,

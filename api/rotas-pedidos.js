@@ -260,6 +260,49 @@ if (
   });
 }
 
+if (
+  cliente.tipo_cobranca === 'FATURAMENTO_SEMANAL' &&
+  cliente.limite_credito !== null &&
+  cliente.limite_credito !== undefined
+) {
+  const moedaPedido = servico.moeda || 'BRL';
+  if (moedaPedido !== 'BRL') {
+    await connection.rollback();
+    return res.status(409).json({
+      ok: false,
+      codigo: 'LIMITE_CREDITO_MOEDA_NAO_CONFIGURADA',
+      error: 'O limite de crédito cadastrado é exclusivo para BRL'
+    });
+  }
+
+  const [[credito]] = await connection.query(
+    `SELECT COALESCE(SUM(valor_total), 0) AS comprometido
+       FROM faturas_clientes
+      WHERE cliente_id = ?
+        AND moeda = ?
+        AND status IN ('ABERTA', 'FECHADA', 'VENCIDA')`,
+    [cliente.id, moedaPedido]
+  );
+  const limiteCentavos = Math.round(Number(cliente.limite_credito) * 100);
+  const comprometidoCentavos = Math.round(Number(credito.comprometido || 0) * 100);
+  const solicitadoCentavos = Math.round(Number(precoPedido.valor) * 100);
+  if (comprometidoCentavos + solicitadoCentavos > limiteCentavos) {
+    await connection.rollback();
+    return res.status(409).json({
+      ok: false,
+      codigo: 'LIMITE_CREDITO_EXCEDIDO',
+      error: 'O pedido excede o limite de crédito disponível',
+      credito: {
+        moeda: moedaPedido,
+        limite: limiteCentavos / 100,
+        comprometido: comprometidoCentavos / 100,
+        solicitado: solicitadoCentavos / 100,
+        disponivel: Math.max(limiteCentavos - comprometidoCentavos, 0) / 100
+      }
+    });
+  }
+}
+
 if (cliente.tipo_cobranca === 'ANTECIPADO') {
   const protocoloPagamento =
     'MK' +

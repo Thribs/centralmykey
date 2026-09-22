@@ -265,7 +265,7 @@ function ModalCadastro({
                   />
                 </label>
                 <label>
-                  Limite de crédito
+                  Limite de crédito (BRL)
                   <input
                     type="number"
                     min="0"

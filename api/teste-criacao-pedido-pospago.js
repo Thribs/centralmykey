@@ -350,6 +350,58 @@ async function executar() {
     );
 
     await connection.query(
+      'UPDATE clientes SET limite_credito=150 WHERE id=?',
+      [cliente.insertId]
+    );
+    const respostaLimite = await global.fetch(`${api.url}/api/pedidos`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        cliente_id: cliente.insertId,
+        servico_id: servico.id,
+        chassi: `9BGLI11A0${sufixo}`,
+        marca: 'GM',
+        modelo: 'TESTE LIMITE CREDITO',
+        ano: 2026
+      })
+    });
+    const limiteExcedido = await respostaLimite.json();
+    assert.strictEqual(respostaLimite.status, 409);
+    assert.strictEqual(limiteExcedido.codigo, 'LIMITE_CREDITO_EXCEDIDO');
+    assert.deepStrictEqual(limiteExcedido.credito, {
+      moeda: 'BRL',
+      limite: 150,
+      comprometido: 150,
+      solicitado: 75,
+      disponivel: 0
+    });
+    const [[pedidoAcimaLimite]] = await connection.query(
+      `SELECT COUNT(*) AS total FROM pedidos_senha
+        WHERE cliente_id=? AND modelo='TESTE LIMITE CREDITO'`,
+      [cliente.insertId]
+    );
+    assert.strictEqual(Number(pedidoAcimaLimite.total), 0);
+
+    await connection.query("UPDATE servicos SET moeda='USD' WHERE id=?", [servico.id]);
+    const respostaMoedaCredito = await global.fetch(`${api.url}/api/pedidos`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        cliente_id: cliente.insertId,
+        servico_id: servico.id,
+        chassi: `9BGLI11A1${sufixo}`,
+        marca: 'GM', modelo: 'TESTE LIMITE USD', ano: 2026
+      })
+    });
+    const moedaCredito = await respostaMoedaCredito.json();
+    assert.strictEqual(respostaMoedaCredito.status, 409);
+    assert.strictEqual(
+      moedaCredito.codigo,
+      'LIMITE_CREDITO_MOEDA_NAO_CONFIGURADA'
+    );
+    await connection.query("UPDATE servicos SET moeda='BRL' WHERE id=?", [servico.id]);
+
+    await connection.query(
       "UPDATE clientes SET tipo_cobranca = 'ANTECIPADO' WHERE id = ?",
       [cliente.insertId]
     );

@@ -417,6 +417,41 @@ test('formulários GM permanecem acessíveis em celular tablet e desktop', async
   }
 });
 
+test('pedido pós-pago respeita o limite de crédito BRL', async ({ page }) => {
+  const respostaContexto = await page.request.get(`${API}/api/e2e/contexto`);
+  expect(respostaContexto.ok()).toBe(true);
+  const contextoCompleto = await respostaContexto.json();
+  const contexto = contextoCompleto.credito;
+  await autenticarIntegrado(page, contextoCompleto.autenticacao.administrador);
+
+  await page.goto('/');
+  await abrirModulo(page, 'Pedidos e senhas', 1280);
+  await page.getByRole('button', { name: 'Novo pedido' }).click();
+  const modal = page.getByRole('dialog', { name: 'Novo pedido' });
+  await modal.locator('select[name="cliente_id"]')
+    .selectOption(String(contexto.cliente_id));
+  await modal.locator('select[name="servico_id"]')
+    .selectOption(String(contexto.servico_id));
+  await modal.getByLabel('Chassi').fill(contexto.chassi);
+  await modal.getByLabel('Marca').fill('GM');
+  await modal.getByLabel('Modelo').fill(contexto.modelo);
+  await modal.getByLabel('Ano').fill('2026');
+  await modal.getByRole('button', { name: 'Criar pedido' }).click();
+
+  await expect(modal.locator('.vault-error')).toContainText(
+    'excede o limite de crédito disponível'
+  );
+  await expect(modal).toBeVisible();
+  const verificacaoResposta = await page.request.get(
+    `${API}/api/e2e/verificacao?cenario=limite_credito`
+  );
+  expect(verificacaoResposta.ok()).toBe(true);
+  const verificacao = await verificacaoResposta.json();
+  expect(Number(verificacao.estado.limite_credito)).toBe(contexto.limite);
+  expect(Number(verificacao.estado.comprometido)).toBe(contexto.limite);
+  expect(Number(verificacao.estado.pedidos)).toBe(0);
+});
+
 test('cancelamento exige motivo e confirmação antes de uma única mutação', async ({ page }) => {
   const protocolo = 'CMK-E2E-CANCELAR';
   const pedidoId = 700002;

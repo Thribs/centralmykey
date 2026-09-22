@@ -21,9 +21,18 @@ os planos `ATIVO` ou `AGUARDANDO_PAGAMENTO` cujo próximo vencimento já passou.
 A operação usa trava, transação e auditoria, preserva vencimentos do dia e não
 altera planos suspensos, cancelados ou sem data.
 
-O limite de crédito é cadastrado e exibido, mas ainda não bloqueia pedidos. A
-política precisa definir quais faturas entram no saldo e como comparar serviços
-em BRL, USD e PYG antes dessa automação ser ativada.
+O limite de crédito cadastrado é expresso em **BRL**. Valor nulo significa que o
+cliente não possui teto automático; zero bloqueia qualquer novo consumo
+pós-pago. Antes de criar um pedido semanal, a mesma transação soma as faturas
+`ABERTA`, `FECHADA` e `VENCIDA` em BRL e compara a exposição mais o preço efetivo
+do pedido, inclusive preço VIP, com o limite. Faturas `PAGA` e `CANCELADA` não
+comprometem crédito. O bloqueio do cliente e o limite usam a trava da própria
+linha do cliente, impedindo dois pedidos simultâneos de consumirem o mesmo saldo.
+
+Serviço em USD ou PYG é recusado para cliente semanal com limite configurado,
+pois o cadastro atual não possui cotação nem limite por moeda. Isso impede somas
+monetárias inválidas; uma futura vertical nessas moedas deverá adicionar uma
+política própria antes de ser marcada como operacional.
 
 Cada cliente pode ter um único plano VIP. Os estados disponíveis são:
 
