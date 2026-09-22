@@ -52,10 +52,18 @@ async function comCredencialMysql(envPath, callback) {
   }
   const temporario = await fsp.mkdtemp(path.join(os.tmpdir(), 'cmk-mysql-'));
   const arquivo = path.join(temporario, 'client.cnf');
+  const transporte = configuracao.DB_SOCKET
+    ? [
+        'protocol=socket',
+        `socket="${escaparOpcaoMysql(configuracao.DB_SOCKET)}"`
+      ]
+    : [
+        `host="${escaparOpcaoMysql(configuracao.DB_HOST)}"`,
+        `port=${Number(configuracao.DB_PORT || 3306)}`
+      ];
   const conteudo = [
     '[client]',
-    `host="${escaparOpcaoMysql(configuracao.DB_HOST)}"`,
-    `port=${Number(configuracao.DB_PORT || 3306)}`,
+    ...transporte,
     `user="${escaparOpcaoMysql(configuracao.DB_USER)}"`,
     `password="${escaparOpcaoMysql(configuracao.DB_PASSWORD)}"`,
     ''

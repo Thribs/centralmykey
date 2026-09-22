@@ -116,7 +116,7 @@ Os testes integrados criaram registros somente dentro das transações e executa
 | Relatórios | COMPROVADO | Relatório operacional por período, moeda, status, fornecedor, origem e dia em `rotas-relatorios.js`; UI `Relatorios.jsx` | Teste HTTP reconcilia dataset conhecido e moedas; Playwright compara métricas e status exibidos com a resposta autenticada da rota real | Exportação não integra o escopo operacional atualmente implementado | Manter dataset de regressão ao criar novos indicadores | Indicador novo sem separação monetária pode produzir soma inválida |
 | Financeiro | COMPROVADO | Resumo, lançamentos, faturas, pagamentos, estornos e fechamentos de fornecedores; interface com filtro monetário | `teste-financeiro-resumo.js` reconcilia moedas, realizados, pendências, vencidos, filtros e recebido hoje; testes de pagamento, estorno e fechamento cobrem mutações com rollback | Conciliação bancária externa permanece no requisito específico do Sicoob | Manter reconciliação interna ao homologar conectores bancários | Evento externo incorreto pode divergir da posição interna se o conector for ativado sem homologação |
 | Auditoria | PARCIAL | Rota paginada, filtros, interface restrita e registros nas ações críticas; configuração e Banco de Senhas omitem valores sensíveis da trilha | `teste-auditoria.js` cobre permissão, paginação e minimização; `teste-banco-senhas.js` prova que códigos não aparecem; Playwright localiza as alterações reais | Cobertura ainda precisa acompanhar cada novo módulo | Exigir evento de auditoria nos próximos conectores | Ação nova pode ficar sem trilha |
-| Backup | PARCIAL | Pacote verificável da API, web e banco; restauração com hashes e cópia de segurança; agenda systemd, trava e retenção estão preparadas | `teste-backup.js` cobre restauração/corrupção; `teste-backup-agendado.js` cobre retenção/concorrência; `teste-backup-mysql.js` percorre gzip e cliente MySQL com tabela temporária e duas transações revertidas | Timer ainda não foi instalado; a credencial não pode criar schema para um ensaio integral descartável | Instalar o timer na publicação aprovada e executar restauração integral em instância/schema isolado com credencial própria | A prova temporária não demonstra que todo o esquema e volume do banco real restauram corretamente |
+| Backup | PARCIAL | Pacote verificável da API, web e banco; restauração com hashes e cópia de segurança; agenda systemd, trava e retenção estão preparadas | `teste-backup.js` cobre restauração/corrupção; `teste-backup-agendado.js` cobre retenção/concorrência; `teste-backup-mysql.js` inicia uma instância MySQL descartável, gera dump real e restaura tabelas, Unicode, binários, view, procedure e trigger sem acessar produção | Timer ainda não foi instalado nem observado após uma execução agendada | Instalar o timer na publicação aprovada, observar a primeira execução e exercitar periodicamente a restauração descartável | Sem timer publicado ou alerta de falha, a rotina pode deixar de executar sem percepção operacional |
 | Monitoramento | PARCIAL | `/health`, `/health/ready`, `/health/db` e `/api/monitoramento/resumo`; tela agrega pedidos, outbox, integrações e notificações por severidade | Testes HTTP cobrem processo, banco, permissão, atrasos e minimização; Playwright carrega a tela pela rota real em MySQL transacional | Falta encaminhar alertas críticos para canal externo e aplicar em produção as migrações das tabelas operacionais | Publicar migrações com backup e ligar severidade crítica ao canal homologado | Na v0.4.1 publicada, as tabelas novas ainda não existem e a tela nova não deve ser ativada isoladamente |
 
 ### 7. Frontend
@@ -135,9 +135,9 @@ Os testes integrados criaram registros somente dentro das transações e executa
 1. A API Joel Pires é a fonte de verdade das senhas, mas somente a vertical GM possui fluxo comercial completo e prova funcional; o mapa técnico de outras montadoras não cria produtos prontos.
 2. Sicoob possui cliente e processamento simulados, porém depende de mTLS e homologação bancária; PlugPay e WBuy ainda são apenas meios/configurações, sem confirmação automática comprovada.
 3. A outbox e o transporte WhatsApp possuem testes funcionais, mas os modelos e destinatários ainda não foram homologados na Meta e o envio permanece desabilitado por padrão.
-4. O retorno do fornecedor é idempotente e validado, mas continua digitado pelo operador; não há protocolo estruturado de resposta pelo WhatsApp.
+4. O retorno estruturado do fornecedor está implementado e mantém validação humana, mas o formato e o canal ainda não foram homologados com Márcio e Emerson.
 5. O estorno é registrado e reconciliado dentro da Central, enquanto a devolução bancária continua externa e depende de referência ou comprovante informado pelo operador.
-6. A restauração valida artefatos e executa dump fictício no cliente MySQL, mas a credencial disponível não permite o ensaio integral em schema descartável.
+6. A restauração integral de banco foi comprovada em uma instância MySQL descartável, incluindo dados, view, procedure e trigger, sem acessar ou alterar produção; falta instalar e observar o timer na publicação aprovada.
 7. O monitoramento interno existe, mas ainda não encaminha alertas críticos para um canal externo nem possui SLO operacional definido.
 8. Kia/Hyundai, Fiat, Nissan, Jeep/Chrysler, Peugeot/Citroën, rádio e programação online não possuem contrato comercial completo — preço, entrada, fonte, fornecedor, pagamento, entrega e teste — e não devem ser inferidos do fluxo GM.
 9. A migração de mapeamentos WBuy/Bling está versionada, mas a tabela ainda não existe na produção v0.4.1; a tela não pode ser publicada isoladamente.
@@ -153,9 +153,9 @@ Os testes integrados criaram registros somente dentro das transações e executa
 ## O que está parcialmente implementado
 
 - WhatsApp: código, outbox, estados e webhooks estão implementados, mas o transporte real depende de homologação da Meta e contatos controlados.
-- Retorno de fornecedor: o registro interno funciona, porém a resposta automática pelo canal ainda não foi especificada nem homologada.
+- Retorno de fornecedor: o registro manual e a resposta estruturada estão implementados; o formato e o canal ainda dependem de homologação com os fornecedores.
 - Sicoob: base técnica simulada pronta, sem mTLS e homologação externa; PlugPay, WBuy e Bling continuam sem integração funcional completa.
-- Monitoramento, backup e auditoria: funcionais internamente, com canal externo de alerta, timer publicado e restauração integral ainda pendentes.
+- Monitoramento, backup e auditoria: funcionais internamente; continuam pendentes o canal externo de alerta e a instalação/observação do timer de backup na produção.
 - Frontend: GM, financeiro, cadastros, relatório, integrações, usuários/permissões, atendimento, configuração, auditoria e monitoramento possuem navegador contra autenticação, rotas e MySQL reais; as demais verticais ainda não têm produto completo para receber a mesma prova.
 - Demais verticais: faltam requisitos comerciais e implementação ponta a ponta; não estão prontas para operação.
 
@@ -168,7 +168,7 @@ Os testes integrados criaram registros somente dentro das transações e executa
 5. **Homologar Sicoob com mTLS**, cobrança e eventos reais controlados antes de expor qualquer webhook público.
 6. **Obter o contrato do PlugPay e implementar cobrança/conciliação**, preservando a mesma base idempotente de eventos.
 7. **Definir os papéis de WBuy e Bling durante a transição**, então implementar sincronização, reconciliação e auditoria conforme os contratos aprovados.
-8. **Instalar a agenda de backup na publicação aprovada e provar restauração integral**, usando instância ou schema descartável com credencial própria.
+8. **Instalar e observar a agenda de backup na publicação aprovada**, mantendo o ensaio integral descartável como verificação periódica.
 9. **Especificar e construir cada nova vertical ponta a ponta**, começando pela prioridade comercial informada por Joel e exigindo preço, entrada, fonte, fornecedor, pagamento, entrega, UI e teste funcional.
 10. **Executar aceite operacional por perfil e turno**, comprovando os fluxos homologados com operadores autorizados antes de declarar o programa completo.
 
@@ -189,8 +189,8 @@ Na branch `feature/pagamento-manual-idempotente`, ainda não publicada:
 - o painel financeiro agora filtra BRL, USD e PYG em faturas, lançamentos e fechamentos; faturas explicitamente vencidas entram no valor em aberto e pagamentos ligados a lançamentos cancelados não entram no recebido do dia;
 - administradores agora possuem uma tela de monitoramento atualizada a cada minuto com severidade, pedidos atrasados, reprocessamento GM, outbox, eventos de integração e alertas internos, sem exposição de payloads ou destinatários;
 - a busca do cabeçalho agora localiza pedidos, clientes e fornecedores apenas nos módulos autorizados e abre o destino já filtrado; o teste HTTP confirma isolamento por permissão e rollback;
-- a rotina de backup agora possui trava contra concorrência, recuperação de trava obsoleta, retenção por idade com mínimo preservado e unidades systemd versionadas; a instalação do timer e o ensaio com MySQL descartável continuam pendentes;
-- o pipeline de restauração foi exercitado contra o cliente MySQL real com dump fictício, tabela temporária e duas transações revertidas; a credencial atual não permite criar um schema para o ensaio integral;
+- a rotina de backup agora possui trava contra concorrência, recuperação de trava obsoleta, retenção por idade com mínimo preservado e unidades systemd versionadas; a instalação e observação do timer continuam pendentes;
+- o pipeline de restauração agora gera um dump real e recompõe tabelas, dados Unicode/binários, view, procedure e trigger numa instância MySQL totalmente descartável, sem acessar produção;
 - erros HTTP agora recebem identificador de correlação, preservam códigos de negócio ou recebem código estável pelo status e ocultam detalhes inesperados; JSON inválido e excesso de tamanho têm classificação própria, e o frontend mostra a referência;
 - o frontend agora possui E2E em Chromium com API simulada para busca global, navegação filtrada, falha referenciada, recuperação e viewport móvel, sem acessar serviços ou dados reais;
 - os E2E agora também comprovam desistência sem mutação e confirmação única no cancelamento de pedido e bloqueio de cliente, incluindo o estado intermediário do cancelamento;
@@ -255,7 +255,7 @@ Na branch `feature/pagamento-manual-idempotente`, ainda não publicada:
 - a API agora separa vivacidade (`/health`) de prontidão (`/health/ready`); o segundo devolve HTTP 503 quando o MySQL está indisponível sem expor detalhes internos;
 - o teste HTTP de health cobre banco disponível e indisponível com dependência simulada, e o diagnóstico detalhado continua autenticado;
 - backups agora são gerados atomicamente com API, frontend, dump MySQL, permissões restritas e manifesto SHA-256; a restauração valida integridade e cria um backup de segurança antes de substituir dados;
-- o teste automatizado restaura artefatos e dump fictícios em `/tmp` e rejeita corrupção; um ensaio controlado com MySQL descartável ainda é necessário antes de classificar a restauração de banco como comprovada em ambiente operacional;
+- o teste automatizado restaura artefatos, rejeita corrupção e realiza dump/restauração integral numa instância MySQL descartável; a comprovação operacional ainda exige instalar o timer e observar uma execução após publicação aprovada;
 - autenticação e autorização agora possuem teste funcional com login real, JWT válido/adulterado, cinco ações de permissão, senha provisória e bloqueio imediato;
 - o teste de acesso usa usuário fictício com rollback e tabelas temporárias para módulos e permissões, sem alterar a matriz real do ambiente;
 - a ativação continua bloqueada até homologar os dois modelos da Meta e confirmar contatos válidos de fornecedores e clientes.

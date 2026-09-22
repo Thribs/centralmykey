@@ -72,6 +72,5 @@ backup é preservado mesmo quando a publicação termina com sucesso.
 - Não será criada tag enquanto a publicação e os testes pós-publicação não
   estiverem concluídos.
 - O timer de backup não será instalado nesta publicação sem aprovação própria.
-- A restauração integral ainda precisa de ensaio em schema ou instância
-  descartável com credencial dedicada; o rollback usa o dump integral já
-  testado pelo pipeline existente.
+- A restauração integral já foi ensaiada em uma instância MySQL descartável,
+  sem acessar produção; o timer ainda exige instalação e observação separadas.
