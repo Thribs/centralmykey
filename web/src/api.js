@@ -422,6 +422,20 @@ export async function estornarECancelarPedido(token, pedidoId, dados) {
   return lerResposta(resposta);
 }
 
+export async function estornarPagamentoPedido(token, pedidoId, dados) {
+  const resposta = await requisitar(
+    `${API_URL}/api/pedidos/${pedidoId}/estornar-pagamento`,
+    {
+      method: 'POST',
+      headers: cabecalhoAutenticado(token, {
+        'Content-Type': 'application/json'
+      }),
+      body: JSON.stringify(dados)
+    }
+  );
+  return lerResposta(resposta);
+}
+
 export async function reprocessarComunicacaoFornecedor(
   token,
   pedidoId,

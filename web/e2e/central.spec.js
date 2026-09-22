@@ -1436,6 +1436,34 @@ test('integrações administram modelos e mapeamentos sem chamar serviços exter
   await expect(linhaBling).toContainText('2');
   await expect(linhaSicoob).toContainText('REFERENCIA_NAO_ENCONTRADA');
 
+  let linhaPagamentoTardio = page.locator('tr', {
+    hasText: contexto.referencia_pagamento_tardio
+  });
+  await expect(linhaPagamentoTardio)
+    .toContainText('PAGAMENTO_APOS_CANCELAMENTO_REQUER_ESTORNO');
+  const respostasDevolucao = [
+    'SICOOB',
+    `DEVOLUCAO-${contexto.referencia_pagamento_tardio}`,
+    'Pagamento devolvido após cancelamento no teste integrado'
+  ];
+  const responderDialogoDevolucao = async dialogo => {
+    if (dialogo.type() === 'prompt') {
+      await dialogo.accept(respostasDevolucao.shift());
+    } else {
+      await dialogo.accept();
+    }
+  };
+  page.on('dialog', responderDialogoDevolucao);
+  await linhaPagamentoTardio.getByRole('button', {
+    name: 'Registrar devolução'
+  }).click();
+  page.off('dialog', responderDialogoDevolucao);
+  linhaPagamentoTardio = page.locator('tr', {
+    hasText: contexto.referencia_pagamento_tardio
+  });
+  await expect(linhaPagamentoTardio).toContainText('IGNORADO');
+  await expect(linhaPagamentoTardio).toContainText('PAGAMENTO_ESTORNADO');
+
   await page.getByLabel('ID do pedido WBuy').fill(contexto.pedido_wbuy_id);
   await page.getByRole('button', { name: 'Sincronizar pedido WBuy' }).click();
   await expect(page.getByRole('status')).toContainText('recebido na fila');
@@ -1495,6 +1523,11 @@ test('integrações administram modelos e mapeamentos sem chamar serviços exter
   expect(verificacao.modelo.status).toBe('APROVADO');
   expect(Number(verificacao.modelo.ativo)).toBe(1);
   expect(Number(verificacao.modelo.auditorias)).toBe(3);
+  expect(verificacao.pagamento_tardio.pedido_status).toBe('CANCELADO');
+  expect(verificacao.pagamento_tardio.evento_status).toBe('IGNORADO');
+  expect(verificacao.pagamento_tardio.erro_codigo).toBe('PAGAMENTO_ESTORNADO');
+  expect(Number(verificacao.pagamento_tardio.estornos)).toBe(1);
+  expect(Number(verificacao.pagamento_tardio.devolucoes)).toBe(1);
 });
 
 test('administrador cria usuário e define permissões pelas rotas reais', async ({ page }) => {

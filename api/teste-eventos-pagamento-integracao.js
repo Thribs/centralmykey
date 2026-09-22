@@ -212,16 +212,26 @@ async function executar() {
     assert.strictEqual(pagamentoAposCancelamento.status, 'FALHOU');
     assert.strictEqual(
       pagamentoAposCancelamento.codigo,
-      'PEDIDO_NAO_AGUARDA_PAGAMENTO'
+      'PAGAMENTO_APOS_CANCELAMENTO_REQUER_ESTORNO'
     );
+    assert.ok(pagamentoAposCancelamento.pagamento_id);
 
     const [[financeiro]] = await connection.query(
       `SELECT
         (SELECT COUNT(*) FROM pagamentos pg JOIN lancamentos_financeiros lf
           ON lf.id=pg.lancamento_id WHERE lf.pedido_senha_id=?) AS pagamentos,
         (SELECT COUNT(*) FROM lancamentos_financeiros
-          WHERE pedido_senha_id=? AND origem='INTEGRACAO_SICOOB') AS lancamentos`,
-      [pedidoId, pedidoId]
+          WHERE pedido_senha_id=? AND origem='INTEGRACAO_SICOOB') AS lancamentos,
+        (SELECT COUNT(*) FROM pagamentos pg JOIN lancamentos_financeiros lf
+          ON lf.id=pg.lancamento_id WHERE lf.pedido_senha_id=?) AS pagamentos_cancelado,
+        (SELECT COUNT(*) FROM lancamentos_financeiros
+          WHERE pedido_senha_id=? AND origem='INTEGRACAO_SICOOB') AS lancamentos_cancelado,
+        (SELECT COUNT(*) FROM pedidos_senha
+          WHERE id=? AND status='CANCELADO') AS pedido_permanece_cancelado,
+        (SELECT COUNT(*) FROM pedido_historico
+          WHERE pedido_id=? AND tipo='PAGAMENTO_APOS_CANCELAMENTO') AS historico_excecao`,
+      [pedidoId, pedidoId, pedidoCanceladoId, pedidoCanceladoId,
+        pedidoCanceladoId, pedidoCanceladoId]
     );
     const [[eventos]] = await connection.query(
       `SELECT SUM(status='PROCESSADO') AS processados,
@@ -230,7 +240,7 @@ async function executar() {
     );
     assert.deepStrictEqual(
       [...Object.values(financeiro), ...Object.values(eventos)].map(Number),
-      [1, 1, 2, 2]
+      [1, 1, 1, 1, 1, 1, 2, 2]
     );
 
     global.fetch = fetchOriginal;

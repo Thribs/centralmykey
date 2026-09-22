@@ -78,6 +78,32 @@ async function marcarFalha(connection, eventoId, codigo, detalhe, entidadeId = n
   return { ok: false, aceito: true, status: 'FALHOU', codigo, evento_id: eventoId };
 }
 
+async function registrarRecebimento(connection, pedido, evento, origem) {
+  const valor = evento.valorCentavos / 100;
+  const [lancamento] = await connection.query(
+    `INSERT INTO lancamentos_financeiros
+       (tipo, cliente_id, pedido_senha_id, descricao, valor, moeda,
+        data_competencia, status, origem, criado_por)
+     VALUES ('RECEITA', ?, ?, ?, ?, ?, CURDATE(), 'RECEBIDO', ?, NULL)`,
+    [pedido.cliente_id, pedido.id,
+      `Pagamento ${evento.provedor} do pedido ${pedido.protocolo}`,
+      valor, evento.moeda, origem]
+  );
+  const [pagamento] = await connection.query(
+    `INSERT INTO pagamentos
+       (lancamento_id, valor, moeda, data_pagamento, meio_pagamento,
+        referencia_externa, observacao, registrado_por)
+     VALUES (?, ?, ?, NOW(), ?, ?, ?, NULL)`,
+    [lancamento.insertId, valor, evento.moeda, evento.provedor,
+      evento.referencia, `Evento externo ${evento.eventoId}`]
+  );
+  return {
+    valor,
+    lancamentoId: lancamento.insertId,
+    pagamentoId: pagamento.insertId
+  };
+}
+
 async function processarEventoPagamentoPedido(pool, dados, opcoes = {}) {
   const evento = prepararEvento(dados);
   const processarPedidoPago = opcoes.processarPedidoPago || processarPedidoPagoPadrao;
@@ -181,6 +207,27 @@ async function processarEventoPagamentoPedido(pool, dados, opcoes = {}) {
         await connection.commit();
         return resultado;
       }
+      if (pedido.status === 'CANCELADO') {
+        await connection.query(
+          `UPDATE integracao_eventos
+              SET status='FALHOU', entidade='PEDIDO', entidade_id=?,
+                  lancamento_id=?, pagamento_id=?,
+                  erro_codigo='PAGAMENTO_APOS_CANCELAMENTO_REQUER_ESTORNO',
+                  erro_detalhe='Pagamento recebido após o cancelamento do pedido',
+                  processado_em=NOW()
+            WHERE id=?`,
+          [pedido.id, existente.lancamento_id, existente.pagamento_id,
+            eventoBancoId]
+        );
+        await connection.commit();
+        return {
+          ok: false, aceito: true, status: 'FALHOU',
+          codigo: 'PAGAMENTO_APOS_CANCELAMENTO_REQUER_ESTORNO',
+          evento_id: eventoBancoId, pedido_id: pedido.id,
+          lancamento_id: existente.lancamento_id,
+          pagamento_id: existente.pagamento_id
+        };
+      }
       await connection.query(
         `UPDATE integracao_eventos
             SET status='PROCESSADO', entidade='PEDIDO', entidade_id=?,
@@ -197,6 +244,67 @@ async function processarEventoPagamentoPedido(pool, dados, opcoes = {}) {
       };
     }
 
+    if (pedido.status === 'CANCELADO') {
+      const recebimento = await registrarRecebimento(
+        connection,
+        pedido,
+        evento,
+        origem
+      );
+      await connection.query(
+        `INSERT INTO pedido_historico
+           (pedido_id, usuario_id, tipo, descricao, dados)
+         VALUES (?, NULL, 'PAGAMENTO_APOS_CANCELAMENTO', ?, ?)`,
+        [pedido.id,
+          `Pagamento ${evento.provedor} recebido após o cancelamento`,
+          JSON.stringify({
+            provedor: evento.provedor,
+            evento_id: eventoBancoId,
+            pagamento_id: recebimento.pagamentoId,
+            valor: recebimento.valor,
+            moeda: evento.moeda,
+            acao_requerida: 'ESTORNO'
+          })]
+      );
+      await connection.query(
+        `INSERT INTO auditoria
+           (usuario_id, modulo, acao, entidade, entidade_id, descricao,
+            dados_antes, dados_depois, ip)
+         VALUES (NULL, 'INTEGRACOES', 'REGISTRAR_PAGAMENTO_APOS_CANCELAMENTO',
+                 'pedidos_senha', ?, ?, ?, ?, NULL)`,
+        [String(pedido.id),
+          `Pagamento recebido após cancelamento do pedido ${pedido.protocolo}`,
+          JSON.stringify({ status: 'CANCELADO' }),
+          JSON.stringify({
+            status: 'CANCELADO',
+            provedor: evento.provedor,
+            evento_id: eventoBancoId,
+            pagamento_id: recebimento.pagamentoId,
+            lancamento_id: recebimento.lancamentoId,
+            acao_requerida: 'ESTORNO'
+          })]
+      );
+      await connection.query(
+        `UPDATE integracao_eventos
+            SET status='FALHOU', entidade='PEDIDO', entidade_id=?,
+                lancamento_id=?, pagamento_id=?,
+                erro_codigo='PAGAMENTO_APOS_CANCELAMENTO_REQUER_ESTORNO',
+                erro_detalhe='Pagamento recebido após o cancelamento do pedido',
+                processado_em=NOW()
+          WHERE id=?`,
+        [pedido.id, recebimento.lancamentoId, recebimento.pagamentoId,
+          eventoBancoId]
+      );
+      await connection.commit();
+      return {
+        ok: false, aceito: true, status: 'FALHOU',
+        codigo: 'PAGAMENTO_APOS_CANCELAMENTO_REQUER_ESTORNO',
+        evento_id: eventoBancoId, pedido_id: pedido.id,
+        lancamento_id: recebimento.lancamentoId,
+        pagamento_id: recebimento.pagamentoId
+      };
+    }
+
     if (pedido.status !== 'AGUARDANDO_PAGAMENTO') {
       const resultado = await marcarFalha(connection, eventoBancoId,
         'PEDIDO_NAO_AGUARDA_PAGAMENTO',
@@ -205,24 +313,7 @@ async function processarEventoPagamentoPedido(pool, dados, opcoes = {}) {
       return resultado;
     }
 
-    const valor = evento.valorCentavos / 100;
-    const [lancamento] = await connection.query(
-      `INSERT INTO lancamentos_financeiros
-         (tipo, cliente_id, pedido_senha_id, descricao, valor, moeda,
-          data_competencia, status, origem, criado_por)
-       VALUES ('RECEITA', ?, ?, ?, ?, ?, CURDATE(), 'RECEBIDO', ?, NULL)`,
-      [pedido.cliente_id, pedido.id,
-        `Pagamento ${evento.provedor} do pedido ${pedido.protocolo}`,
-        valor, evento.moeda, origem]
-    );
-    const [pagamento] = await connection.query(
-      `INSERT INTO pagamentos
-         (lancamento_id, valor, moeda, data_pagamento, meio_pagamento,
-          referencia_externa, observacao, registrado_por)
-       VALUES (?, ?, ?, NOW(), ?, ?, ?, NULL)`,
-      [lancamento.insertId, valor, evento.moeda, evento.provedor,
-        evento.referencia, `Evento externo ${evento.eventoId}`]
-    );
+    const recebimento = await registrarRecebimento(connection, pedido, evento, origem);
     await connection.query("UPDATE pedidos_senha SET status='PAGO' WHERE id=?", [pedido.id]);
     await connection.query(
       `INSERT INTO pedido_historico
@@ -230,8 +321,9 @@ async function processarEventoPagamentoPedido(pool, dados, opcoes = {}) {
        VALUES (?, NULL, 'PAGAMENTO_CONFIRMADO_INTEGRACAO', ?, ?)`,
       [pedido.id, `Pagamento confirmado automaticamente por ${evento.provedor}`,
         JSON.stringify({ provedor: evento.provedor, evento_id: eventoBancoId,
-          pagamento_id: pagamento.insertId, referencia_externa: evento.referencia,
-          valor, moeda: evento.moeda })]
+          pagamento_id: recebimento.pagamentoId,
+          referencia_externa: evento.referencia,
+          valor: recebimento.valor, moeda: evento.moeda })]
     );
     const processamento = await processarPedidoPago(connection, pedido.id, null);
     await connection.query(
@@ -244,21 +336,21 @@ async function processarEventoPagamentoPedido(pool, dados, opcoes = {}) {
         `Pagamento do pedido ${pedido.protocolo} confirmado por ${evento.provedor}`,
         JSON.stringify({ status: 'AGUARDANDO_PAGAMENTO' }),
         JSON.stringify({ status: processamento.status, provedor: evento.provedor,
-          evento_id: eventoBancoId, pagamento_id: pagamento.insertId,
-          lancamento_id: lancamento.insertId })]
+          evento_id: eventoBancoId, pagamento_id: recebimento.pagamentoId,
+          lancamento_id: recebimento.lancamentoId })]
     );
     await connection.query(
       `UPDATE integracao_eventos
           SET status='PROCESSADO', entidade='PEDIDO', entidade_id=?,
               lancamento_id=?, pagamento_id=?, processado_em=NOW()
         WHERE id=?`,
-      [pedido.id, lancamento.insertId, pagamento.insertId, eventoBancoId]
+      [pedido.id, recebimento.lancamentoId, recebimento.pagamentoId, eventoBancoId]
     );
     await connection.commit();
     return {
       ok: true, aceito: true, status: 'PROCESSADO', evento_id: eventoBancoId,
-      pedido_id: pedido.id, lancamento_id: lancamento.insertId,
-      pagamento_id: pagamento.insertId, processamento
+      pedido_id: pedido.id, lancamento_id: recebimento.lancamentoId,
+      pagamento_id: recebimento.pagamentoId, processamento
     };
   } catch (error) {
     await connection.rollback();

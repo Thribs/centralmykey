@@ -23,6 +23,7 @@ import {
   buscarResumoUsuarios,
   cadastrarModeloWhatsapp,
   cadastrarUsuario,
+  estornarPagamentoPedido,
   listarConfiguracoesSeguras,
   listarEventosIntegracao,
   listarMapeamentosIntegracoes,
@@ -506,7 +507,11 @@ export function Integracoes({ permissoes: permissoesSessao = [] }) {
   const permissaoIntegracoes = permissoesSessao.find(
     item => item.codigo === 'INTEGRACOES'
   ) || {};
+  const permissaoFinanceiro = permissoesSessao.find(
+    item => item.codigo === 'FINANCEIRO'
+  ) || {};
   const podeEditar = Number(permissaoIntegracoes.editar) === 1;
+  const podeAprovarFinanceiro = Number(permissaoFinanceiro.aprovar) === 1;
 
   const carregar = useCallback(async () => {
     setErro('');
@@ -606,6 +611,41 @@ export function Integracoes({ permissoes: permissoesSessao = [] }) {
         : `Pedido ${resultado.pedido_externo_id} recebido na fila · ${resumo}. ` +
           'Conversão aguarda regras comerciais.');
       setPedidoWBuyId('');
+      await carregar();
+    } catch (falha) {
+      setErro(falha.message);
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  async function registrarDevolucao(evento) {
+    const meio = window.prompt(
+      'Informe o meio usado na devolução:',
+      evento.provedor === 'SICOOB' ? 'SICOOB' : 'PIX'
+    )?.trim().toUpperCase();
+    if (!meio) return;
+    const referencia = window.prompt(
+      'Informe a referência da devolução já realizada:'
+    )?.trim();
+    if (!referencia) return;
+    const motivo = window.prompt(
+      'Informe o motivo da devolução:',
+      'Pagamento recebido após o cancelamento do pedido'
+    )?.trim();
+    if (!motivo) return;
+    if (!window.confirm(
+      'Confirma que o valor já foi devolvido e deseja registrar o estorno?'
+    )) return;
+
+    setSalvando(true);
+    setErro('');
+    try {
+      await estornarPagamentoPedido(token, evento.entidade_id, {
+        meio_estorno: meio,
+        referencia_externa: referencia,
+        motivo_estorno: motivo
+      });
       await carregar();
     } catch (falha) {
       setErro(falha.message);
@@ -751,10 +791,10 @@ export function Integracoes({ permissoes: permissoesSessao = [] }) {
         </div>
         <div className="admin-table-wrap">
           <table className="admin-table">
-            <thead><tr><th>Provedor</th><th>Evento</th><th>Referência</th><th>Entidade</th><th>Status</th><th>Tentativas</th><th>Falha</th><th>Recebido</th></tr></thead>
+            <thead><tr><th>Provedor</th><th>Evento</th><th>Referência</th><th>Entidade</th><th>Status</th><th>Tentativas</th><th>Falha</th><th>Recebido</th><th>Ação</th></tr></thead>
             <tbody>
               {eventos.length === 0 && (
-                <tr><td colSpan="8" className="admin-empty">Nenhum evento encontrado.</td></tr>
+                <tr><td colSpan="9" className="admin-empty">Nenhum evento encontrado.</td></tr>
               )}
               {eventos.map(evento => (
                 <tr key={evento.id}>
@@ -768,6 +808,19 @@ export function Integracoes({ permissoes: permissoesSessao = [] }) {
                   <td>{Number(evento.tentativas || 0)}</td>
                   <td>{evento.erro_codigo || '—'}</td>
                   <td>{dataHora(evento.recebido_em)}</td>
+                  <td>
+                    {podeAprovarFinanceiro &&
+                      evento.erro_codigo === 'PAGAMENTO_APOS_CANCELAMENTO_REQUER_ESTORNO' &&
+                      evento.pagamento_id && evento.entidade_id ? (
+                        <button
+                          type="button"
+                          disabled={salvando}
+                          onClick={() => registrarDevolucao(evento)}
+                        >
+                          Registrar devolução
+                        </button>
+                      ) : '—'}
+                  </td>
                 </tr>
               ))}
             </tbody>

@@ -94,5 +94,11 @@ colisão de identificadores, deduplica reentregas pela referência externa e só
 então cria o lançamento, o pagamento e executa o fluxo pós-pagamento. O payload
 bruto fica restrito ao banco; a rota administrativa expõe apenas metadados.
 
+Se o provedor confirmar um pagamento depois do cancelamento, a Central registra
+a entrada sem reabrir nem processar o pedido. A fila mostra a ação **Registrar
+devolução** apenas para quem possui aprovação financeira. Depois que o operador
+confirma uma devolução já realizada, a mesma transação cria o estorno e resolve
+o evento pendente.
+
 Nenhum endpoint público de provedor é ativado antes da validação de assinatura
 ou do mecanismo de autenticação definido no contrato oficial correspondente.

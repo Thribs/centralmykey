@@ -107,6 +107,22 @@ async function executar() {
     await criarTabelaOutboxTemporaria(connection);
     await criarTabelaEstornosTemporaria(connection);
     await criarTabelaReferenciasPagamentoTemporaria(connection);
+    await connection.query(`CREATE TEMPORARY TABLE integracao_eventos (
+      id BIGINT AUTO_INCREMENT PRIMARY KEY,
+      provedor VARCHAR(40) NOT NULL,
+      evento_externo_id VARCHAR(160) NOT NULL,
+      tipo VARCHAR(80) NOT NULL,
+      referencia_externa VARCHAR(120),
+      entidade VARCHAR(40), entidade_id BIGINT,
+      lancamento_id BIGINT, pagamento_id BIGINT,
+      payload_hash CHAR(64) NOT NULL, payload JSON NOT NULL,
+      status ENUM('RECEBIDO','PROCESSADO','IGNORADO','FALHOU') NOT NULL,
+      tentativas SMALLINT UNSIGNED DEFAULT 1,
+      erro_codigo VARCHAR(80), erro_detalhe VARCHAR(500),
+      recebido_em DATETIME DEFAULT CURRENT_TIMESTAMP,
+      processado_em DATETIME, atualizado_em DATETIME DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE KEY uk_evento (provedor, evento_externo_id)
+    ) ENGINE=InnoDB`);
     const [[servico]] = await connection.query(
       "SELECT id FROM servicos WHERE codigo='GM_SENHA' AND ativo=1 LIMIT 1"
     );
@@ -130,7 +146,11 @@ async function executar() {
       [`FORNECEDOR ESTORNO ${marcador}`]
     );
 
-    async function criarPedidoPago(sufixo, comFornecedor = false) {
+    async function criarPedidoPago(
+      sufixo,
+      comFornecedor = false,
+      origem = 'CONFIRMACAO_MANUAL'
+    ) {
       const [pedido] = await connection.query(
         `INSERT INTO pedidos_senha
            (protocolo, cliente_id, servico_id, chassi, marca, modelo, ano,
@@ -152,21 +172,46 @@ async function executar() {
            (tipo, cliente_id, pedido_senha_id, descricao, valor, moeda,
             data_competencia, status, origem, criado_por)
          VALUES ('RECEITA', ?, ?, 'PAGAMENTO TESTE ESTORNO', 50, 'BRL',
-                 CURDATE(), 'RECEBIDO', 'CONFIRMACAO_MANUAL', ?)`,
-        [cliente.insertId, pedido.insertId, usuario.id]
+                 CURDATE(), 'RECEBIDO', ?, ?)`,
+        [cliente.insertId, pedido.insertId, origem, usuario.id]
       );
       const [pagamento] = await connection.query(
         `INSERT INTO pagamentos
            (lancamento_id, valor, moeda, data_pagamento, meio_pagamento,
             referencia_externa, observacao, registrado_por)
-         VALUES (?, 50, 'BRL', NOW(), 'PIX', ?, 'TESTE', ?)`,
-        [lancamento.insertId, `${referenciaOriginal}-${sufixo}`, usuario.id]
+         VALUES (?, 50, 'BRL', NOW(), ?, ?, 'TESTE', ?)`,
+        [lancamento.insertId,
+          origem.startsWith('INTEGRACAO_') ? 'SICOOB' : 'PIX',
+          `${referenciaOriginal}-${sufixo}`, usuario.id]
       );
       return { pedidoId: pedido.insertId, pagamentoId: pagamento.insertId };
     }
 
     const cancelavel = await criarPedidoPago('OK');
     const bloqueado = await criarPedidoPago('BLQ', true);
+    const externoCancelado = await criarPedidoPago(
+      'EXT',
+      false,
+      'INTEGRACAO_SICOOB'
+    );
+    await connection.query(
+      "UPDATE pedidos_senha SET status='CANCELADO' WHERE id=?",
+      [externoCancelado.pedidoId]
+    );
+    await connection.query(
+      `INSERT INTO integracao_eventos
+         (provedor, evento_externo_id, tipo, referencia_externa,
+          entidade, entidade_id, lancamento_id, pagamento_id,
+          payload_hash, payload, status, erro_codigo, erro_detalhe)
+       SELECT 'SICOOB', ?, 'PIX_RECEBIDO', pg.referencia_externa,
+              'PEDIDO', ?, pg.lancamento_id, pg.id,
+              REPEAT('a', 64), JSON_OBJECT(), 'FALHOU',
+              'PAGAMENTO_APOS_CANCELAMENTO_REQUER_ESTORNO',
+              'Pagamento recebido após o cancelamento do pedido'
+         FROM pagamentos pg WHERE pg.id=?`,
+      [`evt-estorno-externo-${marcador}`,
+        externoCancelado.pedidoId, externoCancelado.pagamentoId]
+    );
     await connection.query(
       `INSERT INTO comunicacoes_outbox
          (chave_idempotencia, canal, finalidade, pedido_id,
@@ -221,6 +266,19 @@ async function executar() {
     assert.strictEqual(divergente.resposta.status, 409);
     assert.strictEqual(divergente.corpo.codigo, 'ESTORNO_DIVERGENTE');
 
+    const estornoExterno = await postar(
+      `${api.url}/api/pedidos/${externoCancelado.pedidoId}/estornar-pagamento`,
+      {
+        ...dados,
+        referencia_externa: `${referenciaEstorno}-EXT`,
+        motivo_estorno: 'Devolução de pagamento recebido após cancelamento'
+      }
+    );
+    assert.strictEqual(estornoExterno.resposta.status, 200);
+    assert.strictEqual(estornoExterno.corpo.estorno.idempotente, false);
+    assert.strictEqual(estornoExterno.corpo.estorno.status, 'CONFIRMADO');
+    assert.strictEqual(estornoExterno.corpo.estorno.eventos_resolvidos, 1);
+
     const recusado = await postar(
       `${api.url}/api/pedidos/${bloqueado.pedidoId}/estornar-e-cancelar`,
       { ...dados, referencia_externa: `${referenciaEstorno}-BLQ` }
@@ -234,7 +292,7 @@ async function executar() {
     const [[estado]] = await connection.query(
       `SELECT
          (SELECT COUNT(*) FROM estornos_pagamentos
-           WHERE pedido_senha_id = ?) AS estornos,
+           WHERE pedido_senha_id IN (?, ?) AND status='CONFIRMADO') AS estornos,
          (SELECT COUNT(*) FROM lancamentos_financeiros
            WHERE pedido_senha_id = ? AND tipo = 'DESPESA'
              AND origem = 'ESTORNO_MANUAL' AND status = 'PAGO') AS despesas,
@@ -249,20 +307,28 @@ async function executar() {
          (SELECT COUNT(*) FROM lancamentos_financeiros
            WHERE pedido_senha_id = ? AND origem = 'ESTORNO_MANUAL') AS despesas_bloqueadas,
          (SELECT COUNT(*) FROM pedidos_senha
-           WHERE id = ? AND status <> 'CANCELADO') AS bloqueado_preservado`,
+           WHERE id = ? AND status <> 'CANCELADO') AS bloqueado_preservado,
+         (SELECT COUNT(*) FROM pedidos_senha
+           WHERE id = ? AND status='CANCELADO') AS externo_permanece_cancelado,
+         (SELECT COUNT(*) FROM integracao_eventos
+           WHERE pagamento_id=? AND status='IGNORADO'
+             AND erro_codigo='PAGAMENTO_ESTORNADO') AS evento_resolvido`,
       [
         cancelavel.pedidoId,
+        externoCancelado.pedidoId,
         cancelavel.pedidoId,
         cancelavel.pedidoId,
         cancelavel.pedidoId,
         cancelavel.pedidoId,
         bloqueado.pedidoId,
-        bloqueado.pedidoId
+        bloqueado.pedidoId,
+        externoCancelado.pedidoId,
+        externoCancelado.pagamentoId
       ]
     );
     assert.deepStrictEqual(
       Object.values(estado).map(Number),
-      [1, 1, 2, 2, 1, 0, 1]
+      [2, 1, 2, 2, 1, 0, 1, 1, 1]
     );
     const [[estornoBloqueado]] = await connection.query(
       `SELECT COUNT(*) AS quantidade

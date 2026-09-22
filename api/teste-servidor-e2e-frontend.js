@@ -400,6 +400,48 @@ async function prepararFixture() {
      VALUES (?, ?, ?, 'COMPLETO', 1, 'ANTECIPADO', 'LIBERADO')`,
     [nomeCliente, telefone, telefone]
   );
+  const protocoloPagamentoTardio = `PT${process.pid}${String(Date.now()).slice(-7)}`;
+  const referenciaPagamentoTardio = `E2E-TARDIO-${marcador}`;
+  const eventoPagamentoTardio = `sicoob-tardio-${marcador}`;
+  const [pedidoPagamentoTardio] = await connection.query(
+    `INSERT INTO pedidos_senha
+       (protocolo, cliente_id, servico_id, chassi, marca, modelo, ano,
+        status, valor_venda, custo, moeda)
+     VALUES (?, ?, ?, ?, 'GM', 'PAGAMENTO TARDIO E2E', 2026,
+             'CANCELADO', ?, 0, 'BRL')`,
+    [protocoloPagamentoTardio, cliente.insertId, servico.id,
+      `9BGPT11A0${String(Date.now()).slice(-8)}`, Number(servico.preco_base)]
+  );
+  const [lancamentoPagamentoTardio] = await connection.query(
+    `INSERT INTO lancamentos_financeiros
+       (tipo, cliente_id, pedido_senha_id, descricao, valor, moeda,
+        data_competencia, status, origem, criado_por)
+     VALUES ('RECEITA', ?, ?, 'Pagamento Sicoob após cancelamento E2E', ?,
+             'BRL', CURDATE(), 'RECEBIDO', 'INTEGRACAO_SICOOB', NULL)`,
+    [cliente.insertId, pedidoPagamentoTardio.insertId,
+      Number(servico.preco_base)]
+  );
+  const [pagamentoTardio] = await connection.query(
+    `INSERT INTO pagamentos
+       (lancamento_id, valor, moeda, data_pagamento, meio_pagamento,
+        referencia_externa, observacao, registrado_por)
+     VALUES (?, ?, 'BRL', NOW(), 'SICOOB', ?, 'Evento fictício E2E', NULL)`,
+    [lancamentoPagamentoTardio.insertId, Number(servico.preco_base),
+      referenciaPagamentoTardio]
+  );
+  await connection.query(
+    `INSERT INTO integracao_eventos
+       (provedor, evento_externo_id, tipo, referencia_externa, entidade,
+        entidade_id, lancamento_id, pagamento_id, payload_hash, payload,
+        status, tentativas, erro_codigo, erro_detalhe)
+     VALUES ('SICOOB', ?, 'PIX_RECEBIDO', ?, 'PEDIDO', ?, ?, ?, ?,
+             JSON_OBJECT('fixture', TRUE), 'FALHOU', 1,
+             'PAGAMENTO_APOS_CANCELAMENTO_REQUER_ESTORNO',
+             'Pagamento recebido após o cancelamento do pedido')`,
+    [eventoPagamentoTardio, referenciaPagamentoTardio,
+      pedidoPagamentoTardio.insertId, lancamentoPagamentoTardio.insertId,
+      pagamentoTardio.insertId, 'd'.repeat(64)]
+  );
   const [[origemSenha]] = await connection.query(
     'SELECT id FROM origens_senha WHERE ativo = 1 ORDER BY id LIMIT 1'
   );
@@ -743,6 +785,10 @@ async function prepararFixture() {
       servicoCodigo: servico.codigo,
       referenciaEventoBling,
       referenciaEventoSicoob,
+      referenciaPagamentoTardio,
+      eventoPagamentoTardio,
+      pedidoPagamentoTardioId: pedidoPagamentoTardio.insertId,
+      pagamentoTardioId: pagamentoTardio.insertId,
       pedidoWBuyId
     },
     nomeCliente,
@@ -936,6 +982,9 @@ async function iniciar() {
       servico_codigo: contexto.integracoes.servicoCodigo,
       referencia_evento_bling: contexto.integracoes.referenciaEventoBling,
       referencia_evento_sicoob: contexto.integracoes.referenciaEventoSicoob,
+      referencia_pagamento_tardio: contexto.integracoes.referenciaPagamentoTardio,
+      evento_pagamento_tardio: contexto.integracoes.eventoPagamentoTardio,
+      pedido_pagamento_tardio_id: contexto.integracoes.pedidoPagamentoTardioId,
       pedido_wbuy_id: contexto.integracoes.pedidoWBuyId
     },
     cliente: contexto.nomeCliente
@@ -995,7 +1044,23 @@ async function iniciar() {
       );
       if (mapeamento?.id) contexto.integracoes.mapeamentoId = mapeamento.id;
       if (modelo?.id) contexto.integracoes.modeloId = modelo.id;
-      return res.json({ ok: true, mapeamento: mapeamento || null, modelo: modelo || null });
+      const [[pagamentoTardio]] = await connection.query(
+        `SELECT p.status AS pedido_status, e.status AS evento_status,
+                e.erro_codigo,
+                (SELECT COUNT(*) FROM estornos_pagamentos ep
+                  WHERE ep.pagamento_id=?) AS estornos,
+                (SELECT COUNT(*) FROM lancamentos_financeiros lf
+                  WHERE lf.pedido_senha_id=p.id AND lf.tipo='DESPESA'
+                    AND lf.origem='ESTORNO_MANUAL' AND lf.status='PAGO') AS devolucoes
+           FROM pedidos_senha p
+           JOIN integracao_eventos e ON e.entidade_id=p.id
+          WHERE p.id=? AND e.evento_externo_id=? LIMIT 1`,
+        [contexto.integracoes.pagamentoTardioId,
+          contexto.integracoes.pedidoPagamentoTardioId,
+          contexto.integracoes.eventoPagamentoTardio]
+      );
+      return res.json({ ok: true, mapeamento: mapeamento || null,
+        modelo: modelo || null, pagamento_tardio: pagamentoTardio || null });
     }
     if (req.query.cenario === 'cadastros') {
       const [[cliente]] = await connection.query(

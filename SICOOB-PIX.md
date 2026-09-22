@@ -12,7 +12,8 @@ produção:
 - um reconciliador com trava executa na inicialização e periodicamente para
   expirar referências vencidas mesmo que ninguém tente gerar outra cobrança;
 - o cancelamento do pedido encerra referências locais ainda ativas, e um Pix
-  confirmado tardiamente vira exceção de integração sem concluir o pedido;
+  confirmado tardiamente registra a entrada, mantém o pedido cancelado e vira
+  exceção até a devolução ser confirmada pelo financeiro;
 - o webhook padrão `{ "pix": [...] }` é validado antes do processamento;
 - o `endToEndId` identifica o evento e o pagamento para reentrega idempotente;
 - valor e moeda precisam coincidir exatamente com o pedido;

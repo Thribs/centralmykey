@@ -51,6 +51,21 @@ function normalizarDados(dados = {}) {
   return { meio, referencia, comprovante, motivo };
 }
 
+async function resolverEventosDoPagamento(connection, pagamentoId) {
+  const [resultado] = await connection.query(
+    `UPDATE integracao_eventos
+        SET status='IGNORADO',
+            erro_codigo='PAGAMENTO_ESTORNADO',
+            erro_detalhe='Pagamento recebido após cancelamento foi estornado',
+            processado_em=NOW()
+      WHERE pagamento_id=?
+        AND status='FALHOU'
+        AND erro_codigo='PAGAMENTO_APOS_CANCELAMENTO_REQUER_ESTORNO'`,
+    [pagamentoId]
+  );
+  return Number(resultado.affectedRows || 0);
+}
+
 async function estornarPagamentoManual(connection, {
   pedidoId,
   usuarioId,
@@ -78,7 +93,7 @@ async function estornarPagamentoManual(connection, {
      INNER JOIN lancamentos_financeiros lf ON lf.id = pg.lancamento_id
      WHERE lf.pedido_senha_id = ?
        AND lf.tipo = 'RECEITA'
-       AND lf.origem = 'CONFIRMACAO_MANUAL'
+       AND (lf.origem = 'CONFIRMACAO_MANUAL' OR LEFT(lf.origem, 11) = 'INTEGRACAO_')
      ORDER BY pg.id DESC
      LIMIT 1
      FOR UPDATE`,
@@ -86,8 +101,8 @@ async function estornarPagamentoManual(connection, {
   );
   if (!pagamento) {
     throw erroNegocio(
-      'PAGAMENTO_MANUAL_NAO_ENCONTRADO',
-      'Não existe pagamento manual para estornar',
+      'PAGAMENTO_ESTORNAVEL_NAO_ENCONTRADO',
+      'Não existe pagamento registrado para estornar',
       404
     );
   }
@@ -113,13 +128,18 @@ async function estornarPagamentoManual(connection, {
         'O pagamento já possui outro estorno registrado'
       );
     }
+    const eventosResolvidos = await resolverEventosDoPagamento(
+      connection,
+      pagamento.id
+    );
     return {
       idempotente: true,
       estorno_id: existente.id,
       pagamento_id: pagamento.id,
       valor: Number(existente.valor),
       moeda: existente.moeda,
-      status: existente.status
+      status: existente.status,
+      eventos_resolvidos: eventosResolvidos
     };
   }
 
@@ -199,6 +219,11 @@ async function estornarPagamentoManual(connection, {
       })
     ]
   );
+
+  const eventosResolvidos = await resolverEventosDoPagamento(
+    connection,
+    pagamento.id
+  );
   await connection.query(
     `INSERT INTO auditoria
        (usuario_id, modulo, acao, entidade, entidade_id,
@@ -216,7 +241,8 @@ async function estornarPagamentoManual(connection, {
       JSON.stringify({
         estorno_id: estorno.insertId,
         lancamento_estorno_id: lancamentoEstorno.insertId,
-        status: 'CONFIRMADO'
+        status: 'CONFIRMADO',
+        eventos_resolvidos: eventosResolvidos
       }),
       ip
     ]
@@ -228,7 +254,8 @@ async function estornarPagamentoManual(connection, {
     pagamento_id: pagamento.id,
     valor,
     moeda: pagamento.moeda,
-    status: 'CONFIRMADO'
+    status: 'CONFIRMADO',
+    eventos_resolvidos: eventosResolvidos
   };
 }
 

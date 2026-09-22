@@ -13,8 +13,12 @@ Ao cancelar, a Central também muda referências de pagamento `PREPARADA` ou
 `REGISTRADA` para `CANCELADA`. Isso encerra a cobrança no estado local e grava a
 quantidade no histórico e na auditoria do pedido. O cancelamento remoto no
 provedor continua dependendo do contrato homologado; se um pagamento externo
-for confirmado depois do cancelamento, o evento fica `FALHOU` com
-`PEDIDO_NAO_AGUARDA_PAGAMENTO`, sem criar receita, pagamento ou reabrir o pedido.
+for confirmado depois do cancelamento, a Central registra a entrada financeira,
+mantém o pedido `CANCELADO` e deixa o evento `FALHOU` com
+`PAGAMENTO_APOS_CANCELAMENTO_REQUER_ESTORNO`. Um operador com aprovação
+financeira registra a devolução já realizada; o evento passa a `IGNORADO` com
+`PAGAMENTO_ESTORNADO` somente na mesma transação que cria a despesa, o pagamento
+de saída, o estorno, o histórico e a auditoria.
 
 Nesses casos, o sistema cancela comunicações pendentes, remove o item da fatura aberta, recalcula o total a partir dos itens restantes, cancela a fatura que ficar vazia e zera fornecedor, origem e custo do pedido. O valor armazenado anteriormente na fatura não é usado como base da reconciliação.
 
@@ -35,7 +39,8 @@ qualquer outra regra bloquear o cancelamento, o estorno criado na tentativa é
 revertido junto com toda a transação. Repetir a mesma confirmação é idempotente;
 uma confirmação divergente é recusada.
 
-Essa operação documenta uma devolução já realizada. Ela não envia PIX, não faz
+Essa operação aceita tanto a confirmação manual quanto uma receita criada por
+integração. Ela documenta uma devolução já realizada: não envia PIX, não faz
 estorno automático em adquirente e não movimenta uma conta bancária.
 
 ## Bloqueios deliberados
