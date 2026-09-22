@@ -14,6 +14,51 @@ module.exports = function(app, pool) {
     return Number.isInteger(numero) ? numero : NaN;
   };
 
+  const decimalOpcional = valor => {
+    if (valor === undefined || valor === null || String(valor).trim() === '') return null;
+    const numero = Number(valor);
+    return Number.isFinite(numero) ? numero : NaN;
+  };
+
+  const booleano = (valor, padrao = 0) => {
+    if (valor === undefined || valor === null || valor === '') return padrao;
+    if (valor === true || valor === 1 || valor === '1') return 1;
+    if (valor === false || valor === 0 || valor === '0') return 0;
+    return NaN;
+  };
+
+  const validarServicoCatalogo = corpo => {
+    const codigo = texto(corpo.codigo)?.toUpperCase();
+    const nome = texto(corpo.nome);
+    const categoria = texto(corpo.categoria);
+    const marca = texto(corpo.marca);
+    const precoBase = decimalOpcional(corpo.preco_base);
+    const precoVip = decimalOpcional(corpo.preco_vip);
+    const moeda = texto(corpo.moeda)?.toUpperCase() || 'BRL';
+    const exigePlaca = booleano(corpo.exige_placa);
+    const exigeChassi = booleano(corpo.exige_chassi);
+    const exigeDocumento = booleano(corpo.exige_documento);
+    const ativo = booleano(corpo.ativo, 1);
+    if (!codigo || !/^[A-Z0-9_-]{2,60}$/.test(codigo) || !nome || nome.length > 180) {
+      return { erro: 'Código e nome válidos são obrigatórios' };
+    }
+    if ((categoria && categoria.length > 80) || (marca && marca.length > 80)) {
+      return { erro: 'Categoria ou marca excede o limite permitido' };
+    }
+    if (!Number.isFinite(precoBase) || precoBase < 0 || precoBase > 99999999.99 ||
+        (precoVip !== null && (!Number.isFinite(precoVip) || precoVip < 0 ||
+          precoVip > 99999999.99))) {
+      return { erro: 'Preços devem ser valores não negativos' };
+    }
+    if (!['BRL', 'USD', 'PYG'].includes(moeda)) return { erro: 'Moeda inválida' };
+    if ([exigePlaca, exigeChassi, exigeDocumento, ativo].some(Number.isNaN)) {
+      return { erro: 'Indicadores do serviço são inválidos' };
+    }
+    return { dados: { codigo, nome, categoria, marca, preco_base: precoBase,
+      preco_vip: precoVip, moeda, exige_placa: exigePlaca,
+      exige_chassi: exigeChassi, exige_documento: exigeDocumento, ativo } };
+  };
+
   const validarServicoFornecedor = corpo => {
     const codigoServico = texto(corpo.codigo_servico)?.toUpperCase();
     const custo = Number(corpo.custo);
@@ -78,6 +123,103 @@ module.exports = function(app, pool) {
   // ============================================================
   // FORNECEDORES
   // ============================================================
+
+  app.get(
+    '/api/catalogo-servicos',
+    autenticarToken,
+    exigirPermissao('FORNECEDORES', 'visualizar'),
+    async (req, res) => {
+      try {
+        const [dados] = await pool.query(
+          `SELECT id, codigo, nome, categoria, marca, preco_base, preco_vip,
+                  moeda, exige_placa, exige_chassi, exige_documento, ativo,
+                  criado_em, atualizado_em
+             FROM servicos ORDER BY ativo DESC, nome, codigo`
+        );
+        return res.json({ ok: true, total: dados.length, dados });
+      } catch (error) {
+        console.error('Erro ao listar catálogo de serviços:', error);
+        return res.status(500).json({ ok: false, error: 'Erro ao consultar catálogo de serviços' });
+      }
+    }
+  );
+
+  const salvarServicoCatalogo = criar => async (req, res) => {
+    const id = criar ? null : Number(req.params.id);
+    if (!criar && (!Number.isInteger(id) || id <= 0)) {
+      return res.status(400).json({ ok: false, error: 'Serviço inválido' });
+    }
+    const validacao = validarServicoCatalogo(req.body || {});
+    if (validacao.erro) return res.status(400).json({ ok: false, error: validacao.erro });
+    const connection = await pool.getConnection();
+    try {
+      await connection.beginTransaction();
+      let antes = null;
+      if (!criar) {
+        const [atuais] = await connection.query(
+          `SELECT id, codigo, nome, categoria, marca, preco_base, preco_vip,
+                  moeda, exige_placa, exige_chassi, exige_documento, ativo
+             FROM servicos WHERE id=? LIMIT 1 FOR UPDATE`, [id]
+        );
+        if (!atuais.length) {
+          await connection.rollback();
+          return res.status(404).json({ ok: false, error: 'Serviço não encontrado' });
+        }
+        antes = atuais[0];
+        if (antes.codigo !== validacao.dados.codigo) {
+          await connection.rollback();
+          return res.status(409).json({ ok: false,
+            error: 'O código do serviço não pode ser alterado' });
+        }
+      }
+      let servicoId = id;
+      const dados = validacao.dados;
+      if (criar) {
+        const [resultado] = await connection.query(
+          `INSERT INTO servicos
+             (codigo, nome, categoria, marca, preco_base, preco_vip, moeda,
+              exige_placa, exige_chassi, exige_documento, ativo)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [dados.codigo, dados.nome, dados.categoria, dados.marca,
+            dados.preco_base, dados.preco_vip, dados.moeda, dados.exige_placa,
+            dados.exige_chassi, dados.exige_documento, dados.ativo]
+        );
+        servicoId = resultado.insertId;
+      } else {
+        await connection.query(
+          `UPDATE servicos SET nome=?, categoria=?, marca=?, preco_base=?,
+                  preco_vip=?, moeda=?, exige_placa=?, exige_chassi=?,
+                  exige_documento=?, ativo=? WHERE id=?`,
+          [dados.nome, dados.categoria, dados.marca, dados.preco_base,
+            dados.preco_vip, dados.moeda, dados.exige_placa, dados.exige_chassi,
+            dados.exige_documento, dados.ativo, servicoId]
+        );
+      }
+      const depois = { id: Number(servicoId), ...dados };
+      await registrarAuditoriaFornecedor(connection, req, {
+        acao: criar ? 'CRIAR_CATALOGO_SERVICO' : 'EDITAR_CATALOGO_SERVICO',
+        entidade: 'servicos', entidadeId: servicoId,
+        descricao: criar ? 'Serviço incluído no catálogo' : 'Serviço do catálogo atualizado',
+        antes, depois
+      });
+      await connection.commit();
+      return res.status(criar ? 201 : 200).json({ ok: true, criado: criar, dados: depois });
+    } catch (error) {
+      await connection.rollback();
+      if (error.code === 'ER_DUP_ENTRY') {
+        return res.status(409).json({ ok: false, error: 'Código de serviço já cadastrado' });
+      }
+      console.error('Erro ao salvar catálogo de serviços:', error);
+      return res.status(500).json({ ok: false, error: 'Erro ao salvar catálogo de serviços' });
+    } finally {
+      connection.release();
+    }
+  };
+
+  app.post('/api/catalogo-servicos', autenticarToken,
+    exigirPermissao('FORNECEDORES', 'criar'), salvarServicoCatalogo(true));
+  app.put('/api/catalogo-servicos/:id', autenticarToken,
+    exigirPermissao('FORNECEDORES', 'editar'), salvarServicoCatalogo(false));
 
   app.get(
     '/api/fornecedores-resumo',

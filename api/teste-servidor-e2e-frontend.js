@@ -236,6 +236,8 @@ async function prepararFixture() {
   const nomeClienteCadastro = `CLIENTE VIP E2E ${marcador}`;
   const telefoneClienteCadastro = `55119${String(Date.now()).slice(-8)}`;
   const nomeFornecedorCadastro = `FORNECEDOR CADASTRO E2E ${marcador}`;
+  const codigoServicoCadastro = `SERVICO_E2E_${process.pid}_${String(Date.now()).slice(-6)}`;
+  const nomeServicoCadastro = `Serviço catálogo E2E ${marcador}`;
   const loginOperador = `e2e-admin-${marcador}`;
   const senhaOperador = `Admin-${marcador}-9`;
   const loginVisualizador = `e2e-view-${marcador}`;
@@ -724,7 +726,9 @@ async function prepararFixture() {
       fornecedorNome: nomeFornecedorCadastro,
       fornecedorEmail: `fornecedor-${marcador}@teste.invalid`,
       servicoCodigo: servico.codigo,
-      servicoNome: servico.nome
+      servicoNome: servico.nome,
+      catalogoCodigo: codigoServicoCadastro,
+      catalogoNome: nomeServicoCadastro
     },
     integracoes: {
       nomeModeloWhatsapp,
@@ -915,7 +919,9 @@ async function iniciar() {
       fornecedor_nome: contexto.cadastros.fornecedorNome,
       fornecedor_email: contexto.cadastros.fornecedorEmail,
       servico_codigo: contexto.cadastros.servicoCodigo,
-      servico_nome: contexto.cadastros.servicoNome
+      servico_nome: contexto.cadastros.servicoNome,
+      catalogo_codigo: contexto.cadastros.catalogoCodigo,
+      catalogo_nome: contexto.cadastros.catalogoNome
     },
     integracoes: {
       modelo_nome: contexto.integracoes.nomeModeloWhatsapp,
@@ -1013,7 +1019,7 @@ async function iniciar() {
                AND a.entidade = 'fornecedores'
                AND a.entidade_id = CAST(f.id AS CHAR)) AS auditorias
          FROM fornecedores f WHERE f.nome = ? LIMIT 1`,
-        [contexto.cadastros.servicoCodigo, contexto.cadastros.fornecedorNome]
+        [contexto.cadastros.catalogoCodigo, contexto.cadastros.fornecedorNome]
       );
       let auditoriasServicos = 0;
       if (fornecedor?.id) {
@@ -1028,6 +1034,15 @@ async function iniciar() {
         );
         auditoriasServicos = Number(auditoriaServico.total || 0);
       }
+      const [[catalogo]] = await connection.query(
+        `SELECT s.id, s.codigo, s.nome, s.preco_base, s.preco_vip, s.moeda,
+                s.exige_chassi, s.ativo,
+                (SELECT COUNT(*) FROM auditoria a
+                  WHERE a.entidade='servicos'
+                    AND a.entidade_id=CAST(s.id AS CHAR)) AS auditorias
+           FROM servicos s WHERE s.codigo=? LIMIT 1`,
+        [contexto.cadastros.catalogoCodigo]
+      );
       if (cliente?.id) contexto.cadastros.clienteId = cliente.id;
       if (fornecedor?.id) contexto.cadastros.fornecedorId = fornecedor.id;
       return res.json({
@@ -1035,7 +1050,8 @@ async function iniciar() {
         cliente: cliente || null,
         fornecedor: fornecedor
           ? { ...fornecedor, auditorias_servicos: auditoriasServicos }
-          : null
+          : null,
+        catalogo: catalogo || null
       });
     }
     if (req.query.cenario === 'configuracao') {

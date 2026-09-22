@@ -3348,7 +3348,7 @@
 }
 .registry-heading h1 { margin:3px 0;font-size:25px }
 .registry-heading p { margin:0;color:#77809b;font-size:13px }
-.registry-actions { gap:9px }
+.registry-actions { flex-wrap:wrap;gap:9px }
 .registry-actions button {
   display:flex;align-items:center;gap:7px;min-height:38px;padding:0 14px;
   border:1px solid #dbe0ee;border-radius:9px;background:white;
@@ -3484,6 +3484,8 @@
 @media (max-width:560px) {
   .registry-metrics,.registry-form { grid-template-columns:1fr }
   .registry-form .wide { grid-column:auto }
+  .registry-actions { display:grid;grid-template-columns:1fr }
+  .registry-actions button { justify-content:center;width:100% }
 }
 
 

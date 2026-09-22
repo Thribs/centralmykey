@@ -1148,6 +1148,28 @@ test('clientes VIP e fornecedores são cadastrados pelas rotas reais', async ({ 
   await expect(linha).toContainText('Bloqueado');
 
   await abrirModulo(page, 'Fornecedores', 390);
+  await page.getByRole('button', { name: 'Catálogo de serviços' }).click();
+  const catalogo = page.getByRole('dialog', { name: 'Catálogo de serviços' });
+  await catalogo.getByLabel('Código').fill(contexto.catalogo_codigo);
+  await catalogo.getByLabel('Nome do serviço').fill(contexto.catalogo_nome);
+  await catalogo.getByLabel('Categoria').fill('Consulta');
+  await catalogo.getByLabel('Marca').fill('Marca fictícia');
+  await catalogo.getByLabel('Preço base').fill('120.00');
+  await catalogo.getByLabel('Preço VIP').fill('100.00');
+  await catalogo.getByLabel('Exige chassi').check();
+  await catalogo.getByRole('button', { name: 'Cadastrar serviço' }).click();
+  let linhaCatalogo = catalogo.locator('tr', { hasText: contexto.catalogo_codigo });
+  await expect(linhaCatalogo).toContainText('BRL 120.00');
+  await expect(linhaCatalogo).toContainText('Chassi');
+  await linhaCatalogo.getByTitle('Editar serviço').click();
+  await catalogo.getByLabel('Preço base').fill('119.90');
+  await catalogo.getByLabel('Preço VIP').fill('99.00');
+  await catalogo.getByRole('button', { name: 'Atualizar serviço' }).click();
+  linhaCatalogo = catalogo.locator('tr', { hasText: contexto.catalogo_codigo });
+  await expect(linhaCatalogo).toContainText('BRL 119.90');
+  await expect(linhaCatalogo).toContainText('VIP BRL 99.00');
+  await catalogo.getByRole('button', { name: 'Fechar' }).click();
+
   await page.getByRole('button', { name: 'Novo fornecedor' }).click();
   const fornecedor = page.getByRole('dialog', { name: 'Cadastrar fornecedor' });
   await fornecedor.getByLabel('Nome').fill(contexto.fornecedor_nome);
@@ -1166,11 +1188,11 @@ test('clientes VIP e fornecedores são cadastrados pelas rotas reais', async ({ 
     name: `Serviços e custos de ${contexto.fornecedor_nome}`
   }).click();
   const servicos = page.getByRole('dialog', { name: contexto.fornecedor_nome });
-  await servicos.getByLabel('Serviço').selectOption(contexto.servico_codigo);
+  await servicos.getByLabel('Serviço').selectOption(contexto.catalogo_codigo);
   await servicos.getByLabel('Custo').fill('17.50');
   await servicos.getByLabel('Prazo estimado (minutos)').fill('30');
   await servicos.getByRole('button', { name: 'Adicionar regra' }).click();
-  const regraServico = servicos.locator('tr', { hasText: contexto.servico_codigo });
+  const regraServico = servicos.locator('tr', { hasText: contexto.catalogo_codigo });
   await expect(regraServico).toContainText('BRL 17.50');
   page.once('dialog', dialogo => dialogo.dismiss());
   await regraServico.getByTitle('Desativar regra').click();
@@ -1179,6 +1201,17 @@ test('clientes VIP e fornecedores são cadastrados pelas rotas reais', async ({ 
   await regraServico.getByTitle('Desativar regra').click();
   await expect(regraServico).toContainText('Inativo');
   await servicos.getByRole('button', { name: 'Fechar' }).click();
+
+  await page.getByRole('button', { name: 'Catálogo de serviços' }).click();
+  const catalogoFinal = page.getByRole('dialog', { name: 'Catálogo de serviços' });
+  linhaCatalogo = catalogoFinal.locator('tr', { hasText: contexto.catalogo_codigo });
+  page.once('dialog', dialogo => dialogo.dismiss());
+  await linhaCatalogo.getByTitle('Desativar serviço').click();
+  await expect(linhaCatalogo).toContainText('Ativo');
+  page.once('dialog', dialogo => dialogo.accept());
+  await linhaCatalogo.getByTitle('Desativar serviço').click();
+  await expect(linhaCatalogo).toContainText('Inativo');
+  await catalogoFinal.getByRole('button', { name: 'Fechar' }).click();
 
   linha = page.locator('tr', { hasText: contexto.fornecedor_nome });
   page.once('dialog', dialogo => dialogo.accept());
@@ -1206,6 +1239,12 @@ test('clientes VIP e fornecedores são cadastrados pelas rotas reais', async ({ 
   expect(Number(verificacao.fornecedor.servicos)).toBe(0);
   expect(Number(verificacao.fornecedor.auditorias)).toBeGreaterThanOrEqual(2);
   expect(Number(verificacao.fornecedor.auditorias_servicos)).toBe(2);
+  expect(verificacao.catalogo.codigo).toBe(contexto.catalogo_codigo);
+  expect(Number(verificacao.catalogo.preco_base)).toBeCloseTo(119.9);
+  expect(Number(verificacao.catalogo.preco_vip)).toBeCloseTo(99);
+  expect(Number(verificacao.catalogo.exige_chassi)).toBe(1);
+  expect(Number(verificacao.catalogo.ativo)).toBe(0);
+  expect(Number(verificacao.catalogo.auditorias)).toBe(3);
 });
 
 test('administrador gerencia banco de senhas por permissão e confirmação', async ({ page }) => {
@@ -1764,6 +1803,12 @@ test('visualizador não vê ações de usuário e recebe 403 ao forçar criaçã
   await expect(page.getByRole('main').getByRole('heading', { name: 'Fornecedores' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Novo fornecedor' })).toHaveCount(0);
   await expect(page.getByTitle('Editar')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Catálogo de serviços' }).click();
+  const catalogoSomenteLeitura = page.getByRole('dialog', { name: 'Catálogo de serviços' });
+  await expect(catalogoSomenteLeitura.getByRole('button', { name: 'Cadastrar serviço' }))
+    .toHaveCount(0);
+  await expect(catalogoSomenteLeitura.getByTitle('Editar serviço')).toHaveCount(0);
+  await catalogoSomenteLeitura.getByRole('button', { name: 'Fechar' }).click();
   const servicos = page.getByTitle('Serviços e custos').first();
   await expect(servicos).toBeVisible();
   await servicos.click();
@@ -1805,6 +1850,9 @@ test('visualizador não vê ações de usuário e recebe 403 ao forçar criaçã
     page.request.post(`${API}/api/fornecedores`, {
       headers: { Authorization: `Bearer ${token}` }, data: {}
     }),
+    page.request.post(`${API}/api/catalogo-servicos`, {
+      headers: { Authorization: `Bearer ${token}` }, data: {}
+    }),
     page.request.post(`${API}/api/fornecedores/1/fechamentos/gerar`, {
       headers: { Authorization: `Bearer ${token}` }, data: {}
     }),
@@ -1831,7 +1879,7 @@ test('visualizador não vê ações de usuário e recebe 403 ao forçar criaçã
     )
   ]);
   expect(mutacoesNegadas.map(resposta => resposta.status()))
-    .toEqual([403, 403, 403, 403, 403, 403, 403, 403]);
+    .toEqual([403, 403, 403, 403, 403, 403, 403, 403, 403]);
 });
 
 test('navegador estorna pagamento real e cancela na transação', async ({ page }) => {

@@ -39,6 +39,7 @@ module.exports = function(app, pool) {
           exige_placa, exige_chassi,
           exige_documento, ativo
         FROM servicos
+        WHERE ativo = 1
         ORDER BY nome
       `);
 

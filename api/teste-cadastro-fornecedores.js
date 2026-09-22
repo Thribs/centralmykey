@@ -81,9 +81,11 @@ async function executar() {
   const connection = await mysql.createConnection(configBanco);
   const sufixo = `${process.pid}-${Date.now()}`;
   const nome = `FORNECEDOR FUNCIONAL ${sufixo}`;
+  const codigoServico = `SERVICO_TESTE_${process.pid}_${String(Date.now()).slice(-6)}`;
   let servidor;
   let fornecedorId;
   let vinculoId;
+  let servicoId;
   let erro;
 
   try {
@@ -91,14 +93,54 @@ async function executar() {
     const [[usuario]] = await connection.query(
       "SELECT id, nome FROM usuarios WHERE status='ATIVO' ORDER BY id LIMIT 1"
     );
-    const [[servico]] = await connection.query(
-      "SELECT codigo, nome, marca FROM servicos WHERE ativo=1 ORDER BY id LIMIT 1"
-    );
     assert.ok(usuario, 'Usuário ativo é necessário para auditar o teste');
-    assert.ok(servico, 'Serviço ativo é necessário para vincular ao fornecedor');
 
     const api = await iniciarApi(connection, usuario);
     servidor = api.servidor;
+
+    const servicoBase = {
+      codigo: codigoServico,
+      nome: `Serviço funcional ${sufixo}`,
+      categoria: 'CONSULTA',
+      marca: 'MARCA FICTÍCIA',
+      preco_base: 120,
+      preco_vip: 100,
+      moeda: 'BRL',
+      exige_placa: 0,
+      exige_chassi: 1,
+      exige_documento: 0,
+      ativo: 1
+    };
+    const servicoNegado = await requisitar(`${api.url}/api/catalogo-servicos`, {
+      metodo: 'POST', headers: { 'x-negar': 'FORNECEDORES:criar' }, corpo: servicoBase
+    });
+    assert.strictEqual(servicoNegado.resposta.status, 403);
+    const precoInvalido = await requisitar(`${api.url}/api/catalogo-servicos`, {
+      metodo: 'POST', corpo: { ...servicoBase, preco_base: -1 }
+    });
+    assert.strictEqual(precoInvalido.resposta.status, 400);
+    const servicoCriado = await requisitar(`${api.url}/api/catalogo-servicos`, {
+      metodo: 'POST', corpo: servicoBase
+    });
+    assert.strictEqual(servicoCriado.resposta.status, 201);
+    servicoId = servicoCriado.corpo.dados.id;
+    const servicoDuplicado = await requisitar(`${api.url}/api/catalogo-servicos`, {
+      metodo: 'POST', corpo: servicoBase
+    });
+    assert.strictEqual(servicoDuplicado.resposta.status, 409);
+    const codigoImutavel = await requisitar(`${api.url}/api/catalogo-servicos/${servicoId}`, {
+      metodo: 'PUT', corpo: { ...servicoBase, codigo: `${codigoServico}_OUTRO` }
+    });
+    assert.strictEqual(codigoImutavel.resposta.status, 409);
+    const servicoAtualizado = await requisitar(`${api.url}/api/catalogo-servicos/${servicoId}`, {
+      metodo: 'PUT', corpo: { ...servicoBase, preco_base: 119.9, preco_vip: 99 }
+    });
+    assert.strictEqual(servicoAtualizado.resposta.status, 200);
+    const catalogo = await requisitar(`${api.url}/api/catalogo-servicos`);
+    const servico = catalogo.corpo.dados.find(item => Number(item.id) === Number(servicoId));
+    assert.strictEqual(catalogo.resposta.status, 200);
+    assert.ok(servico, 'Serviço criado deve aparecer no catálogo');
+    assert.strictEqual(Number(servico.preco_base), 119.9);
 
     const criado = await requisitar(`${api.url}/api/fornecedores`, {
       metodo: 'POST',
@@ -208,6 +250,16 @@ async function executar() {
     );
     assert.strictEqual(bloqueado.resposta.status, 200);
 
+    const servicoDesativado = await requisitar(`${api.url}/api/catalogo-servicos/${servicoId}`, {
+      metodo: 'PUT', corpo: { ...servicoBase, preco_base: 119.9, preco_vip: 99, ativo: 0 }
+    });
+    assert.strictEqual(servicoDesativado.resposta.status, 200);
+    const servicosOperacionais = await requisitar(`${api.url}/api/servicos`);
+    assert.strictEqual(servicosOperacionais.resposta.status, 200);
+    assert.ok(!servicosOperacionais.corpo.dados.some(
+      item => Number(item.id) === Number(servicoId)
+    ), 'Serviço inativo não deve aparecer na criação de pedidos');
+
     const [[persistido]] = await connection.query(`
       SELECT f.nome, f.tipo, f.ativo, fs.custo, fs.prazo_estimado_minutos,
              fs.ativo AS servico_ativo,
@@ -228,6 +280,17 @@ async function executar() {
         Number(persistido.auditorias_fornecedor)],
       [`${nome} EDITADO`, 'EMPRESA', 0, 23.75, 30, 0, 2, 3]
     );
+    const [[catalogoPersistido]] = await connection.query(
+      `SELECT ativo, preco_base, preco_vip,
+              (SELECT COUNT(*) FROM auditoria a
+                WHERE a.entidade='servicos' AND a.entidade_id=CAST(s.id AS CHAR)) AS auditorias
+         FROM servicos s WHERE s.id=?`, [servicoId]
+    );
+    assert.deepStrictEqual(
+      [Number(catalogoPersistido.ativo), Number(catalogoPersistido.preco_base),
+        Number(catalogoPersistido.preco_vip), Number(catalogoPersistido.auditorias)],
+      [0, 119.9, 99, 3]
+    );
   } catch (falha) {
     erro = falha;
   } finally {
@@ -245,12 +308,18 @@ async function executar() {
              AND entidade_id=?) AS auditorias_servico,
           (SELECT COUNT(*) FROM auditoria
            WHERE entidade='fornecedores'
-             AND entidade_id=?) AS auditorias_fornecedor
-      `, [`${nome}%`, `${nome}%`, String(vinculoId || 0), String(fornecedorId || 0)]);
+             AND entidade_id=?) AS auditorias_fornecedor,
+          (SELECT COUNT(*) FROM servicos WHERE codigo=?) AS catalogo,
+          (SELECT COUNT(*) FROM auditoria
+            WHERE entidade='servicos' AND entidade_id=?) AS auditorias_catalogo
+      `, [`${nome}%`, `${nome}%`, String(vinculoId || 0),
+        String(fornecedorId || 0), codigoServico, String(servicoId || 0)]);
       assert.strictEqual(Number(residuos.fornecedores), 0);
       assert.strictEqual(Number(residuos.servicos), 0);
       assert.strictEqual(Number(residuos.auditorias_servico), 0);
       assert.strictEqual(Number(residuos.auditorias_fornecedor), 0);
+      assert.strictEqual(Number(residuos.catalogo), 0);
+      assert.strictEqual(Number(residuos.auditorias_catalogo), 0);
     } catch (falhaLimpeza) {
       erro = erro || falhaLimpeza;
     } finally {

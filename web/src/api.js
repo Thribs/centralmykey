@@ -637,6 +637,31 @@ export async function alterarStatusFornecedor(token, id, ativo) {
   return lerResposta(resposta);
 }
 
+export async function listarCatalogoServicos(token) {
+  const resposta = await requisitar(`${API_URL}/api/catalogo-servicos`, {
+    headers: cabecalhoAutenticado(token)
+  });
+  return lerResposta(resposta);
+}
+
+export async function cadastrarServico(token, dados) {
+  const resposta = await requisitar(`${API_URL}/api/catalogo-servicos`, {
+    method: 'POST',
+    headers: cabecalhoAutenticado(token, { 'Content-Type': 'application/json' }),
+    body: JSON.stringify(dados)
+  });
+  return lerResposta(resposta);
+}
+
+export async function atualizarServico(token, id, dados) {
+  const resposta = await requisitar(`${API_URL}/api/catalogo-servicos/${id}`, {
+    method: 'PUT',
+    headers: cabecalhoAutenticado(token, { 'Content-Type': 'application/json' }),
+    body: JSON.stringify(dados)
+  });
+  return lerResposta(resposta);
+}
+
 export async function listarServicosFornecedor(token, fornecedorId) {
   const resposta = await requisitar(
     `${API_URL}/api/fornecedores/${fornecedorId}/servicos`,

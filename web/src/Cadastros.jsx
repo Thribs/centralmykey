@@ -22,13 +22,16 @@ import {
   atualizarCliente,
   atualizarFornecedor,
   atualizarServicoFornecedor,
+  atualizarServico,
   buscarResumoClientes,
   buscarResumoFornecedores,
   cadastrarCliente,
   cadastrarFornecedor,
   cadastrarServicoFornecedor,
+  cadastrarServico,
   listarClientes,
   listarFornecedores,
+  listarCatalogoServicos,
   listarServicosFornecedor
 } from './api';
 
@@ -74,6 +77,11 @@ const SERVICO_FORNECEDOR_INICIAL = {
   moeda: 'BRL',
   prazo_estimado_minutos: '',
   ativo: 1
+};
+
+const SERVICO_CATALOGO_INICIAL = {
+  codigo: '', nome: '', categoria: '', marca: '', preco_base: '', preco_vip: '',
+  moeda: 'BRL', exige_placa: 0, exige_chassi: 0, exige_documento: 0, ativo: 1
 };
 
 function obterToken() {
@@ -721,7 +729,173 @@ function ModalServicosFornecedor({ token, fornecedor, podeEditar, aoFechar }) {
   );
 }
 
-function Cabecalho({ tipo, carregando, podeCriar, aoAtualizar, aoNovo }) {
+function ModalCatalogoServicos({ token, podeCriar, podeEditar, aoFechar }) {
+  const [dados, setDados] = useState([]);
+  const [formulario, setFormulario] = useState(SERVICO_CATALOGO_INICIAL);
+  const [editandoId, setEditandoId] = useState(null);
+  const [carregando, setCarregando] = useState(true);
+  const [salvando, setSalvando] = useState(false);
+  const [erro, setErro] = useState('');
+
+  const carregar = useCallback(async () => {
+    setCarregando(true);
+    setErro('');
+    try {
+      const resposta = await listarCatalogoServicos(token);
+      setDados(resposta.dados || []);
+    } catch (falha) {
+      setErro(falha.message);
+    } finally {
+      setCarregando(false);
+    }
+  }, [token]);
+
+  useEffect(() => { carregar(); }, [carregar]);
+
+  function alterar(evento) {
+    const { name, value, type, checked } = evento.target;
+    setFormulario(atual => ({
+      ...atual,
+      [name]: type === 'checkbox' ? (checked ? 1 : 0) : value
+    }));
+  }
+
+  function editar(item) {
+    setEditandoId(item.id);
+    setFormulario({
+      ...SERVICO_CATALOGO_INICIAL,
+      ...item,
+      preco_base: item.preco_base ?? '',
+      preco_vip: item.preco_vip ?? ''
+    });
+    setErro('');
+  }
+
+  function limpar() {
+    setEditandoId(null);
+    setFormulario(SERVICO_CATALOGO_INICIAL);
+  }
+
+  async function salvar(evento) {
+    evento.preventDefault();
+    setSalvando(true);
+    setErro('');
+    try {
+      if (editandoId) await atualizarServico(token, editandoId, formulario);
+      else await cadastrarServico(token, formulario);
+      limpar();
+      await carregar();
+    } catch (falha) {
+      setErro(falha.message);
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  async function alternar(item) {
+    const acao = item.ativo ? 'desativar' : 'ativar';
+    if (!window.confirm(`Confirma ${acao} o serviço ${item.nome}?`)) return;
+    setErro('');
+    try {
+      await atualizarServico(token, item.id, { ...item, ativo: item.ativo ? 0 : 1 });
+      await carregar();
+    } catch (falha) {
+      setErro(falha.message);
+    }
+  }
+
+  return (
+    <div className="registry-overlay">
+      <section className="registry-modal registry-services-modal" role="dialog"
+        aria-modal="true" aria-labelledby="titulo-catalogo-servicos">
+        <header>
+          <div><span>CATÁLOGO OPERACIONAL</span>
+            <h2 id="titulo-catalogo-servicos">Catálogo de serviços</h2></div>
+          <button type="button" onClick={aoFechar} aria-label="Fechar"><X size={20} /></button>
+        </header>
+
+        {(podeCriar || (podeEditar && editandoId)) && <form onSubmit={salvar}>
+          {erro && <div className="registry-error">{erro}</div>}
+          <div className="registry-form">
+            <label>Código
+              <input name="codigo" value={formulario.codigo} onChange={alterar}
+                pattern="[A-Za-z0-9_-]{2,60}" disabled={Boolean(editandoId)} required />
+            </label>
+            <label className="wide">Nome do serviço
+              <input name="nome" value={formulario.nome} onChange={alterar} required />
+            </label>
+            <label>Categoria
+              <input name="categoria" value={formulario.categoria || ''} onChange={alterar} />
+            </label>
+            <label>Marca
+              <input name="marca" value={formulario.marca || ''} onChange={alterar} />
+            </label>
+            <label>Preço base
+              <input type="number" name="preco_base" min="0" step="0.01"
+                value={formulario.preco_base} onChange={alterar} required />
+            </label>
+            <label>Preço VIP
+              <input type="number" name="preco_vip" min="0" step="0.01"
+                value={formulario.preco_vip} onChange={alterar} />
+            </label>
+            <label>Moeda
+              <select name="moeda" value={formulario.moeda} onChange={alterar}>
+                <option value="BRL">BRL</option><option value="USD">USD</option>
+                <option value="PYG">PYG</option>
+              </select>
+            </label>
+            {[['exige_placa', 'Exige placa'], ['exige_chassi', 'Exige chassi'],
+              ['exige_documento', 'Exige documento']].map(([nome, rotulo]) => (
+              <label className="registry-check" key={nome}>
+                <input type="checkbox" name={nome}
+                  checked={Boolean(Number(formulario[nome]))} onChange={alterar} />
+                {rotulo}
+              </label>
+            ))}
+          </div>
+          <footer>
+            {editandoId && <button type="button" className="registry-cancel" onClick={limpar}>
+              Cancelar edição
+            </button>}
+            <button type="submit" className="registry-save" disabled={salvando}>
+              {salvando ? 'Salvando...' : editandoId ? 'Atualizar serviço' : 'Cadastrar serviço'}
+            </button>
+          </footer>
+        </form>}
+        {!podeCriar && !editandoId && erro && <div className="registry-error">{erro}</div>}
+
+        <div className="registry-service-list">
+          {carregando ? <p>Carregando catálogo...</p> : dados.length === 0
+            ? <p>Nenhum serviço cadastrado.</p>
+            : <div className="registry-table-wrap"><table className="registry-table">
+              <thead><tr><th>Serviço</th><th>Preço</th><th>Entradas</th><th>Status</th><th /></tr></thead>
+              <tbody>{dados.map(item => <tr key={item.id}>
+                <td><strong>{item.nome}</strong><span>{item.codigo} · {item.marca || 'Geral'}</span></td>
+                <td><strong>{item.moeda} {Number(item.preco_base).toFixed(2)}</strong>
+                  <span>{item.preco_vip === null ? 'Sem preço VIP' :
+                    `VIP ${item.moeda} ${Number(item.preco_vip).toFixed(2)}`}</span></td>
+                <td>{[
+                  item.exige_placa && 'Placa', item.exige_chassi && 'Chassi',
+                  item.exige_documento && 'Documento'
+                ].filter(Boolean).join(' · ') || 'Nenhuma obrigatória'}</td>
+                <td><span className={item.ativo ? 'registry-active' : 'registry-blocked'}>
+                  {item.ativo ? 'Ativo' : 'Inativo'}</span></td>
+                <td>{podeEditar && <div className="registry-row-actions">
+                  <button type="button" title="Editar serviço" onClick={() => editar(item)}>
+                    <Pencil size={16} /></button>
+                  <button type="button" title={item.ativo ? 'Desativar serviço' : 'Ativar serviço'}
+                    onClick={() => alternar(item)}>{item.ativo
+                      ? <Ban size={16} /> : <CheckCircle2 size={16} />}</button>
+                </div>}</td>
+              </tr>)}</tbody>
+            </table></div>}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function Cabecalho({ tipo, carregando, podeCriar, aoAtualizar, aoNovo, aoCatalogo }) {
   const cliente = tipo === 'cliente';
 
   return (
@@ -736,6 +910,9 @@ function Cabecalho({ tipo, carregando, podeCriar, aoAtualizar, aoNovo }) {
         </p>
       </div>
       <div className="registry-actions">
+        {!cliente && <button type="button" onClick={aoCatalogo}>
+          <Wrench size={16} /> Catálogo de serviços
+        </button>}
         <button type="button" onClick={aoAtualizar}>
           <RefreshCw size={16} className={carregando ? 'rotating' : ''} />
           Atualizar
@@ -804,6 +981,7 @@ function TelaCadastro({ tipo, buscaInicial = '', permissoes = [] }) {
   const [erroModal, setErroModal] = useState('');
   const [modal, setModal] = useState(null);
   const [servicosFornecedor, setServicosFornecedor] = useState(null);
+  const [catalogoServicos, setCatalogoServicos] = useState(false);
   const [salvando, setSalvando] = useState(false);
 
   const carregar = useCallback(async () => {
@@ -926,6 +1104,7 @@ function TelaCadastro({ tipo, buscaInicial = '', permissoes = [] }) {
         podeCriar={podeCriar}
         aoAtualizar={carregar}
         aoNovo={() => setModal({})}
+        aoCatalogo={() => setCatalogoServicos(true)}
       />
 
       <Indicadores tipo={tipo} resumo={resumo} />
@@ -1121,6 +1300,11 @@ function TelaCadastro({ tipo, buscaInicial = '', permissoes = [] }) {
           podeEditar={podeEditar}
           aoFechar={() => setServicosFornecedor(null)}
         />
+      )}
+
+      {catalogoServicos && (
+        <ModalCatalogoServicos token={token} podeCriar={podeCriar}
+          podeEditar={podeEditar} aoFechar={() => setCatalogoServicos(false)} />
       )}
     </section>
   );
