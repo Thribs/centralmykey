@@ -137,6 +137,10 @@ async function criarBackup(opcoes = {}) {
   const raiz = opcoes.raiz || '/opt/centralmykey-backups';
   const apiDir = opcoes.apiDir || '/opt/central-mykey-api';
   const webDir = opcoes.webDir || '/opt/central-mykey-web';
+  const diretoriosPadrao = !opcoes.apiDir && !opcoes.webDir;
+  const webPublicDir = opcoes.webPublicDir === undefined
+    ? (diretoriosPadrao ? '/var/www/central-mykey-test' : null)
+    : opcoes.webPublicDir;
   const envPath = opcoes.envPath || path.join(apiDir, '.env');
   const instante = opcoes.instante || new Date();
   const identificador = instante.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}Z$/, 'Z');
@@ -149,22 +153,32 @@ async function criarBackup(opcoes = {}) {
       { nome: 'api.tar.gz', origem: apiDir },
       { nome: 'web.tar.gz', origem: webDir }
     ];
+    if (webPublicDir) {
+      artefatos.push({ nome: 'web-public.tar.gz', origem: webPublicDir });
+    }
     for (const item of artefatos) {
       await arquivarDiretorio(item.origem, path.join(temporario, item.nome));
     }
     const dump = path.join(temporario, 'database.sql.gz');
     await (opcoes.dumpBanco || dumpMysql)(dump, envPath);
     const arquivos = [];
-    for (const nome of ['api.tar.gz', 'web.tar.gz', 'database.sql.gz']) {
+    const nomesArtefatos = [
+      ...artefatos.map(item => item.nome),
+      'database.sql.gz'
+    ];
+    for (const nome of nomesArtefatos) {
       const arquivo = path.join(temporario, nome);
       const stat = await fsp.stat(arquivo);
       arquivos.push({ nome, tamanho: stat.size, sha256: await sha256(arquivo) });
     }
     const manifesto = {
-      versao: 1,
+      versao: webPublicDir ? 2 : 1,
       criado_em: instante.toISOString(),
       api_diretorio: path.basename(apiDir),
       web_diretorio: path.basename(webDir),
+      ...(webPublicDir
+        ? { web_public_diretorio: path.basename(webPublicDir) }
+        : {}),
       arquivos
     };
     await fsp.writeFile(
@@ -182,15 +196,19 @@ async function criarBackup(opcoes = {}) {
 
 async function verificarBackup(diretorio) {
   const manifesto = JSON.parse(await fsp.readFile(path.join(diretorio, 'manifesto.json'), 'utf8'));
-  if (manifesto.versao !== 1 || !Array.isArray(manifesto.arquivos)) {
+  if (![1, 2].includes(manifesto.versao) || !Array.isArray(manifesto.arquivos)) {
     throw new Error('Manifesto de backup inválido');
   }
   const nomes = manifesto.arquivos.map(item => item.nome).sort();
-  if (JSON.stringify(nomes) !== JSON.stringify([
+  const esperados = [
     'api.tar.gz',
     'database.sql.gz',
     'web.tar.gz'
-  ])) {
+  ];
+  if (manifesto.versao === 2) esperados.push('web-public.tar.gz');
+  esperados.sort();
+  if (JSON.stringify(nomes) !== JSON.stringify(esperados) ||
+      (manifesto.versao === 2 && !manifesto.web_public_diretorio)) {
     throw new Error('Lista de artefatos do backup inválida');
   }
   for (const item of manifesto.arquivos) {
@@ -246,42 +264,74 @@ async function restaurarBackup(diretorio, opcoes = {}) {
   if (!opcoes.apiDestino || !opcoes.webDestino) {
     throw new Error('Destinos da API e do frontend são obrigatórios');
   }
+  if (manifesto.versao === 2 && !opcoes.webPublicDestino) {
+    throw new Error('Destino do frontend público é obrigatório');
+  }
   const apiPreparada = await extrairArquivo(
     path.join(diretorio, 'api.tar.gz'),
     manifesto.api_diretorio,
     opcoes.apiDestino
   );
   let webPreparada;
+  let webPublicPreparada;
   try {
     webPreparada = await extrairArquivo(
       path.join(diretorio, 'web.tar.gz'),
       manifesto.web_diretorio,
       opcoes.webDestino
     );
+    if (manifesto.versao === 2) {
+      webPublicPreparada = await extrairArquivo(
+        path.join(diretorio, 'web-public.tar.gz'),
+        manifesto.web_public_diretorio,
+        opcoes.webPublicDestino
+      );
+    }
     await (opcoes.restaurarBanco || restaurarMysql)(
       path.join(diretorio, 'database.sql.gz'),
       opcoes.envPath || path.join(opcoes.apiDestino, '.env')
     );
     const sufixo = Date.now();
-    const apiAnterior = await trocarDiretorio(apiPreparada, opcoes.apiDestino, sufixo);
+    const trocas = [];
     try {
-      const webAnterior = await trocarDiretorio(
-        webPreparada,
-        opcoes.webDestino,
-        sufixo
-      );
-      if (apiAnterior) await fsp.rm(apiAnterior, { recursive: true, force: true });
-      if (webAnterior) await fsp.rm(webAnterior, { recursive: true, force: true });
+      trocas.push({
+        destino: opcoes.apiDestino,
+        anterior: await trocarDiretorio(apiPreparada, opcoes.apiDestino, sufixo)
+      });
+      trocas.push({
+        destino: opcoes.webDestino,
+        anterior: await trocarDiretorio(webPreparada, opcoes.webDestino, sufixo)
+      });
+      if (webPublicPreparada) {
+        trocas.push({
+          destino: opcoes.webPublicDestino,
+          anterior: await trocarDiretorio(
+            webPublicPreparada,
+            opcoes.webPublicDestino,
+            sufixo
+          )
+        });
+      }
     } catch (erro) {
-      await fsp.rm(opcoes.apiDestino, { recursive: true, force: true });
-      if (apiAnterior) await fsp.rename(apiAnterior, opcoes.apiDestino);
+      for (const troca of [...trocas].reverse()) {
+        await fsp.rm(troca.destino, { recursive: true, force: true });
+        if (troca.anterior) await fsp.rename(troca.anterior, troca.destino);
+      }
       throw erro;
+    }
+    for (const troca of trocas) {
+      if (troca.anterior) {
+        await fsp.rm(troca.anterior, { recursive: true, force: true });
+      }
     }
     return manifesto;
   } finally {
     await fsp.rm(apiPreparada.temporario, { recursive: true, force: true });
     if (webPreparada) {
       await fsp.rm(webPreparada.temporario, { recursive: true, force: true });
+    }
+    if (webPublicPreparada) {
+      await fsp.rm(webPublicPreparada.temporario, { recursive: true, force: true });
     }
   }
 }

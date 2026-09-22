@@ -20,6 +20,7 @@ async function executar() {
     await restaurarBackup(path.resolve(diretorio), {
       apiDestino: '/opt/central-mykey-api',
       webDestino: '/opt/central-mykey-web',
+      webPublicDestino: '/var/www/central-mykey-test',
       envPath: '/opt/central-mykey-api/.env'
     });
   } catch (erro) {

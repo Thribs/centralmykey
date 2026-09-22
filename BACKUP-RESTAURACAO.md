@@ -4,12 +4,13 @@ O utilitário `api/executar-backup.js` cria um diretório datado em
 `/opt/centralmykey-backups` contendo:
 
 - `api.tar.gz`, incluindo a configuração publicada;
-- `web.tar.gz`;
+- `web.tar.gz`, contendo o projeto frontend publicado em `/opt`;
+- `web-public.tar.gz`, contendo exatamente os arquivos servidos pelo Nginx;
 - `database.sql.gz`, gerado com transação consistente pelo `mysqldump`;
 - `manifesto.json`, com tamanho e SHA-256 de cada artefato.
 
 O pacote é preparado em diretório temporário e só recebe o nome definitivo
-depois que os três artefatos e o manifesto foram concluídos. Diretórios usam
+depois que os quatro artefatos e o manifesto foram concluídos. Diretórios usam
 permissão `0700` e arquivos `0600`. A credencial temporária do MySQL também usa
 `0600`, nunca é impressa e é removida no `finally`.
 
@@ -21,8 +22,9 @@ node executar-backup.js
 ```
 
 Antes de restaurar, o utilitário valida todos os hashes. A restauração exige a
-opção explícita, cria um novo backup de segurança, prepara API e frontend fora
-dos destinos e restaura o banco. Os diretórios publicados são trocados somente
+opção explícita, cria um novo backup de segurança, prepara API, projeto frontend
+e frontend servido fora dos destinos e restaura o banco. Os três diretórios são
+trocados somente
 depois dessa etapa. Em falha, os diretórios são revertidos e o utilitário tenta
 restaurar automaticamente o banco de segurança.
 
@@ -36,7 +38,8 @@ Depois de uma restauração operacional ainda é obrigatório reiniciar o servi�
 validar systemd, `/health` e `/health/ready`.
 
 O teste `api/teste-backup.js` usa apenas diretórios e conteúdo fictícios em
-`/tmp`. Ele cria o pacote, confere os hashes, restaura API, frontend e o dump
+`/tmp`. Ele cria o pacote, confere os hashes, restaura API, projeto frontend,
+frontend servido e o dump
 simulado e comprova que uma corrupção deliberada é rejeitada. Nenhum arquivo ou
 dado de produção participa do teste.
 

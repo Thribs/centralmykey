@@ -28,6 +28,7 @@ Ela pode ser repetida isoladamente com `cd api && npm run test:migrations`.
 6. `20260920_partes_pedido.sql`
 7. `20260921_mapeamentos_produtos_externos.sql`
 8. `20260921_referencias_pagamento.sql`
+9. `20260921_identidade_cache_joelpires.sql`
 
 Todas usam criação idempotente. A migração de partes usa `INSERT IGNORE` no
 preenchimento inicial. A dupla aplicação no MySQL descartável comprova que uma
@@ -59,8 +60,9 @@ O script recusa working tree sujo e executa, nesta ordem:
 5. backup integral verificado da API, frontend e banco;
 6. parada do serviço;
 7. aplicação das nove migrações;
-8. cópia local dos artefatos, preservando `.env` e `storage`;
-9. reinício e validação de `/health` e `/health/ready`.
+8. cópia local dos artefatos, preservando `.env` e `storage`, e atualização do
+   frontend efetivamente servido pelo Nginx em `/var/www/central-mykey-test`;
+9. reinício e validação de `/health`, `/health/ready` e dos artefatos públicos.
 
 Qualquer falha depois da parada ou da primeira migração aciona a restauração
 automática do backup integral, reinicia o serviço e exige `/health` válido. O

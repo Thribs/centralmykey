@@ -16,19 +16,24 @@ async function executar() {
   try {
     const api = path.join(raiz, 'api-publicada');
     const web = path.join(raiz, 'web-publicado');
+    const webPublic = path.join(raiz, 'web-servido');
     const backups = path.join(raiz, 'backups');
     await fsp.mkdir(path.join(api, 'sub'), { recursive: true });
     await fsp.mkdir(path.join(web, 'assets'), { recursive: true });
+    await fsp.mkdir(path.join(webPublic, 'assets'), { recursive: true });
     await fsp.writeFile(path.join(api, 'server.js'), 'SERVIDOR TESTE\n');
     await fsp.writeFile(path.join(api, '.env'), 'SEGREDO_FICTICIO=teste\n');
     await fsp.writeFile(path.join(api, 'sub', 'arquivo.txt'), 'API SUB\n');
     await fsp.writeFile(path.join(web, 'index.html'), '<h1>WEB TESTE</h1>\n');
     await fsp.writeFile(path.join(web, 'assets', 'app.js'), 'WEB ASSET\n');
+    await fsp.writeFile(path.join(webPublic, 'index.html'), '<h1>WEB SERVIDA</h1>\n');
+    await fsp.writeFile(path.join(webPublic, 'assets', 'app.js'), 'ASSET SERVIDO\n');
 
     const resultado = await criarBackup({
       raiz: backups,
       apiDir: api,
       webDir: web,
+      webPublicDir: webPublic,
       envPath: path.join(api, '.env'),
       instante: new Date('2026-09-20T12:00:00.000Z'),
       dumpBanco: async destino => {
@@ -36,15 +41,26 @@ async function executar() {
       }
     });
     const manifesto = await verificarBackup(resultado.diretorio);
-    assert.strictEqual(manifesto.arquivos.length, 3);
+    assert.strictEqual(manifesto.versao, 2);
+    assert.strictEqual(manifesto.arquivos.length, 4);
     assert.ok(manifesto.arquivos.every(item => /^[a-f0-9]{64}$/.test(item.sha256)));
+    await assert.rejects(
+      restaurarBackup(resultado.diretorio, {
+        apiDestino: path.join(raiz, 'sem-publico-api'),
+        webDestino: path.join(raiz, 'sem-publico-web'),
+        restaurarBanco: async () => assert.fail('Banco não deve ser restaurado')
+      }),
+      /Destino do frontend público é obrigatório/
+    );
 
     const apiRestaurada = path.join(raiz, 'api-restaurada');
     const webRestaurada = path.join(raiz, 'web-restaurado');
+    const webPublicRestaurada = path.join(raiz, 'web-servido-restaurado');
     let bancoRestaurado = false;
     await restaurarBackup(resultado.diretorio, {
       apiDestino: apiRestaurada,
       webDestino: webRestaurada,
+      webPublicDestino: webPublicRestaurada,
       envPath: path.join(apiRestaurada, '.env'),
       restaurarBanco: async arquivo => {
         const sql = gunzipSync(await fsp.readFile(arquivo)).toString();
@@ -65,12 +81,16 @@ async function executar() {
       await fsp.readFile(path.join(webRestaurada, 'assets', 'app.js'), 'utf8'),
       'WEB ASSET\n'
     );
+    assert.strictEqual(
+      await fsp.readFile(path.join(webPublicRestaurada, 'assets', 'app.js'), 'utf8'),
+      'ASSET SERVIDO\n'
+    );
 
-    const arquivoCorrompido = path.join(resultado.diretorio, 'web.tar.gz');
+    const arquivoCorrompido = path.join(resultado.diretorio, 'web-public.tar.gz');
     await fsp.appendFile(arquivoCorrompido, 'CORROMPIDO');
     await assert.rejects(
       verificarBackup(resultado.diretorio),
-      /Integridade inválida: web\.tar\.gz/
+      /Integridade inválida: web-public\.tar\.gz/
     );
 
     await assert.rejects(
@@ -78,6 +98,7 @@ async function executar() {
         raiz: backups,
         apiDir: api,
         webDir: web,
+        webPublicDir: webPublic,
         envPath: path.join(api, '.env'),
         instante: new Date('2026-09-20T12:00:01.000Z'),
         dumpBanco: async () => {

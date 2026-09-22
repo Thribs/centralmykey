@@ -4,6 +4,7 @@ set -Eeuo pipefail
 SOURCE_DIR=/opt/centralmykey-source
 API_DIR=/opt/central-mykey-api
 WEB_DIR=/opt/central-mykey-web
+WEB_PUBLIC_DIR=/var/www/central-mykey-test
 SERVICE=central-mykey-api.service
 HEALTH_URL=http://127.0.0.1:3000/health
 READY_URL=http://127.0.0.1:3000/health/ready
@@ -15,7 +16,8 @@ Publicação não executada. Este comando apenas mostra o procedimento.
 Ao usar --confirmar-publicacao, ele valida Git/testes/build, prepara os
 artefatos fora da produção, cria e verifica um backup integral, para o serviço,
 aplica as nove migrações, copia os artefatos localmente, reinicia e valida
-/health e /health/ready. Qualquer falha após a primeira alteração restaura
+/health, /health/ready e o frontend servido. Qualquer falha após a primeira
+alteração restaura
 automaticamente API, frontend e banco a partir do backup criado.
 EOF
   exit 0
@@ -95,11 +97,15 @@ CENTRALMYKEY_ENV_PATH="$API_DIR/.env" \
 rsync -a --delete --exclude='.env' --exclude='storage' \
   "$stage_dir/api/" "$API_DIR/"
 rsync -a --delete "$stage_dir/web/" "$WEB_DIR/"
+rsync -a --delete "$stage_dir/web/dist/" "$WEB_PUBLIC_DIR/"
 
 systemctl start "$SERVICE"
 for tentativa in {1..30}; do
   if curl --fail --silent --show-error "$HEALTH_URL" >/dev/null &&
-     curl --fail --silent --show-error "$READY_URL" >/dev/null; then
+     curl --fail --silent --show-error "$READY_URL" >/dev/null &&
+     test -s "$WEB_PUBLIC_DIR/index.html" &&
+     find "$WEB_PUBLIC_DIR/assets" -maxdepth 1 -type f -print -quit |
+       grep -q .; then
     producao_alterada=0
     echo "Publicação concluída; commit $(git rev-parse --short HEAD); backup ${backup_dir}."
     exit 0
