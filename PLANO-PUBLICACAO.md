@@ -7,7 +7,7 @@ da aprovação dos testes.
 
 ## Estado comprovado
 
-- O commit `c067355` foi publicado em 22/09/2026, sem merge ou nova tag, com o
+- O commit `998ef66` foi publicado em 22/09/2026, sem merge ou nova tag, com o
   serviço ativo e `/health` e `/health/ready` HTTP 200.
 - A publicação criou e verificou o backup integral
   `/opt/centralmykey-backups/20260922T025627Z`. O diagnóstico de prontidão do
@@ -29,6 +29,11 @@ da aprovação dos testes.
   `/opt/centralmykey-backups/20260922T032608Z`, aplicou onze migrações e
   confirmou doze tabelas. O mapa foi publicado com zero linhas e zero
   auditorias; nenhum código fictício dos testes chegou à produção.
+- A publicação do diagnóstico de prontidão da conversão WBuy criou e verificou
+  o backup `/opt/centralmykey-backups/20260922T033306Z`, repetiu a suíte completa
+  da API, 31 cenários Playwright, lint, build e as onze migrações idempotentes.
+  A leitura posterior confirmou zero autoridades, estados confirmados, produtos
+  mapeados e snapshots recebidos; o conversor permanece bloqueado.
 - A instalação publicada usa `qs 6.16.0` e `npm audit --omit=dev` informa zero
   vulnerabilidades conhecidas.
 - As onze migrações adicionadas depois da tag estão aplicadas e as doze tabelas
