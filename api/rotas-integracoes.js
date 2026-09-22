@@ -11,6 +11,12 @@ const {
 } = require('./sicoob-pix');
 const { receberEventoBling } = require('./webhook-bling');
 const { analisarSnapshotWBuy, sincronizarPedidoWBuy } = require('./wbuy-pedidos');
+const {
+  concluirOAuthBling,
+  iniciarOAuthBling,
+  obterStatusOAuthBling,
+  renovarOAuthBling
+} = require('./bling-oauth');
 
 module.exports = function registrarRotasIntegracoes(app, pool, opcoes = {}) {
   const autenticarToken = app.locals.autenticarToken;
@@ -22,6 +28,85 @@ module.exports = function registrarRotasIntegracoes(app, pool, opcoes = {}) {
       endereco === '::ffff:127.0.0.1';
     return local && req.get('x-client-cert-verify') === 'SUCCESS';
   };
+
+  const configuracaoBling = async () => ({
+    ...(opcoes.configuracaoBling || await obterConfiguracaoBling(pool)),
+    authorizationUrl: opcoes.authorizationUrlBling,
+    tokenUrl: opcoes.tokenUrlBling
+  });
+
+  app.get('/api/integracoes/bling/oauth/status', autenticarToken,
+    exigirPermissao('INTEGRACOES', 'visualizar'), async (req, res) => {
+      try {
+        return res.json(await obterStatusOAuthBling(pool, await configuracaoBling()));
+      } catch (error) {
+        console.error('Erro ao consultar OAuth Bling:', error.message);
+        return res.status(500).json({ ok: false, error: 'Erro ao consultar OAuth Bling' });
+      }
+    });
+
+  app.post('/api/integracoes/bling/oauth/iniciar', autenticarToken,
+    exigirPermissao('INTEGRACOES', 'editar'), async (req, res) => {
+      try {
+        const resultado = await iniciarOAuthBling(pool, await configuracaoBling(), {
+          usuarioId: req.usuario?.id || null,
+          ip: req.ip || null
+        });
+        return res.status(201).json(resultado);
+      } catch (error) {
+        const status = Number(error.status) || 500;
+        if (status >= 500 && !error.codigo) console.error('Erro ao iniciar OAuth Bling:', error);
+        return res.status(status).json({ ok: false,
+          codigo: error.codigo || 'ERRO_OAUTH_BLING',
+          error: status >= 500 && !error.codigo
+            ? 'Erro ao iniciar OAuth Bling' : error.message });
+      }
+    });
+
+  app.post('/api/integracoes/bling/oauth/renovar', autenticarToken,
+    exigirPermissao('INTEGRACOES', 'editar'), async (req, res) => {
+      try {
+        return res.json(await renovarOAuthBling(pool, await configuracaoBling(), {
+          transporte: opcoes.transporteBlingOAuth,
+          timeoutMs: opcoes.timeoutBlingOAuthMs,
+          usuarioId: req.usuario?.id || null,
+          ip: req.ip || null
+        }));
+      } catch (error) {
+        const status = Number(error.status) || 500;
+        if (status >= 500 && !error.codigo) console.error('Erro ao renovar OAuth Bling:', error);
+        return res.status(status).json({ ok: false,
+          codigo: error.codigo || 'ERRO_OAUTH_BLING',
+          error: status >= 500 && !error.codigo
+            ? 'Erro ao renovar OAuth Bling' : error.message });
+      }
+    });
+
+  app.get('/api/integracoes/bling/oauth/callback', async (req, res) => {
+    try {
+      await concluirOAuthBling(pool, await configuracaoBling(), {
+        code: req.query.code,
+        state: req.query.state
+      }, {
+        transporte: opcoes.transporteBlingOAuth,
+        timeoutMs: opcoes.timeoutBlingOAuthMs,
+        ip: req.ip || null
+      });
+      return res.status(200).type('html').send(
+        '<!doctype html><html lang="pt-BR"><meta charset="utf-8">' +
+        '<title>Bling conectado</title><body><h1>Bling conectado</h1>' +
+        '<p>A autorização foi armazenada com segurança. Você pode fechar esta janela.</p></body></html>'
+      );
+    } catch (error) {
+      const status = Number(error.status) || 500;
+      if (status >= 500 && !error.codigo) console.error('Erro no callback OAuth Bling:', error);
+      return res.status(status).type('html').send(
+        '<!doctype html><html lang="pt-BR"><meta charset="utf-8">' +
+        '<title>Falha ao conectar Bling</title><body><h1>Falha ao conectar Bling</h1>' +
+        '<p>A autorização não foi concluída. Inicie uma nova tentativa na Central MyKey.</p></body></html>'
+      );
+    }
+  });
 
   app.post('/webhooks/sicoob', async (req, res) => {
     try {
@@ -52,7 +137,7 @@ module.exports = function registrarRotasIntegracoes(app, pool, opcoes = {}) {
 
   app.post('/webhooks/bling', async (req, res) => {
     try {
-      const config = opcoes.configuracaoBling || await obterConfiguracaoBling(pool);
+      const config = await configuracaoBling();
       const resultado = await receberEventoBling(pool, {
         payload: req.body,
         corpoBruto: req.rawBody || Buffer.from(''),

@@ -24,7 +24,9 @@ const CHAVES_TESTE = [
   'SICOOB_KEY_PATH', 'SICOOB_CA_PATH', 'SICOOB_CHAVE_PIX', 'SICOOB_AMBIENTE',
   'SICOOB_COBRANCA_HABILITADA', 'SICOOB_WEBHOOK_HABILITADO',
   'WBUY_USUARIO', 'WBUY_USERNAME', 'WBUY_SENHA', 'WBUY_PASSWORD',
-  'WBUY_LOJA_URL', 'WBUY_TOKEN', 'WBUY_API_KEY'
+  'WBUY_LOJA_URL', 'WBUY_TOKEN', 'WBUY_API_KEY',
+  'BLING_CLIENT_ID', 'BLING_CLIENT_SECRET', 'BLING_REDIRECT_URI',
+  'BLING_OAUTH_HABILITADO', 'BLING_TOKEN_ENCRYPTION_KEY'
 ];
 
 function poolFalso(valores) {
@@ -74,7 +76,7 @@ async function executar() {
   try {
     for (const chave of [
       'CHAVE_API_JOELPIRES', 'JWT_SECRET', 'WBUY_SENHA',
-      'WHATSAPP_ACCESS_TOKEN', 'SICOOB_KEY_PATH'
+      'WHATSAPP_ACCESS_TOKEN', 'SICOOB_KEY_PATH', 'BLING_TOKEN_ENCRYPTION_KEY'
     ]) {
       assert.strictEqual(chaveSensivel(chave), true, `${chave} deve ser sensível`);
       const mascarada = mascararConfiguracao({ chave, valor: 'nao-expor' });
@@ -114,6 +116,8 @@ async function executar() {
     assert.strictEqual(itemWbuy.componentes.credencial_legada, true);
     assert.strictEqual(itemBling.status, 'PENDENTE');
     assert.strictEqual(itemBling.componentes.webhook_assinado, true);
+    assert.strictEqual(itemBling.componentes.oauth_fundacao, true);
+    assert.strictEqual(itemBling.componentes.oauth_configurado, false);
     assert.ok(resumo.every(item => !JSON.stringify(item).includes('ficticio')),
       'O resumo nunca pode expor valores de configuração');
 

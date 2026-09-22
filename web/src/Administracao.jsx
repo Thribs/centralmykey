@@ -22,6 +22,7 @@ import {
   buscarIntegracoes,
   buscarPermissoesUsuario,
   buscarProntidaoComercio,
+  buscarStatusOAuthBling,
   buscarResumoUsuarios,
   cadastrarModeloWhatsapp,
   cadastrarUsuario,
@@ -35,6 +36,7 @@ import {
   listarModelosWhatsapp,
   listarPerfis,
   listarUsuarios,
+  iniciarOAuthBling,
   salvarMapeamentoIntegracao,
   salvarMapeamentoStatusIntegracao,
   salvarConfiguracao,
@@ -506,6 +508,8 @@ export function Integracoes({ permissoes: permissoesSessao = [] }) {
   const [opcoesAutoridade, setOpcoesAutoridade] = useState([]);
   const [statusMapeamentos, setStatusMapeamentos] = useState([]);
   const [prontidaoComercio, setProntidaoComercio] = useState(null);
+  const [oauthBling, setOauthBling] = useState(null);
+  const [linkOauthBling, setLinkOauthBling] = useState('');
   const [analiseSnapshot, setAnaliseSnapshot] = useState(null);
   const [analisandoSnapshotId, setAnalisandoSnapshotId] = useState(null);
   const [opcoesStatus, setOpcoesStatus] = useState({ provedores: [], dominios: [], situacoes: [] });
@@ -544,14 +548,16 @@ export function Integracoes({ permissoes: permissoesSessao = [] }) {
 
     try {
       const [dadosIntegracoes, dadosModelos, dadosEventos,
-        dadosMapeamentos, dadosAutoridades, dadosStatus, dadosProntidao] = await Promise.all([
+        dadosMapeamentos, dadosAutoridades, dadosStatus, dadosProntidao,
+        dadosOauthBling] = await Promise.all([
         buscarIntegracoes(token),
         listarModelosWhatsapp(token),
         listarEventosIntegracao(token, { ...filtrosEventos, limite: 30 }),
         listarMapeamentosIntegracoes(token),
         listarAutoridadesIntegracoes(token),
         listarMapeamentosStatusIntegracoes(token),
-        buscarProntidaoComercio(token)
+        buscarProntidaoComercio(token),
+        buscarStatusOAuthBling(token)
       ]);
 
       setIntegracoes(dadosIntegracoes.integracoes || []);
@@ -567,6 +573,7 @@ export function Integracoes({ permissoes: permissoesSessao = [] }) {
       setOpcoesStatus({ provedores: dadosStatus.provedores || [],
         dominios: dadosStatus.dominios || [], situacoes: dadosStatus.situacoes || [] });
       setProntidaoComercio(dadosProntidao);
+      setOauthBling(dadosOauthBling);
     } catch (falha) {
       setErro(falha.message);
     }
@@ -695,6 +702,20 @@ export function Integracoes({ permissoes: permissoesSessao = [] }) {
     }
   }
 
+  async function prepararOAuthBling() {
+    setSalvando(true);
+    setErro('');
+    setLinkOauthBling('');
+    try {
+      const resultado = await iniciarOAuthBling(token);
+      setLinkOauthBling(resultado.autorizacao_url || '');
+    } catch (falha) {
+      setErro(falha.message);
+    } finally {
+      setSalvando(false);
+    }
+  }
+
   async function registrarDevolucao(evento) {
     const meio = window.prompt(
       'Informe o meio usado na devolução:',
@@ -762,6 +783,33 @@ export function Integracoes({ permissoes: permissoesSessao = [] }) {
           </article>
         ))}
       </div>
+
+      {oauthBling && <div className="admin-panel whatsapp-readiness">
+        <header><div><span>BLING OAUTH 2.0 · JWT</span>
+          <h2>{oauthBling.conectado ? 'Conta Bling conectada' :
+            'Autorização Bling pendente'}</h2></div>
+          <strong>{oauthBling.habilitado ? 'Fluxo habilitado' : 'Fluxo desabilitado'}</strong>
+        </header>
+        <div className="whatsapp-readiness-metrics">
+          <span>Configuração <strong>{oauthBling.configurado ? 'Completa' : 'Incompleta'}</strong></span>
+          <span>Access token <strong>{oauthBling.access_token_valido ? 'Válido' : 'Ausente/expirado'}</strong></span>
+          <span>Refresh token <strong>{oauthBling.conectado ? 'Válido' : 'Ausente/expirado'}</strong></span>
+        </div>
+        <p className="integration-note">Os tokens ficam cifrados no servidor. Esta conexão
+          não ativa leitura, escrita ou processamento de pedidos no Bling.</p>
+        {podeEditar && oauthBling.configurado && oauthBling.habilitado &&
+          <div className="integration-form">
+            <button type="button" disabled={salvando} onClick={prepararOAuthBling}>
+              {oauthBling.conectado ? 'Preparar reautorização' : 'Preparar conexão Bling'}
+            </button>
+            {linkOauthBling && <a href={linkOauthBling} target="_blank"
+              rel="noreferrer">Abrir autorização Bling</a>}
+          </div>}
+        {(!oauthBling.configurado || !oauthBling.habilitado) && <ul>
+          {!oauthBling.configurado && <li>Client ID, segredo, callback HTTPS e chave de cifragem são obrigatórios</li>}
+          {!oauthBling.habilitado && <li>O fluxo permanece desabilitado por configuração</li>}
+        </ul>}
+      </div>}
 
       {prontidaoWhatsapp && <div className="admin-panel whatsapp-readiness">
         <header>

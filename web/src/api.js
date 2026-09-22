@@ -1065,6 +1065,20 @@ export async function buscarProntidaoComercio(token) {
   return lerResposta(resposta);
 }
 
+export async function buscarStatusOAuthBling(token) {
+  const resposta = await requisitar(`${API_URL}/api/integracoes/bling/oauth/status`, {
+    headers: cabecalhoAutenticado(token)
+  });
+  return lerResposta(resposta);
+}
+
+export async function iniciarOAuthBling(token) {
+  const resposta = await requisitar(`${API_URL}/api/integracoes/bling/oauth/iniciar`, {
+    method: 'POST', headers: cabecalhoAutenticado(token)
+  });
+  return lerResposta(resposta);
+}
+
 export async function listarModelosWhatsapp(token) {
   const resposta = await requisitar(`${API_URL}/api/whatsapp/modelos`, {
     headers: cabecalhoAutenticado(token)

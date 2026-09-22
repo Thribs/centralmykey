@@ -26,6 +26,15 @@ receptor deve responder em até cinco segundos.
   `RECEBIDO` em `integracao_eventos`.
 - Outros recursos ou versões autenticados ficam como `IGNORADO` e recebem 2xx.
 - A consulta administrativa omite o payload armazenado.
+- O fluxo OAuth Authorization Code possui início autenticado, `state` aleatório
+  armazenado apenas como SHA-256, callback de uso único e troca server-side.
+- A troca e a renovação solicitam tokens JWT com `enable-jwt: 1` e enviam o
+  client secret somente por Basic ao endpoint oficial de tokens.
+- Access e refresh tokens ficam cifrados com AES-256-GCM por uma chave dedicada
+  que só pode vir do ambiente do processo; a API e a auditoria retornam apenas
+  estado e datas de expiração.
+- O fluxo OAuth permanece desabilitado por padrão e ainda não lê nem escreve
+  pedidos no Bling.
 
 O webhook não cria cliente, pedido, pagamento ou lançamento financeiro. Essa
 decisão é intencional enquanto não estiver definido, por entidade e estado, se
@@ -34,10 +43,13 @@ WBuy, Bling ou Central MyKey é a autoridade durante a transição.
 ## Ativação futura
 
 1. Cadastrar o aplicativo Bling com apenas os escopos necessários.
-2. Configurar `BLING_CLIENT_ID` e `BLING_CLIENT_SECRET` sem registrar valores em
-   documentação ou logs.
-3. Cadastrar o endpoint HTTPS e selecionar somente o recurso Pedido de Venda.
-4. Manter o processamento dos eventos desativado até aprovar a matriz de
+2. Configurar `BLING_CLIENT_ID`, `BLING_CLIENT_SECRET`, `BLING_REDIRECT_URI` e
+   uma chave exclusiva de 32 bytes, em Base64 ou hexadecimal, em
+   `BLING_TOKEN_ENCRYPTION_KEY`, sem registrar valores em documentação ou logs.
+3. Cadastrar o callback HTTPS e selecionar somente o recurso Pedido de Venda.
+4. Habilitar `BLING_OAUTH_HABILITADO`, concluir a autorização controlada e
+   conferir as datas na Administração.
+5. Manter o processamento dos eventos desativado até aprovar a matriz de
    autoridade e o mapeamento de estados.
-5. Enviar eventos controlados e conferir assinatura, idempotência e fila antes
+6. Enviar eventos controlados e conferir assinatura, idempotência e fila antes
    de permitir qualquer efeito de negócio.

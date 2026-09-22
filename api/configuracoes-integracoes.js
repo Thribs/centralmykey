@@ -30,7 +30,9 @@ const CHAVES = {
   wbuyLojaUrl: ['WBUY_LOJA_URL'],
   wbuyCredencialLegada: ['WBUY_TOKEN', 'WBUY_API_KEY'],
   blingClientId: ['BLING_CLIENT_ID'],
-  blingClientSecret: ['BLING_CLIENT_SECRET']
+  blingClientSecret: ['BLING_CLIENT_SECRET'],
+  blingRedirectUri: ['BLING_REDIRECT_URI'],
+  blingOAuthHabilitado: ['BLING_OAUTH_HABILITADO']
 };
 
 function primeiroValor(mapa, aliases) {
@@ -56,9 +58,13 @@ async function carregarConfiguracoesIntegracoes(pool) {
     [nomes]
   );
   const mapa = Object.fromEntries(linhas.map(item => [item.chave, item.valor]));
-  return Object.fromEntries(
+  const configuracoes = Object.fromEntries(
     Object.entries(CHAVES).map(([nome, aliases]) => [nome, primeiroValor(mapa, aliases)])
   );
+  // A chave que cifra tokens deve existir apenas no ambiente do processo.
+  configuracoes.blingTokenEncryptionKey =
+    String(process.env.BLING_TOKEN_ENCRYPTION_KEY || '').trim();
+  return configuracoes;
 }
 
 function verdadeiro(valor) {
@@ -158,12 +164,18 @@ function resumirIntegracoes(config) {
       codigo: 'BLING',
       nome: 'Bling',
       implementado: true,
-      configurado: Boolean(config.blingClientSecret),
-      habilitado: null,
-      status: config.blingClientSecret ? 'PARCIAL' : 'PENDENTE',
+      configurado: Boolean(config.blingClientId && config.blingClientSecret &&
+        config.blingRedirectUri && config.blingTokenEncryptionKey),
+      habilitado: verdadeiro(config.blingOAuthHabilitado),
+      status: config.blingClientId && config.blingClientSecret
+        ? 'PARCIAL' : 'PENDENTE',
       componentes: {
         webhook_assinado: true,
-        oauth: false,
+        webhook_configurado: Boolean(config.blingClientSecret),
+        oauth_fundacao: true,
+        oauth_configurado: Boolean(config.blingClientId && config.blingClientSecret &&
+          config.blingRedirectUri && config.blingTokenEncryptionKey),
+        oauth_habilitado: verdadeiro(config.blingOAuthHabilitado),
         sincronizacao: false
       }
     }
@@ -309,7 +321,10 @@ async function obterConfiguracaoBling(pool) {
   const config = await carregarConfiguracoesIntegracoes(pool);
   return {
     clientId: config.blingClientId,
-    clientSecret: config.blingClientSecret
+    clientSecret: config.blingClientSecret,
+    redirectUri: config.blingRedirectUri,
+    encryptionKey: config.blingTokenEncryptionKey,
+    habilitado: verdadeiro(config.blingOAuthHabilitado)
   };
 }
 

@@ -40,9 +40,11 @@ registro canônico pela API REST.
 ## Bling
 
 O mapeamento de produtos já é compartilhado e o receptor de webhooks valida a
-assinatura HMAC oficial e guarda eventos `order.*` idempotentes. OAuth, leitura
-detalhada, exportação de resultados e autoridade de status ainda não estão
-implementados.
+assinatura HMAC oficial e guarda eventos `order.*` idempotentes. A base OAuth
+Authorization Code usa `state` de uso único, solicita JWT, cifra os tokens e
+permite renovação segura, mas permanece desabilitada até cadastrar o aplicativo
+e o callback. Leitura detalhada, exportação de resultados e autoridade de status
+ainda não estão implementadas.
 Durante a transição, cada entidade deverá ter uma fonte de verdade explícita
 para evitar atualizações circulares entre WBuy, Bling e Central MyKey.
 

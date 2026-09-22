@@ -206,6 +206,32 @@ async function prepararFixture() {
      ) ENGINE=InnoDB`
   );
   await connection.query(
+    `CREATE TEMPORARY TABLE integracao_oauth_estados (
+       id BIGINT AUTO_INCREMENT PRIMARY KEY,
+       provedor ENUM('BLING') NOT NULL,
+       state_hash CHAR(64) NOT NULL,
+       usuario_id BIGINT NULL,
+       expira_em DATETIME NOT NULL,
+       usado_em DATETIME NULL,
+       criado_em DATETIME DEFAULT CURRENT_TIMESTAMP,
+       UNIQUE KEY uk_oauth_estado (provedor, state_hash)
+     ) ENGINE=InnoDB`
+  );
+  await connection.query(
+    `CREATE TEMPORARY TABLE integracao_oauth_tokens (
+       provedor ENUM('BLING') PRIMARY KEY,
+       access_token_cifrado MEDIUMTEXT NOT NULL,
+       refresh_token_cifrado MEDIUMTEXT NOT NULL,
+       token_tipo VARCHAR(40) NOT NULL,
+       escopos TEXT NULL,
+       access_expira_em DATETIME NOT NULL,
+       refresh_expira_em DATETIME NOT NULL,
+       atualizado_por BIGINT NULL,
+       criado_em DATETIME DEFAULT CURRENT_TIMESTAMP,
+       atualizado_em DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+     ) ENGINE=InnoDB`
+  );
+  await connection.query(
     `CREATE TEMPORARY TABLE fornecedor_servicos (
        id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
        fornecedor_id BIGINT NOT NULL,
@@ -1152,9 +1178,17 @@ async function iniciar() {
           WHERE ism.provedor='WBUY' AND ism.dominio='PAGAMENTO'
           ORDER BY ism.id DESC LIMIT 1`
       );
+      const [[oauthBling]] = await connection.query(
+        `SELECT
+           (SELECT COUNT(*) FROM integracao_oauth_estados
+             WHERE provedor='BLING') AS estados,
+           (SELECT COUNT(*) FROM auditoria
+             WHERE modulo='INTEGRACOES' AND acao='INICIAR_OAUTH_BLING') AS auditorias`
+      );
       return res.json({ ok: true, mapeamento: mapeamento || null,
         modelo: modelo || null, autoridade: autoridade || null,
         status_mapeado: statusMapeado || null,
+        oauth_bling: oauthBling || null,
         pagamento_tardio: pagamentoTardio || null });
     }
     if (req.query.cenario === 'cadastros') {
@@ -1429,6 +1463,12 @@ async function iniciar() {
     })
   });
   require('./rotas-integracoes')(app, pool, {
+    configuracaoBling: {
+      clientId: 'bling-client-e2e', clientSecret: 'bling-secret-e2e',
+      redirectUri: 'https://central-e2e.invalid/api/integracoes/bling/oauth/callback',
+      encryptionKey: Buffer.alloc(32, 8).toString('base64'), habilitado: true
+    },
+    authorizationUrlBling: 'https://bling-e2e.invalid/Api/v3/oauth/authorize',
     configuracaoWBuy: {
       usuario: 'usuario-wbuy-e2e', senha: 'senha-wbuy-e2e',
       apiUrl: 'https://wbuy-e2e.invalid/api/v1'

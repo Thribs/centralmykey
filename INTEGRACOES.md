@@ -79,8 +79,12 @@ payload e mantém a conversão desabilitada enquanto houver decisões pendentes.
 O webhook continua desativado. A documentação pública confirma os eventos
 `order` e `order_status`, mas não publica mecanismo verificável de assinatura.
 
-O adaptador Bling e a coexistência durante a transição ainda dependem do fluxo
-OAuth e do mapeamento de estados definido para a conta utilizada.
+O Bling possui receptor HMAC e base OAuth Authorization Code. O início exige
+permissão administrativa, o callback consome um `state` aleatório uma única vez
+e a troca/renovação solicita JWT no servidor. Tokens são cifrados por chave
+dedicada do ambiente e nunca aparecem nas respostas ou na auditoria. A conexão
+permanece desabilitada até cadastrar o aplicativo e o callback; leitura e
+efeitos comerciais continuam bloqueados pela matriz e pelo mapa de estados.
 
 ## PlugPay
 

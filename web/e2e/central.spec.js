@@ -1456,6 +1456,16 @@ test('integrações administram modelos e mapeamentos sem chamar serviços exter
     .toBeVisible();
   await expect(page.locator('.integration-grid article', { hasText: 'PlugPay' }))
     .toContainText('Contrato não identificado');
+  const oauthBling = page.locator('.whatsapp-readiness', {
+    hasText: 'BLING OAUTH 2.0 · JWT'
+  });
+  await expect(oauthBling).toContainText('Autorização Bling pendente');
+  await expect(oauthBling).toContainText('Os tokens ficam cifrados no servidor');
+  await oauthBling.getByRole('button', { name: 'Preparar conexão Bling' }).click();
+  const linkBling = oauthBling.getByRole('link', { name: 'Abrir autorização Bling' });
+  await expect(linkBling).toHaveAttribute('href', /bling-e2e\.invalid/);
+  await expect(linkBling).toHaveAttribute('href', /state=/);
+  await expect(linkBling).not.toHaveAttribute('href', /bling-secret-e2e/);
   await expect(page.getByText('PRONTIDÃO WHATSAPP GM')).toBeVisible();
   const prontidaoWhatsapp = page.locator('.whatsapp-readiness', {
     hasText: 'PRONTIDÃO WHATSAPP GM'
@@ -1601,6 +1611,8 @@ test('integrações administram modelos e mapeamentos sem chamar serviços exter
   expect(verificacao.status_mapeado.status_externo_id).toBe('2');
   expect(verificacao.status_mapeado.situacao).toBe('CONFIRMADO');
   expect(Number(verificacao.status_mapeado.auditorias)).toBeGreaterThanOrEqual(1);
+  expect(Number(verificacao.oauth_bling.estados)).toBe(1);
+  expect(Number(verificacao.oauth_bling.auditorias)).toBe(1);
   expect(verificacao.pagamento_tardio.pedido_status).toBe('CANCELADO');
   expect(verificacao.pagamento_tardio.evento_status).toBe('IGNORADO');
   expect(verificacao.pagamento_tardio.erro_codigo).toBe('PAGAMENTO_ESTORNADO');
@@ -1919,6 +1931,14 @@ test('visualizador não vê ações de usuário e recebe 403 ao forçar criaçã
   await expect(page.getByLabel(/Status do modelo/)).toHaveCount(0);
   await expect(page.getByLabel(/Autoridade de/)).toHaveCount(0);
   await expect(page.getByLabel('ID do status externo')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Preparar conexão Bling' }))
+    .toHaveCount(0);
+  const oauthBlingNegado = await page.request.post(
+    `${API}/api/integracoes/bling/oauth/iniciar`, {
+      headers: { Authorization: `Bearer ${token}` }
+    }
+  );
+  expect(oauthBlingNegado.status()).toBe(403);
   await expect(page.getByRole('button', { name: 'Ativar', exact: true }))
     .toHaveCount(0);
   const integracoes = contextoCompleto.integracoes;
