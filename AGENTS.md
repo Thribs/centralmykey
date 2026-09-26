@@ -59,7 +59,9 @@ API Joel Pires e relê-lo na fonte de verdade; somente a confirmação idêntica
 pode alimentar o cache local e liberar a entrega. Falha de reconhecimento,
 cadastro, dados fiscais, criação, cobrança, pagamento, transporte, gravação ou
 releitura deve transferir o atendimento para o modo humano e bloquear
-comunicações automáticas posteriores daquele atendimento.
+comunicações automáticas posteriores daquele atendimento. Uma comunicação
+que permanecer em processamento sem confirmação também deve ser classificada
+como incerta e transferida ao atendimento humano, sem reenvio automático.
 
 Qualquer mudança nesse fluxo deve manter as transições, o histórico e os lançamentos financeiros consistentes e idempotentes.
 

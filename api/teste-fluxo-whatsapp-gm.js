@@ -10,7 +10,10 @@ const { criarTabelaOutboxTemporaria } = require('./teste-suporte-outbox');
 const { criarTabelaPartesPedidoTemporaria } = require('./teste-suporte-partes-pedido');
 const { criarTabelasNotificacoesTemporarias } = require('./teste-suporte-notificacoes');
 const { processarMensagemAtendimento } = require('./processar-mensagens-atendimento');
-const { processarComunicacao } = require('./processar-comunicacoes-outbox');
+const {
+  processarComunicacao,
+  processarComunicacoesOutbox
+} = require('./processar-comunicacoes-outbox');
 const { finalizarResultadoGmAutomatico } = require('./finalizar-resultado-gm-automatico');
 
 dotenv.config({
@@ -614,6 +617,70 @@ async function executar() {
       [falhaPix.modo, falhaPix.status, Number(falhaPix.referencias)],
       ['HUMANO', 'FILA', 0]
     );
+
+    const protocoloWorkerInterrompido =
+      `STOP${process.pid}${String(Date.now()).slice(-6)}`;
+    const [atendimentoWorkerInterrompido] = await connection.query(
+      `INSERT INTO atendimentos
+         (protocolo, cliente_id, telefone, telefone_normalizado, canal, modo,
+          status, prioridade, assunto, ultima_mensagem_em)
+       VALUES (?, ?, ?, ?, 'WHATSAPP', 'ELETRONICO', 'AGUARDANDO_FORNECEDOR',
+               'NORMAL', 'Senha GM', NOW())`,
+      [`ATD-${protocoloWorkerInterrompido}`, cliente.insertId,
+        clienteTelefone, clienteTelefone]
+    );
+    const [pedidoWorkerInterrompido] = await connection.query(
+      `INSERT INTO pedidos_senha
+         (protocolo, cliente_id, servico_id, chassi, marca, status, valor_venda,
+          custo, moeda, fornecedor_id, origem_id)
+       VALUES (?, ?, ?, ?, 'GM', 'EM_CONSULTA', 50, 0.01, 'BRL', ?, 2)`,
+      [protocoloWorkerInterrompido, cliente.insertId, servico.id,
+        `9BGSTOPA0${String(Date.now()).slice(-8)}`, fornecedor.insertId]
+    );
+    await connection.query(
+      `INSERT INTO pedido_historico
+         (pedido_id, tipo, descricao, dados)
+       VALUES (?, 'ORIGEM_ATENDIMENTO_WHATSAPP_AUTOMATICO', 'Teste', ?)`,
+      [pedidoWorkerInterrompido.insertId, JSON.stringify({
+        atendimento_id: atendimentoWorkerInterrompido.insertId
+      })]
+    );
+    const [comunicacaoWorkerInterrompido] = await connection.query(
+      `INSERT INTO comunicacoes_outbox
+         (chave_idempotencia, canal, finalidade, pedido_id, fornecedor_id,
+          destinatario, payload, status)
+       VALUES (?, 'WHATSAPP', 'CONSULTA_FORNECEDOR', ?, ?, ?, JSON_OBJECT(),
+               'PROCESSANDO')`,
+      [`TESTE_WORKER_INTERROMPIDO:${pedidoWorkerInterrompido.insertId}`,
+        pedidoWorkerInterrompido.insertId, fornecedor.insertId,
+        fornecedorTelefone]
+    );
+    await connection.query(
+      `UPDATE comunicacoes_outbox
+          SET atualizado_em=DATE_SUB(NOW(), INTERVAL 6 MINUTE)
+        WHERE id=?`, [comunicacaoWorkerInterrompido.insertId]
+    );
+    const reconciliacaoWorker = await processarComunicacoesOutbox(
+      poolTransacional(connection), async () => {
+        throw new Error('Não deve reenviar processamento interrompido');
+      }, { habilitado: true, limite: 10,
+        nomeModeloFornecedor: 'consulta_fornecedor_gm_teste' }
+    );
+    assert.strictEqual(reconciliacaoWorker.interrompidos, 1);
+    const [[estadoWorkerInterrompido]] = await connection.query(
+      `SELECT a.modo, a.status, o.status AS comunicacao_status,
+              o.erro_codigo
+         FROM atendimentos a
+         JOIN comunicacoes_outbox o ON o.id=?
+        WHERE a.id=?`,
+      [comunicacaoWorkerInterrompido.insertId,
+        atendimentoWorkerInterrompido.insertId]
+    );
+    assert.deepStrictEqual([
+      estadoWorkerInterrompido.modo, estadoWorkerInterrompido.status,
+      estadoWorkerInterrompido.comunicacao_status,
+      estadoWorkerInterrompido.erro_codigo
+    ], ['HUMANO', 'FILA', 'INCERTA', 'PROCESSAMENTO_INTERROMPIDO']);
 
     const protocoloFalhaJoel = `FAIL${process.pid}${String(Date.now()).slice(-6)}`;
     const [atendimentoFalhaJoel] = await connection.query(

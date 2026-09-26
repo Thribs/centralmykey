@@ -311,14 +311,20 @@ async function processarComunicacoesOutbox(pool, enviarModelo, opcoes = {}) {
     bloqueio = Number(resultadoBloqueio.adquirido) === 1;
     if (!bloqueio) return { executado: false, motivo: 'EM_EXECUCAO' };
 
-    await connection.query(
-      `UPDATE comunicacoes_outbox
-          SET status = 'INCERTA',
-              erro_codigo = 'PROCESSAMENTO_INTERROMPIDO',
-              erro_detalhe = 'Processamento anterior terminou sem confirmação'
+    const [interrompidas] = await connection.query(
+      `SELECT id, pedido_id, resultado_id, fornecedor_id, finalidade
+         FROM comunicacoes_outbox
         WHERE status = 'PROCESSANDO'
-          AND atualizado_em < DATE_SUB(NOW(), INTERVAL 5 MINUTE)`
+          AND atualizado_em < DATE_SUB(NOW(), INTERVAL 5 MINUTE)
+        ORDER BY id LIMIT ?`,
+      [cfg.limite]
     );
+    for (const item of interrompidas) {
+      const erro = new Error('Processamento anterior terminou sem confirmação');
+      erro.name = 'AbortError';
+      erro.codigo = 'PROCESSAMENTO_INTERROMPIDO';
+      await registrarFalha(connection, item, erro);
+    }
 
     const [itens] = await connection.query(
       `SELECT id FROM comunicacoes_outbox
@@ -339,6 +345,7 @@ async function processarComunicacoesOutbox(pool, enviarModelo, opcoes = {}) {
 
     return {
       executado: true,
+      interrompidos: interrompidas.length,
       encontrados: itens.length,
       enviados: resultados.filter(item => item.enviada).length,
       falhas: resultados.filter(item => item.processada && !item.enviada).length
