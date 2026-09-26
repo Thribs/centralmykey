@@ -18,6 +18,7 @@ const CHAVES = {
   whatsappMediaMaxBytes: ['WHATSAPP_MEDIA_MAX_BYTES'],
   joelPiresChave: ['CHAVE_API_JOELPIRES'],
   joelPiresUsuario: ['ID_USUARIO_API_JOELPIRES'],
+  joelPiresGravacaoHomologada: ['APIJOELPIRES_GRAVACAO_HOMOLOGADA'],
   sicoobClientId: ['SICOOB_CLIENT_ID'],
   sicoobClientSecret: ['SICOOB_CLIENT_SECRET'],
   sicoobCertPath: ['SICOOB_CERT_PATH'],
@@ -265,6 +266,27 @@ function diagnosticarProntidaoSicoob(config, opcoes = {}) {
   };
 }
 
+function diagnosticarProntidaoFluxoGm(config, prontidaoWhatsapp, prontidaoSicoob) {
+  const leituraJoelPires = Boolean(config.joelPiresChave && config.joelPiresUsuario);
+  const gravacaoJoelPires = verdadeiro(config.joelPiresGravacaoHomologada);
+  const bloqueios = [
+    ...(prontidaoWhatsapp?.bloqueios || []).map(codigo => `WHATSAPP:${codigo}`),
+    ...(prontidaoSicoob?.bloqueios || []).map(codigo => `SICOOB:${codigo}`)
+  ];
+  if (!leituraJoelPires) bloqueios.push('JOELPIRES:CREDENCIAIS_INCOMPLETAS');
+  if (!gravacaoJoelPires) bloqueios.push('JOELPIRES:GRAVACAO_NAO_HOMOLOGADA');
+  return {
+    pronto_para_teste: bloqueios.length === 0,
+    componentes: {
+      whatsapp: Boolean(prontidaoWhatsapp?.pronto_para_homologar),
+      sicoob: Boolean(prontidaoSicoob?.pronto_para_teste),
+      joel_pires_leitura: leituraJoelPires,
+      joel_pires_gravacao: gravacaoJoelPires
+    },
+    bloqueios
+  };
+}
+
 function destinatarioWhatsappValido(valor) {
   const digitos = String(valor || '').replace(/\D/g, '');
   return digitos.length >= 10 && digitos.length <= 15;
@@ -423,6 +445,7 @@ async function obterConfiguracaoWBuy(pool) {
 module.exports = {
   carregarConfiguracoesIntegracoes,
   diagnosticarProntidaoSicoob,
+  diagnosticarProntidaoFluxoGm,
   diagnosticarProntidaoWhatsapp,
   obterConfiguracaoBling,
   obterConfiguracaoWhatsapp,

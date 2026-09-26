@@ -61,6 +61,12 @@ humana sem criar pedido; mensagens automáticas pendentes não são enviadas e
 comunicações vinculadas a pedidos automáticos são canceladas. Pedidos manuais
 continuam usando sua outbox normal.
 
+A publicação automática de uma resposta de fornecedor na API Joel Pires deve
+permanecer bloqueada até `APIJOELPIRES_GRAVACAO_HOMOLOGADA=true`. Essa chave só
+pode ser ativada depois de um ensaio controlado no staging confirmar POST e
+releitura com o usuário configurado. Enquanto estiver falsa, o resultado fica
+preservado localmente e o atendimento segue para humano sem chamada externa.
+
 A resposta do fornecedor deve estar vinculada ao protocolo, telefone cadastrado
 e consulta enviada. Antes de entregar a senha ao cliente, salvar o resultado na
 API Joel Pires e relê-lo na fonte de verdade; somente a confirmação idêntica

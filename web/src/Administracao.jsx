@@ -522,6 +522,7 @@ export function Integracoes({ permissoes: permissoesSessao = [] }) {
   const [resumo, setResumo] = useState({});
   const [prontidaoWhatsapp, setProntidaoWhatsapp] = useState(null);
   const [prontidaoSicoob, setProntidaoSicoob] = useState(null);
+  const [prontidaoFluxoGm, setProntidaoFluxoGm] = useState(null);
   const [filtrosEventos, setFiltrosEventos] = useState({
     provedor: '', status: ''
   });
@@ -574,6 +575,7 @@ export function Integracoes({ permissoes: permissoesSessao = [] }) {
       setResumo(dadosIntegracoes.modelos_whatsapp || {});
       setProntidaoWhatsapp(dadosIntegracoes.prontidao_whatsapp || null);
       setProntidaoSicoob(dadosIntegracoes.prontidao_sicoob || null);
+      setProntidaoFluxoGm(dadosIntegracoes.prontidao_fluxo_gm || null);
       setModelos(dadosModelos.dados || []);
       setEventos(dadosEventos.dados || []);
       setMapeamentos(dadosMapeamentos.dados || []);
@@ -839,6 +841,27 @@ export function Integracoes({ permissoes: permissoesSessao = [] }) {
           </article>
         ))}
       </div>
+
+      {prontidaoFluxoGm && <div className="admin-panel whatsapp-readiness">
+        <header><div><span>PRONTIDÃO DO CENÁRIO GM</span>
+          <h2>{prontidaoFluxoGm.pronto_para_teste
+            ? 'Cenário pronto para teste externo controlado'
+            : 'Cenário externo ainda bloqueado'}</h2></div>
+          <strong>{Number(prontidaoFluxoGm.bloqueios?.length || 0)} bloqueio(s)</strong>
+        </header>
+        <div className="whatsapp-readiness-metrics">
+          <span>WhatsApp <strong>{prontidaoFluxoGm.componentes?.whatsapp
+            ? 'Pronto' : 'Pendente'}</strong></span>
+          <span>Sicoob <strong>{prontidaoFluxoGm.componentes?.sicoob
+            ? 'Pronto' : 'Pendente'}</strong></span>
+          <span>Leitura Joel Pires <strong>{
+            prontidaoFluxoGm.componentes?.joel_pires_leitura
+              ? 'Configurada' : 'Pendente'}</strong></span>
+          <span>Gravação Joel Pires <strong>{
+            prontidaoFluxoGm.componentes?.joel_pires_gravacao
+              ? 'Homologada' : 'Bloqueada'}</strong></span>
+        </div>
+      </div>}
 
       {oauthBling && <div className="admin-panel whatsapp-readiness">
         <header><div><span>BLING OAUTH 2.0 · JWT</span>

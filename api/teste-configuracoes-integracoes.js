@@ -5,6 +5,7 @@ const crypto = require('crypto');
 const express = require('express');
 const {
   carregarConfiguracoesIntegracoes,
+  diagnosticarProntidaoFluxoGm,
   diagnosticarProntidaoSicoob,
   diagnosticarProntidaoWhatsapp,
   obterConfiguracaoSicoob,
@@ -22,6 +23,7 @@ const CHAVES_TESTE = [
   'WHATSAPP_MODELO_CONSULTA_FORNECEDOR',
   'WHATSAPP_MODELO_ENTREGA_RESULTADO', 'COMUNICACOES_OUTBOX_HABILITADO',
   'AUTOMACAO_GM_WHATSAPP_HABILITADA',
+  'APIJOELPIRES_GRAVACAO_HOMOLOGADA',
   'SICOOB_CLIENT_ID', 'SICOOB_CLIENT_SECRET', 'SICOOB_CERT_PATH',
   'SICOOB_KEY_PATH', 'SICOOB_CA_PATH', 'SICOOB_WEBHOOK_CA_PATH',
   'SICOOB_CHAVE_PIX', 'SICOOB_AMBIENTE',
@@ -75,6 +77,9 @@ async function executar() {
     WHATSAPP_MODELO_ENTREGA_RESULTADO: 'entrega_teste',
     COMUNICACOES_OUTBOX_HABILITADO: 'true',
     AUTOMACAO_GM_WHATSAPP_HABILITADA: 'true',
+    CHAVE_API_JOELPIRES: 'chave-joel-ficticia',
+    ID_USUARIO_API_JOELPIRES: 'usuario-joel-ficticio',
+    APIJOELPIRES_GRAVACAO_HOMOLOGADA: 'true',
     SICOOB_CLIENT_ID: 'id-ficticio',
     WBUY_TOKEN: 'token-legado-ficticio'
   };
@@ -214,6 +219,19 @@ async function executar() {
       'CA_WEBHOOK_SICOOB_INACESSIVEL'));
     assert.ok(diagnosticoSicoobBloqueado.bloqueios.includes(
       'WEBHOOK_SICOOB_NAO_CADASTRADO'));
+    const fluxoGmPronto = diagnosticarProntidaoFluxoGm(
+      await carregarConfiguracoesIntegracoes(poolFalso({
+        ...valores, ...configuracaoSicoobCompleta
+      })), prontidao, diagnosticoSicoob
+    );
+    assert.strictEqual(fluxoGmPronto.pronto_para_teste, true);
+    assert.deepStrictEqual(fluxoGmPronto.bloqueios, []);
+    const fluxoGmBloqueado = diagnosticarProntidaoFluxoGm(
+      {}, prontidaoBloqueada, diagnosticoSicoobBloqueado
+    );
+    assert.strictEqual(fluxoGmBloqueado.pronto_para_teste, false);
+    assert.ok(fluxoGmBloqueado.bloqueios.includes(
+      'JOELPIRES:GRAVACAO_NAO_HOMOLOGADA'));
 
     global.fetch = async (url, opcoes) => {
       assert.match(String(url), /^https:\/\/graph\.facebook\.com\/v98\.0\//);

@@ -349,3 +349,7 @@ A chave geral da automação GM também nasce desligada: novas mensagens seguem
 para humano sem pedido, respostas IA pendentes não saem e a outbox cancela
 somente as comunicações ligadas a atendimentos automáticos; os testes com
 rollback comprovam os três bloqueios.
+O painel agora agrega WhatsApp, Sicoob, leitura e gravação Joel Pires numa
+prontidão única do cenário GM. A gravação externa possui trava própria,
+desligada por padrão; sem homologação ela não executa o POST, preserva o
+resultado do fornecedor e transfere o atendimento para humano.

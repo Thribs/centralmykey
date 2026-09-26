@@ -1456,6 +1456,11 @@ test('integrações administram modelos e mapeamentos sem chamar serviços exter
     .toBeVisible();
   await expect(page.locator('.integration-grid article', { hasText: 'PlugPay' }))
     .toContainText('Contrato não identificado');
+  const prontidaoFluxoGm = page.locator('.whatsapp-readiness', {
+    hasText: 'PRONTIDÃO DO CENÁRIO GM'
+  });
+  await expect(prontidaoFluxoGm).toContainText('Cenário externo ainda bloqueado');
+  await expect(prontidaoFluxoGm).toContainText('Gravação Joel Pires');
   const oauthBling = page.locator('.whatsapp-readiness', {
     hasText: 'BLING OAUTH 2.0 · JWT'
   });

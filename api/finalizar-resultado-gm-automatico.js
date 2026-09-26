@@ -4,6 +4,10 @@ const { buscarSenhaFonteVerdade } = require('./consulta-api-joelpires');
 const { salvarSenhaApiJoelPires } = require('./salvar-senha-api-joelpires');
 const { agendarEntregaCliente } = require('./agendar-entrega-cliente');
 const {
+  carregarConfiguracoesIntegracoes,
+  verdadeiro
+} = require('./configuracoes-integracoes');
+const {
   buscarAtendimentoAutomaticoDoPedido,
   encaminharHumano,
   registrarEstado
@@ -53,6 +57,18 @@ async function finalizarResultadoGmAutomatico(pool, pedidoId, opcoes = {}) {
     pin: origem.pin
   };
   try {
+    let gravacaoHomologada = opcoes.gravacaoJoelPiresHomologada;
+    if (gravacaoHomologada === undefined) {
+      const configuracoes = await carregarConfiguracoesIntegracoes(pool);
+      gravacaoHomologada = verdadeiro(configuracoes.joelPiresGravacaoHomologada);
+    }
+    if (!gravacaoHomologada) {
+      const erro = new Error(
+        'A gravação na API Joel Pires ainda não foi homologada'
+      );
+      erro.codigo = 'GRAVACAO_JOELPIRES_NAO_HOMOLOGADA';
+      throw erro;
+    }
     await salvarSenhaApiJoelPires(dados, { fetchImpl: opcoes.fetchImpl });
     const connection = await pool.getConnection();
     try {

@@ -153,6 +153,7 @@ async function executar() {
   const fetchOriginal = global.fetch;
   const segredoOriginal = process.env.META_APP_SECRET;
   const automacaoOriginal = process.env.AUTOMACAO_GM_WHATSAPP_HABILITADA;
+  const gravacaoJoelOriginal = process.env.APIJOELPIRES_GRAVACAO_HOMOLOGADA;
   const segredo = 'segredo-ficticio-fluxo-gm';
   const marcador = `${process.pid}-${String(Date.now()).slice(-8)}`;
   const clienteNome = `CLIENTE WHATSAPP GM ${marcador}`;
@@ -169,6 +170,7 @@ async function executar() {
   try {
     process.env.META_APP_SECRET = segredo;
     process.env.AUTOMACAO_GM_WHATSAPP_HABILITADA = 'true';
+    process.env.APIJOELPIRES_GRAVACAO_HOMOLOGADA = 'true';
     await connection.beginTransaction();
     await criarTabelaOutboxTemporaria(connection);
     await criarTabelaPartesPedidoTemporaria(connection);
@@ -784,9 +786,26 @@ async function executar() {
       [pedidoFalhaJoel.insertId,
         JSON.stringify({ atendimento_id: atendimentoFalhaJoel.insertId })]
     );
+    let chamadasComGravacaoBloqueada = 0;
+    const publicacaoBloqueada = await finalizarResultadoGmAutomatico(
+      poolTransacional(connection), pedidoFalhaJoel.insertId,
+      { gravacaoJoelPiresHomologada: false, fetchImpl: async () => {
+        chamadasComGravacaoBloqueada += 1;
+        return respostaHttp(500, { error: 'nao deveria chamar' });
+      } }
+    );
+    assert.strictEqual(publicacaoBloqueada.humano, true);
+    assert.strictEqual(publicacaoBloqueada.erro_codigo,
+      'GRAVACAO_JOELPIRES_NAO_HOMOLOGADA');
+    assert.strictEqual(chamadasComGravacaoBloqueada, 0);
+    await connection.query(
+      `UPDATE atendimentos SET modo='ELETRONICO', status='AGUARDANDO_FORNECEDOR'
+        WHERE id=?`, [atendimentoFalhaJoel.insertId]
+    );
     const publicacaoFalhou = await finalizarResultadoGmAutomatico(
       poolTransacional(connection), pedidoFalhaJoel.insertId,
-      { fetchImpl: async () => respostaHttp(500, { error: 'simulado' }) }
+      { gravacaoJoelPiresHomologada: true,
+        fetchImpl: async () => respostaHttp(500, { error: 'simulado' }) }
     );
     assert.strictEqual(publicacaoFalhou.humano, true);
     const [[estadoFalhaJoel]] = await connection.query(
@@ -812,6 +831,11 @@ async function executar() {
       delete process.env.AUTOMACAO_GM_WHATSAPP_HABILITADA;
     } else {
       process.env.AUTOMACAO_GM_WHATSAPP_HABILITADA = automacaoOriginal;
+    }
+    if (gravacaoJoelOriginal === undefined) {
+      delete process.env.APIJOELPIRES_GRAVACAO_HOMOLOGADA;
+    } else {
+      process.env.APIJOELPIRES_GRAVACAO_HOMOLOGADA = gravacaoJoelOriginal;
     }
     try {
       await fecharServidor(servidor);
