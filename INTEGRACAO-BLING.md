@@ -33,13 +33,17 @@ receptor deve responder em até cinco segundos.
 - Access e refresh tokens ficam cifrados com AES-256-GCM por uma chave dedicada
   que só pode vir do ambiente do processo; a API e a auditoria retornam apenas
   estado e datas de expiração.
-- O fluxo OAuth permanece desabilitado por padrão e ainda não lê nem escreve
-  pedidos no Bling.
+- O fluxo OAuth permanece desabilitado por padrão; a leitura só é liberada
+  depois da conexão autorizada e nenhuma escrita no Bling foi implementada.
 - A rota administrativa autenticada consulta um pedido por ID em
   `GET /pedidos/vendas/{id}`, renova o JWT quando necessário e guarda snapshots
   idempotentes por ID e hash do conteúdo. A resposta e a auditoria omitem
   contato, documento, e-mail e tokens; o payload completo fica restrito ao
   banco. Essa leitura nunca cria nem atualiza pedido na Central ou no Bling.
+- Cada snapshot pode ser reanalisado localmente pela Administração. A prévia
+  cruza produtos, status de pagamento e matriz de autoridade, expõe apenas
+  metadados e bloqueios e mantém `pronto_para_converter=false`. A reanálise não
+  chama o Bling e não cria cliente, pedido, pagamento ou lançamento financeiro.
 
 O webhook não cria cliente, pedido, pagamento ou lançamento financeiro. Essa
 decisão é intencional enquanto não estiver definido, por entidade e estado, se

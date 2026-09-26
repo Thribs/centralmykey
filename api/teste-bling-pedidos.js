@@ -53,6 +53,39 @@ async function prepararTabelas(connection, chave) {
       ON UPDATE CURRENT_TIMESTAMP,
     UNIQUE KEY uk_evento (provedor, evento_externo_id)
   ) ENGINE=InnoDB`);
+  await connection.query(`CREATE TEMPORARY TABLE integracao_produto_mapeamentos (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY, provedor ENUM('WBUY','BLING') NOT NULL,
+    produto_externo_id VARCHAR(160), sku VARCHAR(120), nome_externo VARCHAR(255),
+    servico_id BIGINT NOT NULL, ativo TINYINT(1) DEFAULT 1,
+    UNIQUE KEY uk_produto (provedor, produto_externo_id),
+    UNIQUE KEY uk_sku (provedor, sku)
+  ) ENGINE=InnoDB`);
+  await connection.query(`CREATE TEMPORARY TABLE integracao_autoridades (
+    dominio ENUM('PEDIDO','PAGAMENTO','CLIENTE','COMPRADOR','PAGADOR','FISCAL','ESTOQUE')
+      PRIMARY KEY,
+    autoridade ENUM('CENTRAL','WBUY','BLING','MANUAL') NOT NULL
+  ) ENGINE=InnoDB`);
+  await connection.query(`CREATE TEMPORARY TABLE integracao_status_mapeamentos (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY, provedor ENUM('WBUY','BLING') NOT NULL,
+    dominio ENUM('PEDIDO','PAGAMENTO') NOT NULL, status_externo_id VARCHAR(80) NOT NULL,
+    situacao ENUM('PENDENTE','CONFIRMADO','CANCELADO','IGNORADO') NOT NULL,
+    ativo TINYINT(1) DEFAULT 1
+  ) ENGINE=InnoDB`);
+  const [[servico]] = await connection.query(
+    'SELECT id FROM servicos WHERE ativo=1 ORDER BY id LIMIT 1'
+  );
+  assert.ok(servico, 'É necessário ao menos um serviço ativo');
+  await connection.query(
+    `INSERT INTO integracao_produto_mapeamentos
+       (provedor, produto_externo_id, sku, nome_externo, servico_id)
+     VALUES ('BLING', '10', 'GM-BLING-TESTE', 'Produto fictício', ?)`,
+    [servico.id]
+  );
+  await connection.query(
+    `INSERT INTO integracao_status_mapeamentos
+       (provedor, dominio, status_externo_id, situacao, ativo)
+     VALUES ('BLING', 'PAGAMENTO', '9', 'CONFIRMADO', 1)`
+  );
   await connection.query(
     `INSERT INTO integracao_oauth_tokens
        (provedor, access_token_cifrado, refresh_token_cifrado, token_tipo,
@@ -145,6 +178,11 @@ async function executar() {
     assert.strictEqual(primeira.corpo.resumo.itens_total, 1);
     assert.strictEqual(primeira.corpo.resumo.possui_contato, true);
     assert.strictEqual(primeira.corpo.resumo.pronto_para_processar, false);
+    assert.strictEqual(primeira.corpo.analise.produtos_total, 1);
+    assert.strictEqual(primeira.corpo.analise.produtos_mapeados, 1);
+    assert.strictEqual(primeira.corpo.analise.pagamento.situacao, 'CONFIRMADO');
+    assert.strictEqual(primeira.corpo.analise.pronto_para_converter, false);
+    assert.ok(primeira.corpo.analise.pendencias.includes('MOEDA_NAO_INFORMADA'));
     assert.ok(!JSON.stringify(primeira.corpo).includes('Cliente Bling Fictício'));
     assert.ok(!JSON.stringify(primeira.corpo).includes('00000000000'));
     assert.ok(!JSON.stringify(primeira.corpo).includes('bling@example.invalid'));
@@ -157,6 +195,26 @@ async function executar() {
     assert.strictEqual(api.chamadasApi[0].opcoes.headers.Authorization,
       'Bearer access-renovado-ficticio');
     assert.strictEqual(api.chamadasApi[0].opcoes.headers['enable-jwt'], '1');
+
+    const previa = await fetch(
+      `${api.url}/api/integracoes/bling/snapshots/${primeira.corpo.evento_id}/analise`
+    );
+    const previaCorpo = await previa.json();
+    assert.strictEqual(previa.status, 200);
+    assert.strictEqual(previaCorpo.provedor, 'BLING');
+    assert.strictEqual(previaCorpo.analise.produtos_mapeados, 1);
+    assert.ok(!JSON.stringify(previaCorpo).includes('Cliente Bling Fictício'));
+    assert.ok(!JSON.stringify(previaCorpo).includes('00000000000'));
+    assert.ok(!JSON.stringify(previaCorpo).includes('bling@example.invalid'));
+
+    const previaInvalida = await fetch(
+      `${api.url}/api/integracoes/bling/snapshots/abc/analise`
+    );
+    assert.strictEqual(previaInvalida.status, 400);
+    const previaAusente = await fetch(
+      `${api.url}/api/integracoes/bling/snapshots/999999999999/analise`
+    );
+    assert.strictEqual(previaAusente.status, 404);
 
     const repetida = await post(
       `${api.url}/api/integracoes/bling/pedidos/${pedidoId}/sincronizar`

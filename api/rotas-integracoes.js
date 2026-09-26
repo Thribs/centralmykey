@@ -10,7 +10,7 @@ const {
   processarWebhookSicoob
 } = require('./sicoob-pix');
 const { receberEventoBling } = require('./webhook-bling');
-const { sincronizarPedidoBling } = require('./bling-pedidos');
+const { analisarSnapshotBling, sincronizarPedidoBling } = require('./bling-pedidos');
 const { analisarSnapshotWBuy, sincronizarPedidoWBuy } = require('./wbuy-pedidos');
 const {
   concluirOAuthBling,
@@ -131,6 +131,19 @@ module.exports = function registrarRotasIntegracoes(app, pool, opcoes = {}) {
           codigo: error.codigo || 'ERRO_BLING',
           error: status >= 500 && !error.codigo
             ? 'Erro ao sincronizar pedido Bling' : error.message });
+      }
+    });
+
+  app.get('/api/integracoes/bling/snapshots/:eventoId/analise', autenticarToken,
+    exigirPermissao('INTEGRACOES', 'visualizar'), async (req, res) => {
+      try {
+        return res.json(await analisarSnapshotBling(pool, req.params.eventoId));
+      } catch (error) {
+        const status = Number(error.status) || 500;
+        if (status >= 500) console.error('Erro ao analisar snapshot Bling:', error.codigo || error.message);
+        return res.status(status).json({ ok: false,
+          codigo: error.codigo || 'ERRO_ANALISE_BLING',
+          error: status >= 500 ? 'Erro ao analisar snapshot Bling' : error.message });
       }
     });
 

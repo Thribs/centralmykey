@@ -434,13 +434,20 @@ async function prepararFixture() {
        (provedor, evento_externo_id, tipo, referencia_externa, entidade,
         payload_hash, payload, status, tentativas, erro_codigo, erro_detalhe)
      VALUES
-       ('BLING', ?, 'order.updated', ?, 'PEDIDO_EXTERNO',
-        ?, JSON_OBJECT('fixture', TRUE), 'RECEBIDO', 2, NULL, NULL),
+       ('BLING', ?, 'ORDER.SNAPSHOT', ?, 'PEDIDO_EXTERNO',
+        ?, ?, 'RECEBIDO', 2, NULL, NULL),
        ('SICOOB', ?, 'PIX_RECEBIDO', ?, 'PAGAMENTO',
         ?, JSON_OBJECT('fixture', TRUE), 'FALHOU', 3,
         'REFERENCIA_NAO_ENCONTRADA', 'Falha fictícia para teste')`,
     [
       `bling-event-${marcador}`, referenciaEventoBling, 'b'.repeat(64),
+      JSON.stringify({
+        id: referenciaEventoBling, numero: `B-${marcador}`,
+        situacao: { id: 9, nome: 'Pago fictício' },
+        contato: { nome: 'Cliente Bling secreto E2E', email: 'secreto@invalid.example' },
+        itens: [{ produto: { id: 987654 }, codigo: `BLING-SEM-MAPA-${marcador}`,
+          quantidade: 1, valor: '22.00' }], total: '22.00'
+      }),
       `sicoob-event-${marcador}`, referenciaEventoSicoob, 'c'.repeat(64)
     ]
   );

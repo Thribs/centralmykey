@@ -17,6 +17,7 @@ import {
 import {
   alterarModeloWhatsapp,
   alterarStatusUsuario,
+  analisarSnapshotBling,
   analisarSnapshotWBuy,
   atualizarUsuario,
   buscarIntegracoes,
@@ -698,9 +699,13 @@ export function Integracoes({ permissoes: permissoesSessao = [] }) {
     setSalvando(true); setErro(''); setResultadoBling('');
     try {
       const resultado = await sincronizarPedidoBling(token, pedidoBlingId.trim());
+      const analise = resultado.analise || {};
+      const resumo = `${Number(analise.produtos_mapeados || 0)} de ` +
+        `${Number(analise.produtos_total || 0)} produtos mapeados`;
       setResultadoBling(resultado.idempotente
-        ? `Pedido Bling ${resultado.pedido_externo_id} já estava sincronizado.`
-        : `Pedido Bling ${resultado.pedido_externo_id} recebido sem efeitos comerciais.`);
+        ? `Pedido Bling ${resultado.pedido_externo_id} já estava sincronizado · ${resumo}.`
+        : `Pedido Bling ${resultado.pedido_externo_id} recebido · ${resumo}. ` +
+          'Conversão aguarda regras comerciais.');
       setPedidoBlingId('');
       await carregar();
     } catch (falha) {
@@ -714,7 +719,9 @@ export function Integracoes({ permissoes: permissoesSessao = [] }) {
     setAnalisandoSnapshotId(evento.id);
     setErro('');
     try {
-      setAnaliseSnapshot(await analisarSnapshotWBuy(token, evento.id));
+      setAnaliseSnapshot(evento.provedor === 'BLING'
+        ? await analisarSnapshotBling(token, evento.id)
+        : await analisarSnapshotWBuy(token, evento.id));
     } catch (falha) {
       setErro(falha.message);
     } finally {
@@ -1099,7 +1106,8 @@ export function Integracoes({ permissoes: permissoesSessao = [] }) {
                   <td>{evento.erro_codigo || '—'}</td>
                   <td>{dataHora(evento.recebido_em)}</td>
                   <td>
-                    {evento.provedor === 'WBUY' && evento.tipo === 'ORDER.SNAPSHOT' ? (
+                    {['WBUY', 'BLING'].includes(evento.provedor) &&
+                      evento.tipo === 'ORDER.SNAPSHOT' ? (
                       <button type="button"
                         disabled={analisandoSnapshotId === evento.id}
                         onClick={() => analisarSnapshot(evento)}>
@@ -1123,10 +1131,10 @@ export function Integracoes({ permissoes: permissoesSessao = [] }) {
           </table>
         </div>
         {analiseSnapshot && <div className="integration-result" role="status">
-          <header><div><span>PRÉVIA WBUY · SOMENTE LEITURA</span>
+          <header><div><span>PRÉVIA {analiseSnapshot.provedor || 'WBUY'} · SOMENTE LEITURA</span>
             <h3>Snapshot {analiseSnapshot.evento?.referencia_externa ||
               analiseSnapshot.evento?.id}</h3></div>
-            <button type="button" aria-label="Fechar prévia WBuy"
+            <button type="button" aria-label={`Fechar prévia ${analiseSnapshot.provedor || 'WBuy'}`}
               onClick={() => setAnaliseSnapshot(null)}><X size={16} /></button>
           </header>
           <p>{Number(analiseSnapshot.analise?.produtos_mapeados || 0)} de{' '}

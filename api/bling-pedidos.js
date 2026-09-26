@@ -102,6 +102,130 @@ function resumirPedido(pedido) {
   };
 }
 
+function texto(valor, limite) {
+  const resultado = String(valor ?? '').trim();
+  return resultado ? resultado.slice(0, limite) : null;
+}
+
+async function analisarPedidoBling(connection, pedido) {
+  const produtos = Array.isArray(pedido?.itens) ? pedido.itens : [];
+  const [mapeamentos] = await connection.query(
+    `SELECT m.produto_externo_id, m.sku, m.servico_id,
+            s.codigo AS servico_codigo, s.nome AS servico_nome
+       FROM integracao_produto_mapeamentos m
+       JOIN servicos s ON s.id=m.servico_id
+      WHERE m.provedor='BLING' AND m.ativo=1 AND s.ativo=1`
+  );
+  const [autoridades] = await connection.query(
+    'SELECT dominio, autoridade FROM integracao_autoridades'
+  );
+  const statusExternoId = texto(pedido?.situacao?.id, 80);
+  const [statusMapeados] = await connection.query(
+    `SELECT situacao FROM integracao_status_mapeamentos
+      WHERE provedor='BLING' AND dominio='PAGAMENTO'
+        AND status_externo_id=? AND ativo=1 LIMIT 1`,
+    [statusExternoId]
+  );
+  const situacaoPagamento = statusMapeados[0]?.situacao || null;
+  const autoridadePorDominio = Object.fromEntries(
+    autoridades.map(item => [item.dominio, item.autoridade])
+  );
+  const itens = produtos.map(produto => {
+    const produtoExternoId = texto(produto?.produto?.id ?? produto?.id, 160);
+    const sku = texto(produto?.codigo ?? produto?.produto?.codigo, 120)?.toUpperCase() || null;
+    const candidatos = mapeamentos.filter(item =>
+      (produtoExternoId && String(item.produto_externo_id || '') === produtoExternoId) ||
+      (sku && String(item.sku || '').toUpperCase() === sku)
+    );
+    const servicos = [...new Set(candidatos.map(item => Number(item.servico_id)))];
+    const situacao = servicos.length === 1 ? 'MAPEADO'
+      : servicos.length > 1 ? 'CONFLITO' : 'NAO_MAPEADO';
+    const mapeamento = situacao === 'MAPEADO'
+      ? candidatos.find(item => Number(item.servico_id) === servicos[0]) : null;
+    return {
+      produto_externo_id: produtoExternoId,
+      sku,
+      quantidade: texto(produto?.quantidade, 30),
+      situacao,
+      servico_id: mapeamento ? Number(mapeamento.servico_id) : null,
+      servico_codigo: mapeamento?.servico_codigo || null,
+      servico_nome: mapeamento?.servico_nome || null
+    };
+  });
+  const pendencias = ['MOEDA_NAO_INFORMADA'];
+  if (!situacaoPagamento) pendencias.push('STATUS_PAGAMENTO_NAO_MAPEADO');
+  else if (situacaoPagamento !== 'CONFIRMADO') {
+    pendencias.push('PAGAMENTO_EXTERNO_NAO_CONFIRMADO');
+  }
+  if (!autoridadePorDominio.PEDIDO) pendencias.push('AUTORIDADE_PEDIDO_NAO_DEFINIDA');
+  if (!autoridadePorDominio.PAGAMENTO) pendencias.push('AUTORIDADE_PAGAMENTO_NAO_DEFINIDA');
+  if (['CLIENTE', 'COMPRADOR', 'PAGADOR'].some(
+    dominio => !autoridadePorDominio[dominio]
+  )) pendencias.push('PAPEIS_CLIENTE_COMPRADOR_PAGADOR_NAO_CONFIRMADOS');
+  if (itens.some(item => item.situacao === 'NAO_MAPEADO')) {
+    pendencias.push('PRODUTO_NAO_MAPEADO');
+  }
+  if (itens.some(item => item.situacao === 'CONFLITO')) {
+    pendencias.push('MAPEAMENTO_CONFLITANTE');
+  }
+  return {
+    pedido_externo_id: texto(pedido?.id, 120),
+    numero_externo: texto(pedido?.numero, 80),
+    status_externo: {
+      id: statusExternoId,
+      nome: texto(pedido?.situacao?.nome ?? pedido?.situacao?.valor, 160)
+    },
+    valor_total_externo: texto(pedido?.total, 40),
+    produtos_total: itens.length,
+    produtos_mapeados: itens.filter(item => item.situacao === 'MAPEADO').length,
+    produtos_pendentes: itens.filter(item => item.situacao !== 'MAPEADO').length,
+    itens,
+    autoridades: {
+      completa: ['PEDIDO', 'PAGAMENTO', 'CLIENTE', 'COMPRADOR', 'PAGADOR',
+        'FISCAL', 'ESTOQUE'].every(dominio => Boolean(autoridadePorDominio[dominio])),
+      dados: autoridadePorDominio
+    },
+    pagamento: { mapeado: Boolean(situacaoPagamento), situacao: situacaoPagamento },
+    identidades: { contato_presente: Boolean(pedido?.contato) },
+    pendencias,
+    pronto_para_converter: false
+  };
+}
+
+async function analisarSnapshotBling(pool, eventoId) {
+  const id = Number(eventoId);
+  if (!Number.isSafeInteger(id) || id <= 0) {
+    throw falha('Evento Bling inválido', 'EVENTO_BLING_INVALIDO', 400);
+  }
+  const [[evento]] = await pool.query(
+    `SELECT id, referencia_externa, payload, status, recebido_em
+       FROM integracao_eventos
+      WHERE id=? AND provedor='BLING' AND tipo='ORDER.SNAPSHOT' LIMIT 1`,
+    [id]
+  );
+  if (!evento) {
+    throw falha('Snapshot Bling não encontrado', 'SNAPSHOT_BLING_NAO_ENCONTRADO', 404);
+  }
+  let pedido = evento.payload;
+  if (Buffer.isBuffer(pedido)) pedido = pedido.toString('utf8');
+  if (typeof pedido === 'string') {
+    try { pedido = JSON.parse(pedido); } catch {
+      throw falha('Snapshot Bling inválido', 'SNAPSHOT_BLING_INVALIDO', 422);
+    }
+  }
+  if (!pedido || typeof pedido !== 'object' || Array.isArray(pedido) ||
+      !Array.isArray(pedido.itens) || !pedido.situacao) {
+    throw falha('Snapshot Bling inválido', 'SNAPSHOT_BLING_INVALIDO', 422);
+  }
+  return {
+    ok: true,
+    provedor: 'BLING',
+    evento: { id: Number(evento.id), referencia_externa: evento.referencia_externa || null,
+      status: evento.status, recebido_em: evento.recebido_em },
+    analise: await analisarPedidoBling(pool, pedido)
+  };
+}
+
 async function sincronizarPedidoBling(pool, config, pedidoExternoId, opcoes = {}) {
   const consulta = await consultarPedidoBling(pool, config, pedidoExternoId, opcoes);
   const payloadCanonico = jsonCanonico(consulta.pedido);
@@ -138,10 +262,11 @@ async function sincronizarPedidoBling(pool, config, pedidoExternoId, opcoes = {}
         itens: Array.isArray(consulta.pedido.itens) ? consulta.pedido.itens.length : 0
       }), opcoes.ip || null]
     );
+    const analise = await analisarPedidoBling(connection, consulta.pedido);
     await connection.commit();
     return { ok: true, idempotente, evento_id: Number(evento.id),
       pedido_externo_id: consulta.id, status: evento.status,
-      tentativas: Number(evento.tentativas), resumo: resumirPedido(consulta.pedido) };
+      tentativas: Number(evento.tentativas), resumo: resumirPedido(consulta.pedido), analise };
   } catch (erro) {
     await connection.rollback();
     throw erro;
@@ -152,6 +277,8 @@ async function sincronizarPedidoBling(pool, config, pedidoExternoId, opcoes = {}
 
 module.exports = {
   API_URL,
+  analisarPedidoBling,
+  analisarSnapshotBling,
   consultarPedidoBling,
   pedidoIdValido,
   resumirPedido,

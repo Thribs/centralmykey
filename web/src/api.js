@@ -1002,6 +1002,14 @@ export async function analisarSnapshotWBuy(token, eventoId) {
   return lerResposta(resposta);
 }
 
+export async function analisarSnapshotBling(token, eventoId) {
+  const resposta = await requisitar(
+    `${API_URL}/api/integracoes/bling/snapshots/${encodeURIComponent(eventoId)}/analise`,
+    { headers: cabecalhoAutenticado(token) }
+  );
+  return lerResposta(resposta);
+}
+
 export async function listarMapeamentosIntegracoes(token, provedor = '') {
   const parametros = new URLSearchParams();
   if (provedor) parametros.set('provedor', provedor);

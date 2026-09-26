@@ -1507,9 +1507,18 @@ test('integrações administram modelos e mapeamentos sem chamar serviços exter
     name: 'Recebimentos e processamento'
   })).toBeVisible();
   await expect(linhaBling).toContainText('BLING');
-  await expect(linhaBling).toContainText('order.updated');
+  await expect(linhaBling).toContainText('ORDER.SNAPSHOT');
   await expect(linhaBling).toContainText('RECEBIDO');
   await expect(linhaBling).toContainText('2');
+  await linhaBling.getByRole('button', { name: 'Analisar snapshot' }).click();
+  const previaBling = page.locator('.integration-result', {
+    hasText: 'PRÉVIA BLING · SOMENTE LEITURA'
+  });
+  await expect(previaBling).toContainText('0 de 1 produtos mapeados');
+  await expect(previaBling).toContainText('Nenhum pedido ou pagamento foi criado');
+  await expect(previaBling).toContainText('PRODUTO NAO MAPEADO');
+  await expect(previaBling).not.toContainText('Cliente Bling secreto E2E');
+  await previaBling.getByRole('button', { name: 'Fechar prévia BLING' }).click();
   await expect(linhaSicoob).toContainText('REFERENCIA_NAO_ENCONTRADA');
 
   let linhaPagamentoTardio = page.locator('tr', {
