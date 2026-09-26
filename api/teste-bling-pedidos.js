@@ -32,6 +32,10 @@ function poolTransacional(connection) {
 }
 
 async function prepararTabelas(connection, chave) {
+  await connection.query(`CREATE TEMPORARY TABLE configuracoes (
+    chave VARCHAR(120) NOT NULL PRIMARY KEY, valor TEXT,
+    descricao VARCHAR(255), atualizado_em DATETIME DEFAULT CURRENT_TIMESTAMP
+  ) ENGINE=InnoDB`);
   await connection.query(`CREATE TEMPORARY TABLE integracao_oauth_tokens (
     provedor ENUM('BLING') PRIMARY KEY, access_token_cifrado MEDIUMTEXT NOT NULL,
     refresh_token_cifrado MEDIUMTEXT NOT NULL, token_tipo VARCHAR(40) NOT NULL,

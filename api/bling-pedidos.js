@@ -3,6 +3,7 @@
 const crypto = require('crypto');
 const { jsonCanonico } = require('./wbuy-pedidos');
 const { obterAccessTokenBling, renovarOAuthBling } = require('./bling-oauth');
+const { obterPoliticaComercio } = require('./politicas-comercio');
 
 const API_URL = 'https://api.bling.com.br/Api/v3';
 
@@ -119,6 +120,7 @@ async function analisarPedidoBling(connection, pedido) {
   const [autoridades] = await connection.query(
     'SELECT dominio, autoridade FROM integracao_autoridades'
   );
+  const politica = await obterPoliticaComercio(connection, 'BLING');
   const statusExternoId = texto(pedido?.situacao?.id, 80);
   const [statusMapeados] = await connection.query(
     `SELECT situacao FROM integracao_status_mapeamentos
@@ -152,7 +154,8 @@ async function analisarPedidoBling(connection, pedido) {
       servico_nome: mapeamento?.servico_nome || null
     };
   });
-  const pendencias = ['MOEDA_NAO_INFORMADA'];
+  const pendencias = [];
+  if (!politica.moeda_definida) pendencias.push('MOEDA_NAO_INFORMADA');
   if (!situacaoPagamento) pendencias.push('STATUS_PAGAMENTO_NAO_MAPEADO');
   else if (situacaoPagamento !== 'CONFIRMADO') {
     pendencias.push('PAGAMENTO_EXTERNO_NAO_CONFIRMADO');
@@ -161,7 +164,9 @@ async function analisarPedidoBling(connection, pedido) {
   if (!autoridadePorDominio.PAGAMENTO) pendencias.push('AUTORIDADE_PAGAMENTO_NAO_DEFINIDA');
   if (['CLIENTE', 'COMPRADOR', 'PAGADOR'].some(
     dominio => !autoridadePorDominio[dominio]
-  )) pendencias.push('PAPEIS_CLIENTE_COMPRADOR_PAGADOR_NAO_CONFIRMADOS');
+  ) || !politica.identidades_definidas) {
+    pendencias.push('PAPEIS_CLIENTE_COMPRADOR_PAGADOR_NAO_CONFIRMADOS');
+  }
   if (itens.some(item => item.situacao === 'NAO_MAPEADO')) {
     pendencias.push('PRODUTO_NAO_MAPEADO');
   }
@@ -186,6 +191,7 @@ async function analisarPedidoBling(connection, pedido) {
       dados: autoridadePorDominio
     },
     pagamento: { mapeado: Boolean(situacaoPagamento), situacao: situacaoPagamento },
+    politica_comercio: politica,
     identidades: { contato_presente: Boolean(pedido?.contato) },
     pendencias,
     pronto_para_converter: false

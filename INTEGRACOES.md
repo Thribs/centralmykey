@@ -76,6 +76,12 @@ vigentes, sem nova chamada externa e sem mutação de negócio. A prévia não r
 o objeto de cliente nem qualquer nome, documento, telefone ou e-mail contido no
 payload e mantém a conversão desabilitada enquanto houver decisões pendentes.
 
+Moeda e reconciliação de identidades possuem política persistida por provedor.
+Para cliente, comprador e pagador, a Administração registra se o dado virá da
+origem externa, de um cadastro já existente na Central ou de resolução manual.
+Essas decisões são auditadas e reaplicadas às prévias, sem criar ou alterar
+qualquer entidade comercial.
+
 O webhook continua desativado. A documentação pública confirma os eventos
 `order` e `order_status`, mas não publica mecanismo verificável de assinatura.
 

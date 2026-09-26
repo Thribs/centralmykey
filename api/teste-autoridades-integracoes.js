@@ -66,6 +66,7 @@ async function executar() {
   let erro;
   let auditoriasAntes = 0;
   let auditoriasStatusAntes = 0;
+  let auditoriasPoliticaAntes = 0;
   try {
     const [[base]] = await connection.query(
       "SELECT COUNT(*) AS total FROM auditoria WHERE entidade='integracao_autoridades'"
@@ -75,6 +76,10 @@ async function executar() {
       "SELECT COUNT(*) AS total FROM auditoria WHERE entidade='integracao_status_mapeamentos'"
     );
     auditoriasStatusAntes = Number(baseStatus.total);
+    const [[basePolitica]] = await connection.query(
+      "SELECT COUNT(*) AS total FROM auditoria WHERE entidade='configuracoes_integracoes_comercio'"
+    );
+    auditoriasPoliticaAntes = Number(basePolitica.total);
     await connection.beginTransaction();
     await connection.query(`CREATE TEMPORARY TABLE integracao_autoridades (
       dominio ENUM('PEDIDO','PAGAMENTO','CLIENTE','COMPRADOR','PAGADOR','FISCAL','ESTOQUE')
@@ -96,6 +101,11 @@ async function executar() {
       criado_em DATETIME DEFAULT CURRENT_TIMESTAMP,
       atualizado_em DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
       UNIQUE KEY uk_status (provedor, dominio, status_externo_id)
+    ) ENGINE=InnoDB`);
+    await connection.query(`CREATE TEMPORARY TABLE configuracoes (
+      chave VARCHAR(120) NOT NULL PRIMARY KEY, valor TEXT,
+      descricao VARCHAR(255), atualizado_em DATETIME DEFAULT CURRENT_TIMESTAMP
+        ON UPDATE CURRENT_TIMESTAMP
     ) ENGINE=InnoDB`);
     const api = await iniciarApi(connection);
     servidor = api.servidor;
@@ -148,6 +158,41 @@ async function executar() {
     resposta = await requisitar(`${api.url}/api/integracoes/mapeamentos-status`);
     assert.strictEqual(resposta.status, 200);
     assert.strictEqual(resposta.corpo.total, 0);
+
+    resposta = await requisitar(`${api.url}/api/integracoes/politicas-comercio`);
+    assert.strictEqual(resposta.status, 200);
+    assert.strictEqual(resposta.corpo.dados.length, 2);
+    assert.ok(resposta.corpo.dados.every(item => !item.moeda_definida));
+    resposta = await requisitar(
+      `${api.url}/api/integracoes/politicas-comercio/WBUY`, 'PUT',
+      { moeda: 'EUR', identidades: { cliente: 'ORIGEM_EXTERNA',
+        comprador: 'ORIGEM_EXTERNA', pagador: 'ORIGEM_EXTERNA' } }
+    );
+    assert.strictEqual(resposta.status, 400);
+    const politica = { moeda: 'BRL', identidades: {
+      cliente: 'CADASTRO_CENTRAL', comprador: 'ORIGEM_EXTERNA', pagador: 'MANUAL'
+    } };
+    resposta = await requisitar(
+      `${api.url}/api/integracoes/politicas-comercio/WBUY`, 'PUT', politica,
+      { 'x-negar': 'INTEGRACOES:editar' }
+    );
+    assert.strictEqual(resposta.status, 403);
+    resposta = await requisitar(
+      `${api.url}/api/integracoes/politicas-comercio/WBUY`, 'PUT', politica
+    );
+    assert.strictEqual(resposta.status, 200);
+    assert.strictEqual(resposta.corpo.alterada, true);
+    assert.strictEqual(resposta.corpo.dados.moeda, 'BRL');
+    assert.strictEqual(resposta.corpo.dados.identidades.pagador, 'MANUAL');
+    resposta = await requisitar(
+      `${api.url}/api/integracoes/politicas-comercio/WBUY`, 'PUT', politica
+    );
+    assert.strictEqual(resposta.corpo.alterada, false);
+    resposta = await requisitar(`${api.url}/api/integracoes/prontidao-comercio`);
+    assert.strictEqual(resposta.status, 200);
+    assert.ok(!resposta.corpo.bloqueios.includes('MOEDA_WBUY_NAO_DEFINIDA'));
+    assert.ok(!resposta.corpo.bloqueios.includes('RECONCILIACAO_IDENTIDADES_NAO_DEFINIDA'));
+    assert.strictEqual(resposta.corpo.politica_wbuy.identidades_definidas, true);
     resposta = await requisitar(
       `${api.url}/api/integracoes/mapeamentos-status`, 'POST',
       { provedor: 'WBUY', dominio: 'PAGAMENTO', status_externo_id: '2',
@@ -180,6 +225,14 @@ async function executar() {
     );
     assert.strictEqual(Number(estadoStatus.mapeamentos), 1);
     assert.strictEqual(Number(estadoStatus.auditorias), auditoriasStatusAntes + 1);
+    const [[politicaPersistida]] = await connection.query(
+      `SELECT COUNT(*) AS configuracoes,
+              (SELECT COUNT(*) FROM auditoria
+                WHERE entidade='configuracoes_integracoes_comercio') AS auditorias
+         FROM configuracoes WHERE chave LIKE 'INTEGRACAO_WBUY_%'`
+    );
+    assert.strictEqual(Number(politicaPersistida.configuracoes), 4);
+    assert.strictEqual(Number(politicaPersistida.auditorias), auditoriasPoliticaAntes + 1);
   } catch (falha) {
     erro = falha;
   } finally {
@@ -196,6 +249,10 @@ async function executar() {
         "SELECT COUNT(*) AS total FROM auditoria WHERE entidade='integracao_status_mapeamentos'"
       );
       assert.strictEqual(Number(residuosStatus.total), auditoriasStatusAntes);
+      const [[residuosPolitica]] = await connection.query(
+        "SELECT COUNT(*) AS total FROM auditoria WHERE entidade='configuracoes_integracoes_comercio'"
+      );
+      assert.strictEqual(Number(residuosPolitica.total), auditoriasPoliticaAntes);
     } catch (limpeza) {
       erro = erro || limpeza;
     } finally {

@@ -1081,6 +1081,24 @@ export async function buscarProntidaoComercio(token) {
   return lerResposta(resposta);
 }
 
+export async function listarPoliticasComercio(token) {
+  const resposta = await requisitar(`${API_URL}/api/integracoes/politicas-comercio`, {
+    headers: cabecalhoAutenticado(token)
+  });
+  return lerResposta(resposta);
+}
+
+export async function salvarPoliticaComercio(token, provedor, dados) {
+  const resposta = await requisitar(
+    `${API_URL}/api/integracoes/politicas-comercio/${encodeURIComponent(provedor)}`, {
+      method: 'PUT',
+      headers: cabecalhoAutenticado(token, { 'Content-Type': 'application/json' }),
+      body: JSON.stringify(dados)
+    }
+  );
+  return lerResposta(resposta);
+}
+
 export async function buscarStatusOAuthBling(token) {
   const resposta = await requisitar(`${API_URL}/api/integracoes/bling/oauth/status`, {
     headers: cabecalhoAutenticado(token)

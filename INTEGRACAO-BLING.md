@@ -44,6 +44,9 @@ receptor deve responder em até cinco segundos.
   cruza produtos, status de pagamento e matriz de autoridade, expõe apenas
   metadados e bloqueios e mantém `pronto_para_converter=false`. A reanálise não
   chama o Bling e não cria cliente, pedido, pagamento ou lançamento financeiro.
+- A moeda e a origem de cliente, comprador e pagador podem ser registradas como
+  política auditada do provedor. Os valores ficam vazios por padrão e apenas
+  refinam a prévia; não liberam conversão automática.
 
 O webhook não cria cliente, pedido, pagamento ou lançamento financeiro. Essa
 decisão é intencional enquanto não estiver definido, por entidade e estado, se

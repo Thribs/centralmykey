@@ -1,6 +1,7 @@
 'use strict';
 
 const crypto = require('crypto');
+const { obterPoliticaComercio } = require('./politicas-comercio');
 
 function falha(mensagem, codigo, status) {
   const erro = new Error(mensagem);
@@ -40,6 +41,7 @@ async function analisarPedidoWBuy(connection, pedido) {
   const [autoridades] = await connection.query(
     `SELECT dominio, autoridade FROM integracao_autoridades`
   );
+  const politica = await obterPoliticaComercio(connection, 'WBUY');
   const statusExternoId = texto(pedido?.status?.id, 80);
   const [statusMapeados] = await connection.query(
     `SELECT situacao FROM integracao_status_mapeamentos
@@ -75,7 +77,8 @@ async function analisarPedidoWBuy(connection, pedido) {
       servico_nome: mapeamento?.servico_nome || null
     };
   });
-  const pendencias = ['MOEDA_NAO_INFORMADA'];
+  const pendencias = [];
+  if (!politica.moeda_definida) pendencias.push('MOEDA_NAO_INFORMADA');
   if (!situacaoPagamento) pendencias.push('STATUS_PAGAMENTO_NAO_MAPEADO');
   else if (situacaoPagamento !== 'CONFIRMADO') {
     pendencias.push('PAGAMENTO_EXTERNO_NAO_CONFIRMADO');
@@ -88,7 +91,7 @@ async function analisarPedidoWBuy(connection, pedido) {
   }
   if (['CLIENTE', 'COMPRADOR', 'PAGADOR'].some(
     dominio => !autoridadePorDominio[dominio]
-  )) {
+  ) || !politica.identidades_definidas) {
     pendencias.push('PAPEIS_CLIENTE_COMPRADOR_PAGADOR_NAO_CONFIRMADOS');
   }
   if (itens.some(item => item.situacao === 'NAO_MAPEADO')) {
@@ -115,6 +118,7 @@ async function analisarPedidoWBuy(connection, pedido) {
       dados: autoridadePorDominio
     },
     pagamento: { mapeado: Boolean(situacaoPagamento), situacao: situacaoPagamento },
+    politica_comercio: politica,
     pendencias,
     pronto_para_converter: false
   };

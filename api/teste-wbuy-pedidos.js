@@ -69,6 +69,10 @@ async function criarMapeamento(connection) {
 }
 
 async function criarMatrizAutoridade(connection) {
+  await connection.query(`CREATE TEMPORARY TABLE configuracoes (
+    chave VARCHAR(120) NOT NULL PRIMARY KEY, valor TEXT,
+    descricao VARCHAR(255), atualizado_em DATETIME DEFAULT CURRENT_TIMESTAMP
+  ) ENGINE=InnoDB`);
   await connection.query(`CREATE TEMPORARY TABLE integracao_autoridades (
     dominio ENUM('PEDIDO','PAGAMENTO','CLIENTE','COMPRADOR','PAGADOR','FISCAL','ESTOQUE')
       NOT NULL PRIMARY KEY,

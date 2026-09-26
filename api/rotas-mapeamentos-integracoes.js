@@ -1,5 +1,14 @@
 'use strict';
 
+const {
+  MOEDAS_COMERCIO,
+  ORIGENS_IDENTIDADE,
+  PAPEIS_IDENTIDADE,
+  chaveIdentidade,
+  chaveMoeda,
+  obterPoliticaComercio
+} = require('./politicas-comercio');
+
 const PROVEDORES = ['WBUY', 'BLING'];
 const DOMINIOS_AUTORIDADE = [
   'PEDIDO', 'PAGAMENTO', 'CLIENTE', 'COMPRADOR', 'PAGADOR', 'FISCAL', 'ESTOQUE'
@@ -284,6 +293,78 @@ module.exports = function registrarRotasMapeamentosIntegracoes(app, pool) {
       }
     });
 
+  app.get('/api/integracoes/politicas-comercio', autenticarToken,
+    exigirPermissao('INTEGRACOES', 'visualizar'), async (req, res) => {
+      try {
+        const dados = await Promise.all(PROVEDORES.map(
+          provedor => obterPoliticaComercio(pool, provedor)
+        ));
+        return res.json({ ok: true, dados, moedas: MOEDAS_COMERCIO,
+          origens_identidade: ORIGENS_IDENTIDADE });
+      } catch (error) {
+        console.error('Erro ao consultar políticas do comércio eletrônico:', error);
+        return res.status(500).json({ ok: false,
+          error: 'Erro ao consultar políticas do comércio eletrônico' });
+      }
+    });
+
+  app.put('/api/integracoes/politicas-comercio/:provedor', autenticarToken,
+    exigirPermissao('INTEGRACOES', 'editar'), async (req, res) => {
+      const provedor = String(req.params.provedor || '').trim().toUpperCase();
+      const moeda = String(req.body?.moeda || '').trim().toUpperCase();
+      const identidades = Object.fromEntries(PAPEIS_IDENTIDADE.map(papel => [
+        papel.toLowerCase(), String(req.body?.identidades?.[papel.toLowerCase()] || '')
+          .trim().toUpperCase()
+      ]));
+      if (!PROVEDORES.includes(provedor) || !MOEDAS_COMERCIO.includes(moeda) ||
+          Object.values(identidades).some(valor => !ORIGENS_IDENTIDADE.includes(valor))) {
+        return res.status(400).json({ ok: false,
+          error: 'Provedor, moeda e origem dos três papéis são obrigatórios' });
+      }
+      const connection = await pool.getConnection();
+      try {
+        await connection.beginTransaction();
+        const antes = await obterPoliticaComercio(connection, provedor);
+        const valores = [[chaveMoeda(provedor), moeda,
+          `Moeda dos pedidos ${provedor} durante a transição`],
+        ...PAPEIS_IDENTIDADE.map(papel => [
+          chaveIdentidade(provedor, papel), identidades[papel.toLowerCase()],
+          `Origem do papel ${papel} nos pedidos ${provedor}`
+        ])];
+        for (const [chave, valor, descricao] of valores) {
+          await connection.query(
+            `INSERT INTO configuracoes (chave, valor, descricao)
+             VALUES (?, ?, ?)
+             ON DUPLICATE KEY UPDATE valor=VALUES(valor), descricao=VALUES(descricao)`,
+            [chave, valor, descricao]
+          );
+        }
+        const depois = await obterPoliticaComercio(connection, provedor);
+        const alterada = JSON.stringify(antes) !== JSON.stringify(depois);
+        if (alterada) {
+          await connection.query(
+            `INSERT INTO auditoria
+               (usuario_id, modulo, acao, entidade, entidade_id, descricao,
+                dados_antes, dados_depois, ip)
+             VALUES (?, 'INTEGRACOES', 'DEFINIR_POLITICA_COMERCIO',
+                     'configuracoes_integracoes_comercio', ?, ?, ?, ?, ?)`,
+            [req.usuario?.id || null, provedor,
+              `Política comercial ${provedor} definida`, JSON.stringify(antes),
+              JSON.stringify(depois), req.ip || null]
+          );
+        }
+        await connection.commit();
+        return res.json({ ok: true, alterada, dados: depois });
+      } catch (error) {
+        await connection.rollback();
+        console.error('Erro ao salvar política do comércio eletrônico:', error);
+        return res.status(500).json({ ok: false,
+          error: 'Erro ao salvar política do comércio eletrônico' });
+      } finally {
+        connection.release();
+      }
+    });
+
   app.post('/api/integracoes/mapeamentos-status', autenticarToken,
     exigirPermissao('INTEGRACOES', 'editar'), async (req, res) => {
       const provedor = String(req.body?.provedor || '').trim().toUpperCase();
@@ -352,7 +433,7 @@ module.exports = function registrarRotasMapeamentosIntegracoes(app, pool) {
   app.get('/api/integracoes/prontidao-comercio', autenticarToken,
     exigirPermissao('INTEGRACOES', 'visualizar'), async (req, res) => {
       try {
-        const [[autoridades], [status], [produtos], [snapshots]] = await Promise.all([
+        const [[autoridades], [status], [produtos], [snapshots], politicaWBuy] = await Promise.all([
           pool.query(`SELECT COUNT(*) AS definidos FROM integracao_autoridades`),
           pool.query(`SELECT COUNT(*) AS confirmados
             FROM integracao_status_mapeamentos
@@ -362,7 +443,8 @@ module.exports = function registrarRotasMapeamentosIntegracoes(app, pool) {
             FROM integracao_produto_mapeamentos
             WHERE provedor='WBUY' AND ativo=1`),
           pool.query(`SELECT COUNT(*) AS recebidos FROM integracao_eventos
-            WHERE provedor='WBUY' AND tipo='ORDER.SNAPSHOT' AND status='RECEBIDO'`)
+            WHERE provedor='WBUY' AND tipo='ORDER.SNAPSHOT' AND status='RECEBIDO'`),
+          obterPoliticaComercio(pool, 'WBUY')
         ]);
         const bloqueios = [];
         if (Number(autoridades[0]?.definidos || 0) < DOMINIOS_AUTORIDADE.length) {
@@ -374,8 +456,10 @@ module.exports = function registrarRotasMapeamentosIntegracoes(app, pool) {
         if (Number(produtos[0]?.mapeados || 0) === 0) {
           bloqueios.push('PRODUTOS_WBUY_SEM_MAPEAMENTO');
         }
-        bloqueios.push('MOEDA_WBUY_NAO_DEFINIDA');
-        bloqueios.push('RECONCILIACAO_IDENTIDADES_NAO_DEFINIDA');
+        if (!politicaWBuy.moeda_definida) bloqueios.push('MOEDA_WBUY_NAO_DEFINIDA');
+        if (!politicaWBuy.identidades_definidas) {
+          bloqueios.push('RECONCILIACAO_IDENTIDADES_NAO_DEFINIDA');
+        }
         bloqueios.push('CONVERSOR_WBUY_NAO_IMPLEMENTADO');
         return res.json({ ok: true, pronto_para_converter: false, bloqueios,
           contagens: {
@@ -384,7 +468,8 @@ module.exports = function registrarRotasMapeamentosIntegracoes(app, pool) {
             status_pagamento_confirmados: Number(status[0]?.confirmados || 0),
             produtos_wbuy_mapeados: Number(produtos[0]?.mapeados || 0),
             snapshots_recebidos: Number(snapshots[0]?.recebidos || 0)
-          }
+          },
+          politica_wbuy: politicaWBuy
         });
       } catch (error) {
         console.error('Erro ao consultar prontidão do comércio eletrônico:', error);

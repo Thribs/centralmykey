@@ -1483,6 +1483,19 @@ test('integrações administram modelos e mapeamentos sem chamar serviços exter
   await expect(prontidaoComercio).toContainText(
     'Reconciliação de cliente, comprador e pagador não definida'
   );
+  await page.getByLabel('Moeda de WBUY').selectOption('BRL');
+  await page.getByLabel('cliente de WBUY').selectOption('CADASTRO_CENTRAL');
+  await page.getByLabel('comprador de WBUY').selectOption('ORIGEM_EXTERNA');
+  await page.getByLabel('pagador de WBUY').selectOption('MANUAL');
+  page.once('dialog', dialogo => dialogo.accept());
+  const linhaPoliticaWBuy = page.locator('tr').filter({
+    has: page.getByLabel('Moeda de WBUY')
+  });
+  await linhaPoliticaWBuy.getByRole('button', { name: 'Salvar política' }).click();
+  await expect(prontidaoComercio)
+    .not.toContainText('Regra de moeda WBuy ainda não definida');
+  await expect(prontidaoComercio)
+    .not.toContainText('Reconciliação de cliente, comprador e pagador não definida');
   const autoridadePedido = page.getByLabel('Autoridade de PEDIDO');
   await expect(autoridadePedido).toHaveValue('');
   page.once('dialog', dialogo => dialogo.accept());
@@ -1943,6 +1956,7 @@ test('visualizador não vê ações de usuário e recebe 403 ao forçar criaçã
   await expect(page.getByLabel('Nome do modelo')).toHaveCount(0);
   await expect(page.getByLabel(/Status do modelo/)).toHaveCount(0);
   await expect(page.getByLabel(/Autoridade de/)).toHaveCount(0);
+  await expect(page.getByLabel(/Moeda de/)).toHaveCount(0);
   await expect(page.getByLabel('ID do status externo')).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Preparar conexão Bling' }))
     .toHaveCount(0);
@@ -1958,6 +1972,14 @@ test('visualizador não vê ações de usuário e recebe 403 ao forçar criaçã
     }
   );
   expect(sincronizacaoBlingNegada.status()).toBe(403);
+  const politicaNegada = await page.request.put(
+    `${API}/api/integracoes/politicas-comercio/WBUY`, {
+      headers: { Authorization: `Bearer ${token}` },
+      data: { moeda: 'BRL', identidades: { cliente: 'CADASTRO_CENTRAL',
+        comprador: 'ORIGEM_EXTERNA', pagador: 'MANUAL' } }
+    }
+  );
+  expect(politicaNegada.status()).toBe(403);
   await expect(page.getByRole('button', { name: 'Ativar', exact: true }))
     .toHaveCount(0);
   const integracoes = contextoCompleto.integracoes;

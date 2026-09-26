@@ -25,6 +25,12 @@ análise nunca declara o pedido pronto para conversão enquanto faltarem a fonte
 de autoridade, o mapeamento de status de pagamento, a moeda e a correspondência
 entre cliente, comprador e pagador.
 
+A Administração também permite registrar, separadamente para WBuy e Bling, a
+moeda e a origem de cada papel (`CLIENTE`, `COMPRADOR` e `PAGADOR`). As opções
+são origem externa, cadastro da Central ou resolução manual. A gravação é
+transacional e auditada, alimenta as prévias e remove os bloqueios específicos
+de configuração, mas não habilita o conversor.
+
 Snapshots já armazenados podem ser reanalisados em **Administração →
 Integrações → Eventos de integração**. Essa operação usa somente o banco local,
 reaplica as regras atuais e não consulta a WBuy, não grava auditoria de negócio
@@ -43,7 +49,7 @@ O mapeamento de produtos já é compartilhado e o receptor de webhooks valida a
 assinatura HMAC oficial e guarda eventos `order.*` idempotentes. A base OAuth
 Authorization Code usa `state` de uso único, solicita JWT, cifra os tokens e
 permite renovação segura, mas permanece desabilitada até cadastrar o aplicativo
-e o callback. Leitura detalhada, exportação de resultados e autoridade de status
+e o callback. Exportação de resultados e aplicação de efeitos comerciais
 continuam bloqueadas. A leitura canônica individual por ID já usa o OAuth,
 renova JWT expirado e versiona snapshots sem aplicar efeitos comerciais.
 Durante a transição, cada entidade deverá ter uma fonte de verdade explícita

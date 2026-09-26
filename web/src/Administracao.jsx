@@ -36,10 +36,12 @@ import {
   listarMapeamentosStatusIntegracoes,
   listarModelosWhatsapp,
   listarPerfis,
+  listarPoliticasComercio,
   listarUsuarios,
   iniciarOAuthBling,
   salvarMapeamentoIntegracao,
   salvarMapeamentoStatusIntegracao,
+  salvarPoliticaComercio,
   salvarConfiguracao,
   salvarPermissoesUsuario,
   alterarStatusMapeamentoIntegracao,
@@ -510,6 +512,8 @@ export function Integracoes({ permissoes: permissoesSessao = [] }) {
   const [opcoesAutoridade, setOpcoesAutoridade] = useState([]);
   const [statusMapeamentos, setStatusMapeamentos] = useState([]);
   const [prontidaoComercio, setProntidaoComercio] = useState(null);
+  const [politicasComercio, setPoliticasComercio] = useState([]);
+  const [opcoesPolitica, setOpcoesPolitica] = useState({ moedas: [], origens: [] });
   const [oauthBling, setOauthBling] = useState(null);
   const [linkOauthBling, setLinkOauthBling] = useState('');
   const [analiseSnapshot, setAnaliseSnapshot] = useState(null);
@@ -553,7 +557,7 @@ export function Integracoes({ permissoes: permissoesSessao = [] }) {
     try {
       const [dadosIntegracoes, dadosModelos, dadosEventos,
         dadosMapeamentos, dadosAutoridades, dadosStatus, dadosProntidao,
-        dadosOauthBling] = await Promise.all([
+        dadosOauthBling, dadosPoliticas] = await Promise.all([
         buscarIntegracoes(token),
         listarModelosWhatsapp(token),
         listarEventosIntegracao(token, { ...filtrosEventos, limite: 30 }),
@@ -561,7 +565,8 @@ export function Integracoes({ permissoes: permissoesSessao = [] }) {
         listarAutoridadesIntegracoes(token),
         listarMapeamentosStatusIntegracoes(token),
         buscarProntidaoComercio(token),
-        buscarStatusOAuthBling(token)
+        buscarStatusOAuthBling(token),
+        listarPoliticasComercio(token)
       ]);
 
       setIntegracoes(dadosIntegracoes.integracoes || []);
@@ -578,6 +583,9 @@ export function Integracoes({ permissoes: permissoesSessao = [] }) {
         dominios: dadosStatus.dominios || [], situacoes: dadosStatus.situacoes || [] });
       setProntidaoComercio(dadosProntidao);
       setOauthBling(dadosOauthBling);
+      setPoliticasComercio(dadosPoliticas.dados || []);
+      setOpcoesPolitica({ moedas: dadosPoliticas.moedas || [],
+        origens: dadosPoliticas.origens_identidade || [] });
     } catch (falha) {
       setErro(falha.message);
     }
@@ -667,6 +675,25 @@ export function Integracoes({ permissoes: permissoesSessao = [] }) {
     try {
       await salvarMapeamentoStatusIntegracao(token, novoStatus);
       setNovoStatus({ ...novoStatus, status_externo_id: '', status_externo_nome: '' });
+      await carregar();
+    } catch (falha) { setErro(falha.message); } finally { setSalvando(false); }
+  }
+
+  function alterarPolitica(provedor, campo, valor) {
+    setPoliticasComercio(atuais => atuais.map(item => {
+      if (item.provedor !== provedor) return item;
+      if (campo === 'moeda') return { ...item, moeda: valor };
+      return { ...item, identidades: { ...item.identidades, [campo]: valor } };
+    }));
+  }
+
+  async function persistirPolitica(item) {
+    if (!window.confirm(`Confirma a política comercial ${item.provedor}?`)) return;
+    setSalvando(true); setErro('');
+    try {
+      await salvarPoliticaComercio(token, item.provedor, {
+        moeda: item.moeda, identidades: item.identidades
+      });
       await carregar();
     } catch (falha) { setErro(falha.message); } finally { setSalvando(false); }
   }
@@ -938,6 +965,35 @@ export function Integracoes({ permissoes: permissoesSessao = [] }) {
             </tbody>
           </table>
         </div>
+      </div>
+
+      <div className="admin-panel integration-panel">
+        <header><div><span>RECONCILIAÇÃO COMERCIAL</span>
+          <h2>Moeda e papéis das pessoas</h2></div></header>
+        <p className="integration-note">Registra decisões para as prévias. Salvar esta
+          política não converte snapshots nem cria clientes, pedidos ou pagamentos.</p>
+        <div className="admin-table-wrap"><table className="admin-table">
+          <thead><tr><th>Provedor</th><th>Moeda</th><th>Cliente</th>
+            <th>Comprador</th><th>Pagador</th><th>Ação</th></tr></thead>
+          <tbody>{politicasComercio.map(item => <tr key={item.provedor}>
+            <td><strong>{item.provedor}</strong></td>
+            <td>{podeEditar ? <select aria-label={`Moeda de ${item.provedor}`}
+              value={item.moeda || ''} disabled={salvando}
+              onChange={e => alterarPolitica(item.provedor, 'moeda', e.target.value)}>
+              <option value="">Definir</option>{opcoesPolitica.moedas.map(opcao =>
+                <option key={opcao}>{opcao}</option>)}</select> : item.moeda || 'PENDENTE'}</td>
+            {['cliente', 'comprador', 'pagador'].map(papel => <td key={papel}>
+              {podeEditar ? <select aria-label={`${papel} de ${item.provedor}`}
+                value={item.identidades?.[papel] || ''} disabled={salvando}
+                onChange={e => alterarPolitica(item.provedor, papel, e.target.value)}>
+                <option value="">Definir</option>{opcoesPolitica.origens.map(opcao =>
+                  <option key={opcao}>{opcao}</option>)}</select> :
+                item.identidades?.[papel] || 'PENDENTE'}</td>)}
+            <td>{podeEditar ? <button type="button" disabled={salvando || !item.moeda ||
+              Object.values(item.identidades || {}).some(valor => !valor)}
+              onClick={() => persistirPolitica(item)}>Salvar política</button> : '—'}</td>
+          </tr>)}</tbody>
+        </table></div>
       </div>
 
       <div className="admin-panel integration-panel">
