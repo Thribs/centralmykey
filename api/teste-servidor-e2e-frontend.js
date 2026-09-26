@@ -547,6 +547,41 @@ async function prepararFixture() {
              'Mensagem inicial fictícia E2E', NOW())`,
     [atendimento.insertId]
   );
+  const protocoloAutomacaoAtendimento = `PAINEL${marcador}`.replace(/\D/g, '').slice(0, 30);
+  const [pedidoAutomacaoAtendimento] = await connection.query(
+    `INSERT INTO pedidos_senha
+       (protocolo, cliente_id, servico_id, chassi, marca, modelo, ano,
+        status, valor_venda, custo, moeda)
+     VALUES (?, ?, ?, ?, 'GM', 'PAINEL AUTOMAÇÃO E2E', 2026,
+             'AGUARDANDO_PAGAMENTO', ?, 0, 'BRL')`,
+    [protocoloAutomacaoAtendimento, cliente.insertId, servico.id,
+      `9BGPAN1A0${String(Date.now()).slice(-8)}`,
+      Number(servico.preco_base)]
+  );
+  await connection.query(
+    `INSERT INTO pedido_historico (pedido_id, tipo, descricao, dados)
+     VALUES (?, 'ORIGEM_ATENDIMENTO_WHATSAPP_AUTOMATICO', 'Fixture E2E', ?)`,
+    [pedidoAutomacaoAtendimento.insertId,
+      JSON.stringify({ atendimento_id: atendimento.insertId })]
+  );
+  await connection.query(
+    `INSERT INTO integracao_referencias_pagamento
+       (provedor, entidade, entidade_id, referencia_provedor, valor, moeda,
+        status, registrada_em)
+     VALUES ('SICOOB', 'PEDIDO', ?, ?, ?, 'BRL', 'REGISTRADA', NOW())`,
+    [pedidoAutomacaoAtendimento.insertId,
+      `E2EPAINEL${String(Date.now())}ABCDEFGHI`.slice(0, 30),
+      Number(servico.preco_base)]
+  );
+  await connection.query(
+    `INSERT INTO auditoria
+       (usuario_id, modulo, acao, entidade, entidade_id, descricao, dados_depois)
+     VALUES (NULL, 'ATENDIMENTO', 'ESTADO_AUTOMACAO_GM', 'atendimentos', ?,
+             'Automação GM aguardando pagamento', ?)`,
+    [String(atendimento.insertId), JSON.stringify({
+      etapa: 'AGUARDANDO_PAGAMENTO', pedido_id: pedidoAutomacaoAtendimento.insertId
+    })]
+  );
   const [pedido] = await connection.query(
     `INSERT INTO pedidos_senha
        (protocolo, cliente_id, servico_id, chassi, marca, modelo, ano,
@@ -831,6 +866,8 @@ async function prepararFixture() {
       nota: notaAtendimento,
       resposta: respostaAtendimento,
       mensagemExternaId: mensagemExternaAtendimento,
+      pedidoAutomacaoProtocolo: protocoloAutomacaoAtendimento,
+      pedidoAutomacaoValor: Number(servico.preco_base),
       chamadasWhatsapp: 0
     },
     configuracao: {
@@ -1036,7 +1073,9 @@ async function iniciar() {
       atendente_id: contexto.atendimento.atendenteId,
       atendente: contexto.atendimento.atendente,
       nota: contexto.atendimento.nota,
-      resposta: contexto.atendimento.resposta
+      resposta: contexto.atendimento.resposta,
+      pedido_automacao_protocolo: contexto.atendimento.pedidoAutomacaoProtocolo,
+      pedido_automacao_valor: contexto.atendimento.pedidoAutomacaoValor
     },
     configuracao: {
       chave: contexto.configuracao.chave,

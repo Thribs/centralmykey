@@ -1733,6 +1733,13 @@ test('atendimento é assumido, respondido, transferido e finalizado na transaç�
 
   const conversa = page.locator('.conversation-panel');
   await expect(conversa.getByText(contexto.protocolo, { exact: true })).toBeVisible();
+  const fluxoGm = conversa.getByLabel('Fluxo automático GM');
+  await expect(fluxoGm).toBeVisible();
+  await expect(fluxoGm.getByText(contexto.pedido_automacao_protocolo, { exact: true }))
+    .toBeVisible();
+  await expect(fluxoGm.getByText('Pix: REGISTRADA', { exact: true })).toBeVisible();
+  await expect(fluxoGm.locator('strong', { hasText: 'AGUARDANDO_PAGAMENTO' }))
+    .toBeVisible();
   await expect(conversa.locator('.conversation-meta .attendance-status'))
     .toHaveText('Na fila');
   await conversa.getByRole('button', { name: 'Assumir atendimento' }).click();
@@ -1811,7 +1818,7 @@ test('atendimento é assumido, respondido, transferido e finalizado na transaç�
   expect(Number(verificacao.estado.transferencias)).toBe(2);
   expect(Number(verificacao.estado.notas)).toBe(1);
   expect(Number(verificacao.estado.mensagens_whatsapp)).toBe(1);
-  expect(Number(verificacao.estado.auditorias)).toBe(6);
+  expect(Number(verificacao.estado.auditorias)).toBe(7);
   expect(Number(verificacao.chamadas_whatsapp)).toBe(1);
 });
 

@@ -349,9 +349,46 @@ module.exports = function (app, pool) {
             [atendimentoId]
           );
 
+          const [[automacaoGm]] = await pool.query(
+            `SELECT p.id AS pedido_id, p.protocolo AS pedido_protocolo,
+                    p.status AS pedido_status, p.valor_venda, p.custo, p.moeda,
+                    os.codigo AS origem, f.nome AS fornecedor,
+                    (SELECT irp.status FROM integracao_referencias_pagamento irp
+                      WHERE irp.provedor='SICOOB' AND irp.entidade='PEDIDO'
+                        AND irp.entidade_id=p.id ORDER BY irp.id DESC LIMIT 1)
+                      AS pagamento_status,
+                    co.consulta_fornecedor_status,
+                    co.entrega_cliente_status,
+                    (SELECT JSON_UNQUOTE(JSON_EXTRACT(aud.dados_depois, '$.etapa'))
+                       FROM auditoria aud WHERE aud.entidade='atendimentos'
+                        AND aud.entidade_id=CAST(? AS CHAR)
+                        AND aud.acao='ESTADO_AUTOMACAO_GM'
+                       ORDER BY aud.id DESC LIMIT 1) AS etapa_automacao
+               FROM pedido_historico ph
+               JOIN pedidos_senha p ON p.id=ph.pedido_id
+               LEFT JOIN origens_senha os ON os.id=p.origem_id
+               LEFT JOIN fornecedores f ON f.id=p.fornecedor_id
+               LEFT JOIN (
+                 SELECT pedido_id,
+                   SUBSTRING_INDEX(GROUP_CONCAT(
+                     CASE WHEN finalidade='CONSULTA_FORNECEDOR' THEN status END
+                     ORDER BY id DESC), ',', 1) AS consulta_fornecedor_status,
+                   SUBSTRING_INDEX(GROUP_CONCAT(
+                     CASE WHEN finalidade='ENTREGA_CLIENTE' THEN status END
+                     ORDER BY id DESC), ',', 1) AS entrega_cliente_status
+                   FROM comunicacoes_outbox GROUP BY pedido_id
+               ) co ON co.pedido_id=p.id
+              WHERE ph.tipo='ORIGEM_ATENDIMENTO_WHATSAPP_AUTOMATICO'
+                AND CAST(JSON_UNQUOTE(JSON_EXTRACT(ph.dados, '$.atendimento_id'))
+                  AS UNSIGNED)=?
+              ORDER BY ph.id DESC LIMIT 1`,
+            [atendimentoId, atendimentoId]
+          );
+
           return res.json({
           ok: true,
           atendimento: atendimentos[0],
+          automacao_gm: automacaoGm || null,
           total_mensagens: mensagens.length,
           mensagens,
           total_anexos: anexos.length,

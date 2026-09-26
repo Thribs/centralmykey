@@ -93,6 +93,12 @@ function dataHora(valor) {
   }).format(new Date(valor));
 }
 
+function dinheiro(valor, moeda = 'BRL') {
+  return new Intl.NumberFormat('pt-BR', {
+    style: 'currency', currency: moeda || 'BRL'
+  }).format(Number(valor || 0));
+}
+
 function iniciais(nome = '') {
   return nome
     .split(/\s+/)
@@ -316,6 +322,37 @@ function Conversa({
           </strong>
         </div>
       </div>
+
+      {detalhe.automacao_gm && (
+        <div className="conversation-summary automation-summary" aria-label="Fluxo automático GM">
+          <div>
+            <span>Pedido GM</span>
+            <strong>{detalhe.automacao_gm.pedido_protocolo}</strong>
+            <small>{detalhe.automacao_gm.pedido_status}</small>
+          </div>
+          <div>
+            <span>Valor</span>
+            <strong>{dinheiro(
+              detalhe.automacao_gm.valor_venda,
+              detalhe.automacao_gm.moeda
+            )}</strong>
+            <small>Pix: {detalhe.automacao_gm.pagamento_status || 'não gerado'}</small>
+          </div>
+          <div>
+            <span>Atendimento automático</span>
+            <strong>{detalhe.automacao_gm.etapa_automacao || 'iniciado'}</strong>
+            <small>
+              Consulta: {detalhe.automacao_gm.consulta_fornecedor_status || 'não enviada'}
+            </small>
+          </div>
+          <div>
+            <span>Origem e entrega</span>
+            <strong>{detalhe.automacao_gm.origem ||
+              detalhe.automacao_gm.fornecedor || 'em decisão'}</strong>
+            <small>Entrega: {detalhe.automacao_gm.entrega_cliente_status || 'não preparada'}</small>
+          </div>
+        </div>
+      )}
 
       {(pertenceAoUsuario || usuario.perfil === 'Administrador') &&
         podeEditar &&

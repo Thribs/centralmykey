@@ -1,5 +1,10 @@
 'use strict';
 
+const {
+  buscarAtendimentoAutomaticoDoPedido,
+  encaminharHumanoConnection
+} = require('./automacao-gm-whatsapp');
+
 const NOME_BLOQUEIO = 'central_mykey_cobrancas_sicoob_expiradas';
 
 function validarAgora(valor) {
@@ -99,10 +104,20 @@ async function reconciliarCobrancasSicoobExpiradas(pool, opcoes = {}) {
     const pedidos = [...new Set(referencias.map(item => Number(item.entidade_id)))];
     let atualizadas = 0;
     for (const pedidoId of pedidos) {
-      atualizadas += await expirarCobrancasPedidoSicoob(connection, pedidoId, {
+      const expiradas = await expirarCobrancasPedidoSicoob(connection, pedidoId, {
         agora,
         descricao: 'Prazo da cobrança Pix Sicoob encerrado automaticamente'
       });
+      atualizadas += expiradas;
+      if (expiradas > 0) {
+        const atendimentoId = await buscarAtendimentoAutomaticoDoPedido(
+          connection, pedidoId
+        );
+        if (atendimentoId) {
+          await encaminharHumanoConnection(connection, atendimentoId,
+            'COBRANCA_PIX_EXPIRADA', 'O prazo do pagamento Pix foi encerrado');
+        }
+      }
     }
 
     await connection.commit();

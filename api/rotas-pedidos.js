@@ -389,6 +389,18 @@ if (cliente.tipo_cobranca === 'ANTECIPADO') {
     ip: req.ip || null
   });
 
+  if (Number.isInteger(Number(req.automacaoAtendimentoId)) &&
+      Number(req.automacaoAtendimentoId) > 0) {
+    await connection.query(
+      `INSERT INTO pedido_historico
+         (pedido_id, usuario_id, tipo, descricao, dados)
+       VALUES (?, NULL, 'ORIGEM_ATENDIMENTO_WHATSAPP_AUTOMATICO', ?, ?)`,
+      [pedidoAguardando.insertId,
+        'Pedido criado pela automação GM do WhatsApp',
+        JSON.stringify({ atendimento_id: Number(req.automacaoAtendimentoId) })]
+    );
+  }
+
   await connection.commit();
 
   return res.status(201).json({

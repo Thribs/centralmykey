@@ -44,15 +44,22 @@ O fluxo GM obrigatório é:
 6. Em indisponibilidade real da API, manter o pedido aguardando reprocessamento e não acionar fornecedor.
 7. Selecionar o fornecedor ativo e disponível de menor custo: Márcio das 08h às 22h, custo R$ 22; Emerson das 08h às 19h, custo R$ 25.
 
-No atendimento automático pelo WhatsApp, reconhecer a intenção de senha GM,
-identificar um cliente ativo pelo telefone e solicitar o chassi. Depois do 404,
-a consulta ao fornecedor deve sair pela outbox. A resposta do fornecedor deve
-estar vinculada ao protocolo, telefone cadastrado e consulta enviada. Antes de
-entregar a senha ao cliente, salvar o resultado na API Joel Pires e relê-lo na
-fonte de verdade; somente a confirmação idêntica pode alimentar o cache local e
-liberar a entrega. Falha de reconhecimento, cadastro, criação, pagamento,
-transporte, gravação ou releitura deve transferir o atendimento para o modo
-humano e bloquear comunicações automáticas posteriores daquele atendimento.
+No atendimento automático antecipado pelo WhatsApp, reconhecer a intenção de
+senha GM, identificar um cliente ativo pelo telefone e solicitar o chassi. Fazer
+uma pré-consulta na fonte de verdade para decidir entre cache/API e fornecedor,
+mas não acionar o fornecedor antes do pagamento. Informar o preço, coletar nome,
+CPF/CNPJ, e-mail e cidade para a nota fiscal, oferecer Pix e gerar a cobrança
+Sicoob. Somente a confirmação idempotente do pagamento pode iniciar a consulta
+operacional e acionar o fornecedor. Cliente com faturamento semanal deve ser
+encaminhado ao atendimento humano para preservar sua política comercial.
+
+A resposta do fornecedor deve estar vinculada ao protocolo, telefone cadastrado
+e consulta enviada. Antes de entregar a senha ao cliente, salvar o resultado na
+API Joel Pires e relê-lo na fonte de verdade; somente a confirmação idêntica
+pode alimentar o cache local e liberar a entrega. Falha de reconhecimento,
+cadastro, dados fiscais, criação, cobrança, pagamento, transporte, gravação ou
+releitura deve transferir o atendimento para o modo humano e bloquear
+comunicações automáticas posteriores daquele atendimento.
 
 Qualquer mudança nesse fluxo deve manter as transições, o histórico e os lançamentos financeiros consistentes e idempotentes.
 

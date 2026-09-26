@@ -57,7 +57,7 @@ function respostaHttp(status, corpo) {
   };
 }
 
-async function iniciarApi(connection) {
+async function iniciarApi(connection, sicoob) {
   const app = express();
   app.use(express.json({
     verify: (req, res, buffer) => { req.rawBody = Buffer.from(buffer); }
@@ -69,12 +69,35 @@ async function iniciarApi(connection) {
   app.locals.exigirPermissao = () => (req, res, next) => next();
   const pool = poolTransacional(connection);
   require('./rotas-pedidos')(app, pool);
+  require('./rotas-integracoes')(app, pool, {
+    configuracaoSicoob: {
+      habilitado: true, webhookHabilitado: true,
+      clientId: 'cliente-ficticio', clientSecret: 'segredo-ficticio',
+      certPath: '/certificado/ficticio', keyPath: '/chave/ficticia',
+      chavePix: 'pix@teste.invalid',
+      tokenUrl: 'https://sicoob.mock/token', apiUrl: 'https://sicoob.mock/pix',
+      scope: 'cob.write'
+    },
+    transporteSicoob: async requisicao => {
+      sicoob.chamadas.push(requisicao);
+      if (requisicao.url.endsWith('/token')) {
+        return { status: 200, body: JSON.stringify({ access_token: 'token-ficticio' }) };
+      }
+      sicoob.txid = requisicao.url.split('/').pop();
+      return { status: 201, body: JSON.stringify({
+        txid: sicoob.txid,
+        location: `pix.teste/${sicoob.txid}`,
+        pixCopiaECola: `PIX-FICTICIO-${sicoob.txid}`
+      }) };
+    }
+  });
   require('./rotas-whatsapp')(app, pool);
+  require('./rotas-atendimento')(app, pool);
   const servidor = await new Promise((resolve, reject) => {
     const instancia = app.listen(0, '127.0.0.1', () => resolve(instancia));
     instancia.once('error', reject);
   });
-  return { servidor, url: `http://127.0.0.1:${servidor.address().port}` };
+  return { app, servidor, url: `http://127.0.0.1:${servidor.address().port}` };
 }
 
 async function fecharServidor(servidor) {
@@ -107,6 +130,21 @@ async function webhook(url, segredo, { telefone, mensagemId, texto, nome }) {
   });
 }
 
+async function enviarMensagemIaPendente(connection, atendimentoId, referencia) {
+  const [[mensagem]] = await connection.query(
+    `SELECT id, texto FROM atendimento_mensagens
+      WHERE atendimento_id=? AND direcao='SAIDA' AND autor_tipo='IA'
+        AND status_entrega='PENDENTE' ORDER BY id LIMIT 1`, [atendimentoId]
+  );
+  assert.ok(mensagem, `Mensagem automática pendente esperada em ${referencia}`);
+  const resultado = await processarMensagemAtendimento(
+    connection, mensagem.id,
+    async () => ({ mensagem_externa_id: `wamid.mock.ia.${referencia}` })
+  );
+  assert.strictEqual(resultado.enviada, true);
+  return mensagem.texto;
+}
+
 async function executar() {
   const connection = await mysql.createConnection(configBanco);
   const fetchOriginal = global.fetch;
@@ -119,6 +157,7 @@ async function executar() {
   const fornecedorTelefone = `5562${String(Date.now()).slice(-9)}`;
   const chassi = `9BGWA19A0${String(Date.now()).slice(-8)}`;
   const requisicoesJoel = [];
+  const sicoob = { chamadas: [], txid: null };
   let gravada = false;
   let servidor;
   let erro;
@@ -141,7 +180,7 @@ async function executar() {
       `INSERT INTO clientes
          (nome, telefone, telefone_normalizado, cadastro_status, ativo,
           tipo_cobranca, dia_fechamento, prazo_pagamento_dias, credito_status)
-       VALUES (?, ?, ?, 'COMPLETO', 1, 'FATURAMENTO_SEMANAL', 3, 3, 'LIBERADO')`,
+       VALUES (?, ?, ?, 'PROVISORIO', 1, 'ANTECIPADO', NULL, 0, 'LIBERADO')`,
       [clienteNome, clienteTelefone, clienteTelefone]
     );
     const [fornecedor] = await connection.query(
@@ -157,7 +196,7 @@ async function executar() {
       [fornecedor.insertId]
     );
 
-    const api = await iniciarApi(connection);
+    const api = await iniciarApi(connection, sicoob);
     servidor = api.servidor;
     global.fetch = async (url, opcoes = {}) => {
       const endereco = String(url);
@@ -223,14 +262,104 @@ async function executar() {
     });
     assert.strictEqual(resposta.status, 200);
     const [[pedido]] = await connection.query(
-      `SELECT id, protocolo, status, origem_id, fornecedor_id, custo
+      `SELECT id, protocolo, status, origem_id, fornecedor_id, custo, valor_venda
          FROM pedidos_senha WHERE cliente_id=? ORDER BY id DESC LIMIT 1`,
       [cliente.insertId]
     );
-    assert.strictEqual(pedido.status, 'EM_CONSULTA');
-    assert.strictEqual(Number(pedido.fornecedor_id), fornecedor.insertId);
-    assert.strictEqual(Number(pedido.custo), 0.01);
+    assert.strictEqual(pedido.status, 'AGUARDANDO_PAGAMENTO');
+    assert.strictEqual(pedido.fornecedor_id, null);
+    assert.strictEqual(Number(pedido.custo), 0);
     assert.strictEqual(requisicoesJoel.filter(item => item.method === 'GET').length, 1);
+    const pedidoFiscalTexto = await enviarMensagemIaPendente(
+      connection, atendimento.id, `fiscal.${marcador}`
+    );
+    assert.match(pedidoFiscalTexto, /A consulta custa R\$/);
+    assert.match(pedidoFiscalTexto, /CPF\/CNPJ/);
+    const [[semConsultaAntesPagamento]] = await connection.query(
+      `SELECT COUNT(*) AS total FROM comunicacoes_outbox
+        WHERE pedido_id=? AND finalidade='CONSULTA_FORNECEDOR'`, [pedido.id]
+    );
+    assert.strictEqual(Number(semConsultaAntesPagamento.total), 0);
+
+    resposta = await webhook(api.url, segredo, {
+      telefone: clienteTelefone,
+      mensagemId: `wamid.mock.fiscal.${marcador}`,
+      texto: 'NOME: Cliente Fiscal Teste | CPF: 52998224725 | ' +
+        'EMAIL: fiscal@teste.invalid | CIDADE: Brasília'
+    });
+    assert.strictEqual(resposta.status, 200);
+    const [[fiscal]] = await connection.query(
+      `SELECT c.cadastro_status, c.cpf_normalizado, c.email, c.cidade,
+              (SELECT COUNT(*) FROM pedido_partes pp WHERE pp.pedido_id=?
+                AND pp.documento='52998224725' AND pp.email='fiscal@teste.invalid') AS partes
+         FROM clientes c WHERE c.id=?`, [pedido.id, cliente.insertId]
+    );
+    assert.deepStrictEqual([
+      fiscal.cadastro_status, fiscal.cpf_normalizado, fiscal.email,
+      fiscal.cidade, Number(fiscal.partes)
+    ], ['COMPLETO', '52998224725', 'fiscal@teste.invalid', 'Brasília', 3]);
+    const ofertaPixTexto = await enviarMensagemIaPendente(
+      connection, atendimento.id, `oferta.pix.${marcador}`
+    );
+    assert.match(ofertaPixTexto, /Responda PIX/);
+
+    resposta = await webhook(api.url, segredo, {
+      telefone: clienteTelefone,
+      mensagemId: `wamid.mock.pix.${marcador}`,
+      texto: 'PIX'
+    });
+    assert.strictEqual(resposta.status, 200);
+    assert.ok(sicoob.txid, 'A automação deve registrar uma cobrança Pix Sicoob');
+    assert.strictEqual(sicoob.chamadas.length, 2);
+    const [[referenciaPix]] = await connection.query(
+      `SELECT status, valor, pix_copia_cola FROM integracao_referencias_pagamento
+        WHERE provedor='SICOOB' AND entidade_id=? ORDER BY id DESC LIMIT 1`, [pedido.id]
+    );
+    assert.strictEqual(referenciaPix.status, 'REGISTRADA');
+    assert.strictEqual(Number(referenciaPix.valor), Number(pedido.valor_venda));
+    assert.ok(referenciaPix.pix_copia_cola.startsWith('PIX-FICTICIO-'));
+    const codigoPixTexto = await enviarMensagemIaPendente(
+      connection, atendimento.id, `codigo.pix.${marcador}`
+    );
+    assert.match(codigoPixTexto, /PIX-FICTICIO-/);
+
+    const endToEndId = `E${String(Date.now())}ABCDEFGHIJKLMNOPQRSTUV`.slice(0, 32);
+    const pagamentoPix = JSON.stringify({ pix: [{
+      txid: sicoob.txid,
+      endToEndId,
+      valor: Number(pedido.valor_venda).toFixed(2),
+      horario: '2026-09-26T15:01:00Z'
+    }] });
+    resposta = await fetchOriginal(`${api.url}/webhooks/sicoob`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-client-cert-verify': 'SUCCESS' },
+      body: pagamentoPix
+    });
+    assert.strictEqual(resposta.status, 200);
+    const pagamentoConfirmado = await resposta.json();
+    assert.strictEqual(pagamentoConfirmado.resultados[0].status, 'PROCESSADO');
+    assert.strictEqual(pagamentoConfirmado.resultados[0].processamento.status, 'EM_CONSULTA');
+
+    const [[pedidoPago]] = await connection.query(
+      `SELECT p.status, p.fornecedor_id, p.custo,
+              (SELECT COUNT(*) FROM pagamentos pg
+                JOIN lancamentos_financeiros lf ON lf.id=pg.lancamento_id
+               WHERE lf.pedido_senha_id=p.id) AS pagamentos,
+              (SELECT status FROM integracao_referencias_pagamento r
+                WHERE r.entidade_id=p.id AND r.provedor='SICOOB'
+                ORDER BY r.id DESC LIMIT 1) AS referencia_status
+         FROM pedidos_senha p WHERE p.id=?`, [pedido.id]
+    );
+    assert.strictEqual(pedidoPago.status, 'EM_CONSULTA');
+    assert.strictEqual(Number(pedidoPago.fornecedor_id), fornecedor.insertId);
+    assert.strictEqual(Number(pedidoPago.custo), 0.01);
+    assert.strictEqual(Number(pedidoPago.pagamentos), 1);
+    assert.strictEqual(pedidoPago.referencia_status, 'PAGA');
+    assert.strictEqual(requisicoesJoel.filter(item => item.method === 'GET').length, 2);
+    const confirmacaoPixTexto = await enviarMensagemIaPendente(
+      connection, atendimento.id, `confirmacao.pix.${marcador}`
+    );
+    assert.match(confirmacaoPixTexto, /Pagamento confirmado/);
     const [[consulta]] = await connection.query(
       `SELECT id, status FROM comunicacoes_outbox
         WHERE pedido_id=? AND finalidade='CONSULTA_FORNECEDOR' LIMIT 1`, [pedido.id]
@@ -300,6 +429,15 @@ async function executar() {
     assert.strictEqual(final.status, 'FINALIZADO');
     assert.ok(final.finalizado_em);
 
+    resposta = await fetchOriginal(`${api.url}/api/atendimentos/${atendimento.id}`);
+    assert.strictEqual(resposta.status, 200);
+    const painel = await resposta.json();
+    assert.strictEqual(Number(painel.automacao_gm.pedido_id), Number(pedido.id));
+    assert.strictEqual(painel.automacao_gm.pagamento_status, 'PAGA');
+    assert.strictEqual(painel.automacao_gm.consulta_fornecedor_status, 'ENVIADA');
+    assert.strictEqual(painel.automacao_gm.entrega_cliente_status, 'ENVIADA');
+    assert.strictEqual(painel.automacao_gm.etapa_automacao, 'CONCLUIDO');
+
     resposta = await webhook(api.url, segredo, {
       telefone: fornecedorTelefone,
       mensagemId: `wamid.mock.resultado.${marcador}`,
@@ -321,7 +459,7 @@ async function executar() {
       `INSERT INTO clientes
          (nome, telefone, telefone_normalizado, cadastro_status, ativo,
           tipo_cobranca, credito_status)
-       VALUES (?, ?, ?, 'COMPLETO', 1, 'FATURAMENTO_SEMANAL', 'LIBERADO')`,
+       VALUES (?, ?, ?, 'PROVISORIO', 1, 'ANTECIPADO', 'LIBERADO')`,
       [`CLIENTE API DIRETA ${marcador}`, telefoneApi, telefoneApi]
     );
     resposta = await webhook(api.url, segredo, {
@@ -330,6 +468,43 @@ async function executar() {
       texto: `Quero senha GM para o chassi ${chassiApi}`
     });
     assert.strictEqual(resposta.status, 200);
+    const [[pedidoApiAguardando]] = await connection.query(
+      `SELECT p.id, p.valor_venda, p.status,
+              CAST(JSON_UNQUOTE(JSON_EXTRACT(ph.dados, '$.atendimento_id')) AS UNSIGNED)
+                AS atendimento_id
+         FROM pedidos_senha p JOIN pedido_historico ph ON ph.pedido_id=p.id
+          AND ph.tipo='ORIGEM_ATENDIMENTO_WHATSAPP_AUTOMATICO'
+        WHERE p.cliente_id=? ORDER BY p.id DESC LIMIT 1`, [clienteApi.insertId]
+    );
+    assert.strictEqual(pedidoApiAguardando.status, 'AGUARDANDO_PAGAMENTO');
+    const chamadasAposPreConsultaApi = requisicoesJoel.length;
+    resposta = await webhook(api.url, segredo, {
+      telefone: telefoneApi,
+      mensagemId: `wamid.mock.api.fiscal.${marcador}`,
+      texto: 'NOME: Empresa API Teste | CNPJ: 11222333000181 | ' +
+        'EMAIL: api@teste.invalid | CIDADE: Goiânia'
+    });
+    assert.strictEqual(resposta.status, 200);
+    resposta = await webhook(api.url, segredo, {
+      telefone: telefoneApi,
+      mensagemId: `wamid.mock.api.pix.${marcador}`,
+      texto: 'Quero pagar por PIX'
+    });
+    assert.strictEqual(resposta.status, 200);
+    const txidApi = sicoob.txid;
+    const e2eApi = `A${String(Date.now())}ABCDEFGHIJKLMNOPQRSTUV`.slice(0, 32);
+    resposta = await fetchOriginal(`${api.url}/webhooks/sicoob`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-client-cert-verify': 'SUCCESS' },
+      body: JSON.stringify({ pix: [{
+        txid: txidApi, endToEndId: e2eApi,
+        valor: Number(pedidoApiAguardando.valor_venda).toFixed(2),
+        horario: '2026-09-26T15:02:00Z'
+      }] })
+    });
+    assert.strictEqual(resposta.status, 200);
+    assert.strictEqual(requisicoesJoel.length, chamadasAposPreConsultaApi,
+      'A consulta após o pagamento deve reutilizar o cache oficial da pré-consulta');
     const [[pedidoApi]] = await connection.query(
       `SELECT p.id, p.status, p.fornecedor_id, p.custo,
               pr.status AS resultado_status, pr.banco_senha_id,
@@ -359,33 +534,6 @@ async function executar() {
       'SELECT status FROM atendimentos WHERE id=?', [pedidoApi.atendimento_id]
     );
     assert.strictEqual(atendimentoApiFinal.status, 'FINALIZADO');
-
-    const telefoneCache = `5565${String(Date.now()).slice(-9)}`;
-    const [clienteCache] = await connection.query(
-      `INSERT INTO clientes
-         (nome, telefone, telefone_normalizado, cadastro_status, ativo,
-          tipo_cobranca, credito_status)
-       VALUES (?, ?, ?, 'COMPLETO', 1, 'FATURAMENTO_SEMANAL', 'LIBERADO')`,
-      [`CLIENTE CACHE ${marcador}`, telefoneCache, telefoneCache]
-    );
-    const chamadasAntesCache = requisicoesJoel.length;
-    resposta = await webhook(api.url, segredo, {
-      telefone: telefoneCache,
-      mensagemId: `wamid.mock.cache.${marcador}`,
-      texto: `Senha Chevrolet para ${chassiApi}`
-    });
-    assert.strictEqual(resposta.status, 200);
-    assert.strictEqual(requisicoesJoel.length, chamadasAntesCache,
-      'Cache oficial válido deve evitar nova chamada à API Joel Pires');
-    const [[pedidoCache]] = await connection.query(
-      `SELECT p.id, p.status, p.fornecedor_id, p.custo, pr.banco_senha_id
-         FROM pedidos_senha p JOIN pedido_resultados pr ON pr.pedido_id=p.id
-        WHERE p.cliente_id=? ORDER BY p.id DESC LIMIT 1`, [clienteCache.insertId]
-    );
-    assert.deepStrictEqual([
-      pedidoCache.status, pedidoCache.fornecedor_id, Number(pedidoCache.custo),
-      Number(pedidoCache.banco_senha_id)
-    ], ['CONCLUIDO', null, 0, Number(pedidoApi.banco_senha_id)]);
 
     const telefoneFalhaEnvio = `5563${String(Date.now()).slice(-9)}`;
     await connection.query(
@@ -419,6 +567,53 @@ async function executar() {
     );
     assert.deepStrictEqual([filaPorFalhaEnvio.modo, filaPorFalhaEnvio.status],
       ['HUMANO', 'FILA']);
+
+    const telefoneFalhaPix = `5566${String(Date.now()).slice(-9)}`;
+    const [clienteFalhaPix] = await connection.query(
+      `INSERT INTO clientes
+         (nome, telefone, telefone_normalizado, cadastro_status, ativo,
+          tipo_cobranca, credito_status)
+       VALUES (?, ?, ?, 'PROVISORIO', 1, 'ANTECIPADO', 'LIBERADO')`,
+      [`CLIENTE FALHA PIX ${marcador}`, telefoneFalhaPix, telefoneFalhaPix]
+    );
+    resposta = await webhook(api.url, segredo, {
+      telefone: telefoneFalhaPix,
+      mensagemId: `wamid.mock.falha.pix.inicio.${marcador}`,
+      texto: `Preciso de senha GM para 9BGPIX1A0${String(Date.now()).slice(-8)}`
+    });
+    assert.strictEqual(resposta.status, 200);
+    resposta = await webhook(api.url, segredo, {
+      telefone: telefoneFalhaPix,
+      mensagemId: `wamid.mock.falha.pix.fiscal.${marcador}`,
+      texto: 'NOME: Cliente Falha Pix | CPF: 11144477735 | ' +
+        'EMAIL: falhapix@teste.invalid | CIDADE: Recife'
+    });
+    assert.strictEqual(resposta.status, 200);
+    const criarPixOriginal = api.app.locals.criarCobrancaSicoobInterna;
+    api.app.locals.criarCobrancaSicoobInterna = async () => {
+      const falha = new Error('Sicoob indisponível (simulado)');
+      falha.codigo = 'SICOOB_INDISPONIVEL';
+      throw falha;
+    };
+    resposta = await webhook(api.url, segredo, {
+      telefone: telefoneFalhaPix,
+      mensagemId: `wamid.mock.falha.pix.confirmacao.${marcador}`,
+      texto: 'PIX'
+    });
+    api.app.locals.criarCobrancaSicoobInterna = criarPixOriginal;
+    assert.strictEqual(resposta.status, 200);
+    const [[falhaPix]] = await connection.query(
+      `SELECT a.modo, a.status,
+              (SELECT COUNT(*) FROM integracao_referencias_pagamento r
+                JOIN pedidos_senha p ON p.id=r.entidade_id
+               WHERE p.cliente_id=?) AS referencias
+         FROM atendimentos a WHERE a.telefone_normalizado=?
+         ORDER BY a.id DESC LIMIT 1`, [clienteFalhaPix.insertId, telefoneFalhaPix]
+    );
+    assert.deepStrictEqual(
+      [falhaPix.modo, falhaPix.status, Number(falhaPix.referencias)],
+      ['HUMANO', 'FILA', 0]
+    );
 
     const protocoloFalhaJoel = `FAIL${process.pid}${String(Date.now()).slice(-6)}`;
     const [atendimentoFalhaJoel] = await connection.query(

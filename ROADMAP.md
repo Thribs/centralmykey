@@ -323,3 +323,19 @@ O código desta atualização está apenas na branch `teste`. Não representa no
 versão nem publicação. O próximo marco é resolver o acesso de gravação no
 staging da API Joel Pires e homologar os modelos WhatsApp com destinatários
 controlados; somente depois deve ocorrer um ensaio externo completo.
+
+## Atualização — preço, nota fiscal, Pix e painel (26/09/2026)
+
+| Requisito | Situação | Evidência | Teste | Lacuna e próximo passo | Risco |
+|---|---|---|---|---|---|
+| Informar preço antes da cobrança | COMPROVADO EM TESTE | A automação usa o mesmo cálculo base/VIP da criação e envia o valor após a pré-consulta | O cenário WhatsApp verifica a mensagem de preço e o valor persistido | Homologar a redação comercial | Alteração de tabela entre pré-consulta e criação transfere o caso se impedir o pedido |
+| Coletar dados fiscais | COMPROVADO EM TESTE | Estado `AGUARDANDO_DADOS_FISCAIS` valida nome, CPF/CNPJ, e-mail e cidade, atualiza cliente e snapshots sem copiar valores para auditoria | Teste funcional valida cliente e os três papéis do pedido com rollback | Integrar a emissão fiscal quando seu provedor for definido | O sistema coleta dados, mas ainda não emite a nota fiscal |
+| Oferecer e gerar Pix | COMPROVADO EM TESTE | Estado `AGUARDANDO_OPCAO_PAGAMENTO` reutiliza `criarCobrancaPedidoSicoob`; o código Pix sai pela fila de mensagens | Teste comprova transporte Sicoob simulado, referência `REGISTRADA`, valor e envio WhatsApp | Homologar credenciais, certificado mTLS e webhook Sicoob | Configuração real continua desabilitada e falha transfere para humano |
+| Confirmar pagamento e continuar | COMPROVADO EM TESTE | Webhook Sicoob idempotente registra financeiro, processa o pedido e sincroniza o atendimento; fornecedor só é acionado depois do pagamento | Teste comprova ausência de consulta antes do Pix, pagamento processado e consulta posterior | Ensaio controlado em homologação | Evento divergente ou cobrança expirada transfere para humano |
+| Painel de atendentes | COMPROVADO EM TESTE | Detalhe do atendimento retorna pedido, etapa, valor, status Pix, consulta e entrega sem expor o código Pix; `Atendimento.jsx` apresenta o resumo | Teste funcional consulta a rota após a entrega e Playwright comprova o cartão no painel móvel | Homologar a rotina com os atendentes | Atualização da lista continua manual na interface atual |
+| Caminho API/cache e caminho fornecedor | COMPROVADO EM TESTE | A pré-consulta pode alimentar o cache; após pagamento, o processador reaproveita o cache ou seleciona fornecedor | O teste percorre os dois destinos completos com Pix e rollback | Manter os dois destinos na regressão | Cache expirado pode provocar nova consulta legítima |
+| Contingência humana | COMPROVADO EM TESTE | Falha de mensagem, cobrança Pix, expiração e publicação na API Joel Pires mudam para `HUMANO/FILA`; comunicações posteriores são bloqueadas | Testes cobrem falha de transporte, falha Sicoob, expiração e falha Joel Pires | Ensaiar a triagem operacional com atendentes | Caso transferido depende da fila humana |
+
+Esta etapa deixa o cenário funcional com integrações simuladas. A ativação real
+continua bloqueada pela homologação WhatsApp/Sicoob e pela autorização de escrita
+do usuário de staging na API Joel Pires.

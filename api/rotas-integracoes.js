@@ -13,6 +13,9 @@ const { receberEventoBling } = require('./webhook-bling');
 const { analisarSnapshotBling, sincronizarPedidoBling } = require('./bling-pedidos');
 const { analisarSnapshotWBuy, sincronizarPedidoWBuy } = require('./wbuy-pedidos');
 const {
+  sincronizarAtendimentoAposPagamento
+} = require('./automacao-gm-whatsapp');
+const {
   concluirOAuthBling,
   iniciarOAuthBling,
   obterStatusOAuthBling,
@@ -35,6 +38,25 @@ module.exports = function registrarRotasIntegracoes(app, pool, opcoes = {}) {
     authorizationUrl: opcoes.authorizationUrlBling,
     tokenUrl: opcoes.tokenUrlBling
   });
+
+  app.locals.criarCobrancaSicoobInterna = async ({
+    pedidoId, expiracaoSegundos, solicitacaoPagador, usuarioId = null, ip = null
+  }) => {
+    const config = opcoes.configuracaoSicoob || await obterConfiguracaoSicoob(pool);
+    if (!config.habilitado || !config.webhookHabilitado) {
+      const erro = new Error('Cobrança ou confirmação Sicoob não está habilitada');
+      erro.codigo = 'SICOOB_NAO_HABILITADO';
+      erro.status = 503;
+      throw erro;
+    }
+    return criarCobrancaPedidoSicoob(pool, Number(pedidoId), config, {
+      expiracaoSegundos,
+      solicitacaoPagador,
+      transporte: opcoes.transporteSicoob,
+      usuarioId,
+      ip
+    });
+  };
 
   app.get('/api/integracoes/bling/oauth/status', autenticarToken,
     exigirPermissao('INTEGRACOES', 'visualizar'), async (req, res) => {
@@ -162,6 +184,16 @@ module.exports = function registrarRotasIntegracoes(app, pool, opcoes = {}) {
       }
       const corpoBruto = req.rawBody || Buffer.from(JSON.stringify(req.body || {}));
       const resultado = await processarWebhookSicoob(pool, corpoBruto);
+      for (const item of resultado.resultados || []) {
+        if (item.pedido_id) {
+          try {
+            await sincronizarAtendimentoAposPagamento(pool, item.pedido_id);
+          } catch (erroSincronizacao) {
+            console.error('Falha ao sincronizar atendimento após Pix:',
+              erroSincronizacao.message);
+          }
+        }
+      }
       return res.status(200).json(resultado);
     } catch (error) {
       const status = Number(error.status) || 500;
@@ -225,11 +257,10 @@ module.exports = function registrarRotasIntegracoes(app, pool, opcoes = {}) {
         return res.status(400).json({ ok: false, error: 'Pedido inválido' });
       }
       try {
-        const config = opcoes.configuracaoSicoob || await obterConfiguracaoSicoob(pool);
-        const resultado = await criarCobrancaPedidoSicoob(pool, pedidoId, config, {
+        const resultado = await app.locals.criarCobrancaSicoobInterna({
+          pedidoId,
           expiracaoSegundos: req.body?.expiracao_segundos,
           solicitacaoPagador: req.body?.solicitacao_pagador,
-          transporte: opcoes.transporteSicoob,
           usuarioId: req.usuario?.id || null,
           ip: req.ip || null
         });

@@ -154,7 +154,12 @@ async function processarWebhookSicoob(pool, payloadBruto, opcoes = {}) {
           pago ? 1 : 0, referencia.id]
       );
     }
-    resultados.push({ txid: pix.txid, endToEndId: pix.endToEndId, ...resultado });
+    resultados.push({
+      txid: pix.txid,
+      endToEndId: pix.endToEndId,
+      ...resultado,
+      pedido_id: resultado.pedido_id || referencia?.entidade_id || null
+    });
   }
   return { ok: resultados.every(item => item.ok), total: resultados.length, resultados };
 }

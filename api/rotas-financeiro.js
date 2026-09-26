@@ -1,4 +1,7 @@
 const processarPedidoPago = require('./processar-pedido-pago');
+const {
+  sincronizarAtendimentoAposPagamento
+} = require('./automacao-gm-whatsapp');
 
 module.exports = function (app, pool) {
   const autenticarToken = app.locals.autenticarToken;
@@ -562,6 +565,23 @@ module.exports = function (app, pool) {
         );
 
         await connection.commit();
+
+        try {
+          const poolDaConexao = {
+            query: (...argumentos) => connection.query(...argumentos),
+            getConnection: async () => ({
+              query: (...argumentos) => connection.query(...argumentos),
+              beginTransaction: () => connection.beginTransaction(),
+              commit: () => connection.commit(),
+              rollback: () => connection.rollback(),
+              release: () => {}
+            })
+          };
+          await sincronizarAtendimentoAposPagamento(poolDaConexao, pedido.id);
+        } catch (erroSincronizacao) {
+          console.error('Falha ao sincronizar atendimento após pagamento manual:',
+            erroSincronizacao.message);
+        }
 
         return res.json({
           ok: true,

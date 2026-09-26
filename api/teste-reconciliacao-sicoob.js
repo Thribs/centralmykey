@@ -59,7 +59,8 @@ async function executar() {
       "SELECT id FROM servicos WHERE codigo='GM_SENHA' AND ativo=1 LIMIT 1"
     );
     const [[cliente]] = await connection.query(
-      'SELECT id FROM clientes WHERE ativo=1 ORDER BY id LIMIT 1'
+      `SELECT id, telefone, telefone_normalizado
+         FROM clientes WHERE ativo=1 ORDER BY id LIMIT 1`
     );
     assert.ok(servico && cliente, 'Base ativa é necessária');
     const [pedido] = await connection.query(
@@ -71,6 +72,20 @@ async function executar() {
       [protocolo, cliente.id, servico.id, `9BGREC${String(Date.now()).slice(-11)}`]
     );
     pedidoId = pedido.insertId;
+    const [atendimento] = await connection.query(
+      `INSERT INTO atendimentos
+         (protocolo, cliente_id, telefone, telefone_normalizado, canal, modo,
+          status, prioridade, assunto, ultima_mensagem_em)
+       VALUES (?, ?, ?, ?, 'WHATSAPP', 'ELETRONICO', 'AGUARDANDO_PAGAMENTO',
+               'NORMAL', 'Senha GM · aguardando Pix', NOW())`,
+      [`ATD-${protocolo}`.slice(0, 30), cliente.id,
+        cliente.telefone, cliente.telefone_normalizado]
+    );
+    await connection.query(
+      `INSERT INTO pedido_historico (pedido_id, tipo, descricao, dados)
+       VALUES (?, 'ORIGEM_ATENDIMENTO_WHATSAPP_AUTOMATICO', 'Teste', ?)`,
+      [pedidoId, JSON.stringify({ atendimento_id: atendimento.insertId })]
+    );
     await connection.query(
       `INSERT INTO integracao_referencias_pagamento
          (provedor, entidade, entidade_id, referencia_provedor, valor, moeda,
@@ -118,6 +133,13 @@ async function executar() {
       [pedidoId, String(pedidoId)]
     );
     assert.deepStrictEqual(Object.values(efeitos).map(Number), [1, 1]);
+    const [[atendimentoExpirado]] = await connection.query(
+      'SELECT modo, status FROM atendimentos WHERE id=?', [atendimento.insertId]
+    );
+    assert.deepStrictEqual(
+      [atendimentoExpirado.modo, atendimentoExpirado.status],
+      ['HUMANO', 'FILA']
+    );
 
     const segundo = await reconciliarCobrancasSicoobExpiradas(pool, {
       agora: '2026-09-21 12:00:00'
