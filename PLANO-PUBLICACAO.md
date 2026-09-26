@@ -7,7 +7,7 @@ da aprovação dos testes.
 
 ## Estado comprovado
 
-- O commit `a51c3fa` foi publicado em 22/09/2026, sem merge ou nova tag, com o
+- O commit `ef6ec05` foi publicado em 26/09/2026, sem nova tag, com o
   serviço ativo e `/health` e `/health/ready` HTTP 200.
 - A publicação criou e verificou o backup integral
   `/opt/centralmykey-backups/20260922T025627Z`. O diagnóstico de prontidão do
@@ -49,6 +49,10 @@ da aprovação dos testes.
   `/opt/centralmykey-backups/20260922T212943Z`, repetiu a suíte completa da API,
   31 cenários Playwright, lint, build e as doze migrações idempotentes. OAuth
   permaneceu vazio/desabilitado e nenhuma chamada real ao Bling ocorreu.
+- A prévia local de snapshots Bling foi publicada após o backup verificado
+  `/opt/centralmykey-backups/20260926T175319Z`. A publicação repetiu a suíte
+  completa da API, 31 cenários Playwright, lint, build e as doze migrações
+  idempotentes; serviço, `/health` e `/health/ready` ficaram ativos em HTTP 200.
 - A instalação publicada usa `qs 6.16.0` e `npm audit --omit=dev` informa zero
   vulnerabilidades conhecidas.
 - As doze migrações adicionadas depois da tag estão aplicadas e as quatorze

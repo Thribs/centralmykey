@@ -15,6 +15,10 @@
 
 O repositório é a fonte das alterações. Nunca desenvolver diretamente nos diretórios publicados. Antes de iniciar trabalho, inspecionar o estado do Git, preservar modificações existentes e criar uma branch. Nunca usar `git reset --hard`.
 
+O fluxo permanente usa somente duas branches de trabalho: `teste`, onde toda
+alteração é desenvolvida e validada, e `publico`, que deve apontar exatamente
+para o commit efetivamente publicado. Não criar branches por tarefa.
+
 ## Segurança e configuração
 
 - Nunca exibir, registrar, copiar para documentação ou versionar valores de `.env`, chaves, senhas ou tokens.
