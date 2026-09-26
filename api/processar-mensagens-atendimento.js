@@ -4,7 +4,7 @@ const { encaminharHumanoConnection } = require('./automacao-gm-whatsapp');
 
 const NOME_BLOQUEIO = 'central_mykey_mensagens_atendimento';
 
-async function processarMensagemAtendimento(connection, mensagemId, enviar) {
+async function processarMensagemAtendimento(connection, mensagemId, enviar, opcoes = {}) {
   const [[mensagem]] = await connection.query(
     `SELECT m.id, m.atendimento_id, m.texto, a.telefone_normalizado
        FROM atendimento_mensagens m
@@ -14,6 +14,19 @@ async function processarMensagemAtendimento(connection, mensagemId, enviar) {
       LIMIT 1`, [mensagemId]
   );
   if (!mensagem) return { processada: false, motivo: 'NAO_PENDENTE' };
+  if (opcoes.automacaoGmHabilitada === false) {
+    await connection.query(
+      `UPDATE atendimento_mensagens SET status_entrega='FALHOU',
+        status_atualizado_em=NOW(), erro_codigo='AUTOMACAO_GM_DESABILITADA',
+        erro_detalhe='Mensagem cancelada pelo bloqueio da automacao GM'
+       WHERE id=? AND status_entrega='PENDENTE'`, [mensagem.id]
+    );
+    await encaminharHumanoConnection(connection, mensagem.atendimento_id,
+      'AUTOMACAO_GM_DESABILITADA',
+      'Automacao GM desabilitada antes do envio da resposta');
+    return { processada: true, enviada: false,
+      erro_codigo: 'AUTOMACAO_GM_DESABILITADA' };
+  }
   try {
     if (typeof enviar !== 'function') {
       const erro = new Error('Transporte WhatsApp indisponível');
@@ -65,7 +78,9 @@ async function processarMensagensAtendimento(pool, enviar, opcoes = {}) {
     );
     const resultados = [];
     for (const item of mensagens) {
-      resultados.push(await processarMensagemAtendimento(connection, item.id, enviar));
+      resultados.push(await processarMensagemAtendimento(
+        connection, item.id, enviar, opcoes
+      ));
     }
     return { executado: true, encontrados: mensagens.length,
       enviados: resultados.filter(item => item.enviada).length,

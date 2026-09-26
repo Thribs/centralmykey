@@ -261,6 +261,48 @@ async function executar() {
     );
     assert.strictEqual(alertaResolvido.status, 'RESOLVIDA');
 
+    const [atendimentoAutomatico] = await connection.query(
+      `INSERT INTO atendimentos
+         (protocolo, cliente_id, telefone, telefone_normalizado, canal, modo,
+          status, prioridade, assunto, ultima_mensagem_em)
+       VALUES (?, ?, '551188887777', '551188887777', 'WHATSAPP', 'ELETRONICO',
+               'AGUARDANDO_FORNECEDOR', 'NORMAL', 'Teste bloqueio global', NOW())`,
+      [`ATD-OFF-${process.pid}-${sufixo}`, cliente.id]
+    );
+    await connection.query(
+      `INSERT INTO pedido_historico (pedido_id, tipo, descricao, dados)
+       VALUES (?, 'ORIGEM_ATENDIMENTO_WHATSAPP_AUTOMATICO', 'Teste', ?)`,
+      [pedidoId, JSON.stringify({ atendimento_id: atendimentoAutomatico.insertId })]
+    );
+    const [comunicacaoBloqueada] = await connection.query(
+      `INSERT INTO comunicacoes_outbox
+         (chave_idempotencia, canal, finalidade, pedido_id, fornecedor_id,
+          destinatario, payload, status)
+       VALUES (?, 'WHATSAPP', 'CONSULTA_FORNECEDOR', ?, ?, ?, JSON_OBJECT(),
+               'PENDENTE')`,
+      [`TESTE_AUTOMACAO_OFF:${pedidoId}`, pedidoId, processamento.fornecedor_id,
+        comunicacao.destinatario]
+    );
+    let enviosBloqueados = 0;
+    const bloqueada = await processarComunicacao(
+      connection, comunicacaoBloqueada.insertId,
+      async () => { enviosBloqueados += 1; return {}; },
+      { nomeModelo: 'consulta_fornecedor_gm_teste',
+        automacaoGmHabilitada: false }
+    );
+    assert.deepStrictEqual(
+      [bloqueada.status, bloqueada.erro_codigo, enviosBloqueados],
+      ['CANCELADA', 'AUTOMACAO_GM_DESABILITADA', 0]
+    );
+    const [[atendimentoBloqueado]] = await connection.query(
+      'SELECT modo, status FROM atendimentos WHERE id=?',
+      [atendimentoAutomatico.insertId]
+    );
+    assert.deepStrictEqual(
+      [atendimentoBloqueado.modo, atendimentoBloqueado.status],
+      ['HUMANO', 'FILA']
+    );
+
     const [[estadoFinal]] = await connection.query(
       `SELECT status, tentativas, mensagem_externa_id
          FROM comunicacoes_outbox WHERE id = ?`,

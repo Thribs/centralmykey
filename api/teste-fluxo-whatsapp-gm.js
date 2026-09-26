@@ -152,6 +152,7 @@ async function executar() {
   const connection = await mysql.createConnection(configBanco);
   const fetchOriginal = global.fetch;
   const segredoOriginal = process.env.META_APP_SECRET;
+  const automacaoOriginal = process.env.AUTOMACAO_GM_WHATSAPP_HABILITADA;
   const segredo = 'segredo-ficticio-fluxo-gm';
   const marcador = `${process.pid}-${String(Date.now()).slice(-8)}`;
   const clienteNome = `CLIENTE WHATSAPP GM ${marcador}`;
@@ -167,6 +168,7 @@ async function executar() {
 
   try {
     process.env.META_APP_SECRET = segredo;
+    process.env.AUTOMACAO_GM_WHATSAPP_HABILITADA = 'true';
     await connection.beginTransaction();
     await criarTabelaOutboxTemporaria(connection);
     await criarTabelaPartesPedidoTemporaria(connection);
@@ -538,6 +540,75 @@ async function executar() {
     );
     assert.strictEqual(atendimentoApiFinal.status, 'FINALIZADO');
 
+    const telefoneAutomacaoDesabilitada = `5564${String(Date.now()).slice(-9)}`;
+    const [clienteAutomacaoDesabilitada] = await connection.query(
+      `INSERT INTO clientes
+         (nome, telefone, telefone_normalizado, cadastro_status, ativo,
+          tipo_cobranca, credito_status)
+       VALUES (?, ?, ?, 'COMPLETO', 1, 'ANTECIPADO', 'LIBERADO')`,
+      [`CLIENTE AUTOMACAO DESABILITADA ${marcador}`,
+        telefoneAutomacaoDesabilitada, telefoneAutomacaoDesabilitada]
+    );
+    process.env.AUTOMACAO_GM_WHATSAPP_HABILITADA = 'false';
+    resposta = await webhook(api.url, segredo, {
+      telefone: telefoneAutomacaoDesabilitada,
+      mensagemId: `wamid.mock.automacao.desabilitada.${marcador}`,
+      texto: `Preciso da senha GM para 9BGOFF1A0${String(Date.now()).slice(-8)}`
+    });
+    process.env.AUTOMACAO_GM_WHATSAPP_HABILITADA = 'true';
+    assert.strictEqual(resposta.status, 200);
+    const [[automacaoDesabilitada]] = await connection.query(
+      `SELECT a.modo, a.status,
+              (SELECT COUNT(*) FROM pedidos_senha p WHERE p.cliente_id=?) AS pedidos
+         FROM atendimentos a WHERE a.telefone_normalizado=?
+         ORDER BY a.id DESC LIMIT 1`,
+      [clienteAutomacaoDesabilitada.insertId, telefoneAutomacaoDesabilitada]
+    );
+    assert.deepStrictEqual([
+      automacaoDesabilitada.modo, automacaoDesabilitada.status,
+      Number(automacaoDesabilitada.pedidos)
+    ], ['HUMANO', 'FILA', 0]);
+
+    const telefoneDesligadaAntesEnvio = `5567${String(Date.now()).slice(-9)}`;
+    await connection.query(
+      `INSERT INTO clientes
+         (nome, telefone, telefone_normalizado, cadastro_status, ativo,
+          tipo_cobranca, credito_status)
+       VALUES (?, ?, ?, 'COMPLETO', 1, 'ANTECIPADO', 'LIBERADO')`,
+      [`CLIENTE DESLIGADA ANTES ENVIO ${marcador}`,
+        telefoneDesligadaAntesEnvio, telefoneDesligadaAntesEnvio]
+    );
+    resposta = await webhook(api.url, segredo, {
+      telefone: telefoneDesligadaAntesEnvio,
+      mensagemId: `wamid.mock.desligada.antes.envio.${marcador}`,
+      texto: 'Preciso da senha GM'
+    });
+    assert.strictEqual(resposta.status, 200);
+    const [[mensagemBloqueada]] = await connection.query(
+      `SELECT m.id, m.atendimento_id
+         FROM atendimento_mensagens m JOIN atendimentos a ON a.id=m.atendimento_id
+        WHERE a.telefone_normalizado=? AND m.direcao='SAIDA'
+          AND m.autor_tipo='IA' AND m.status_entrega='PENDENTE'
+        ORDER BY m.id DESC LIMIT 1`, [telefoneDesligadaAntesEnvio]
+    );
+    let enviosComAutomacaoDesligada = 0;
+    const bloqueioMensagem = await processarMensagemAtendimento(
+      connection, mensagemBloqueada.id,
+      async () => { enviosComAutomacaoDesligada += 1; return {}; },
+      { automacaoGmHabilitada: false }
+    );
+    assert.strictEqual(bloqueioMensagem.erro_codigo, 'AUTOMACAO_GM_DESABILITADA');
+    assert.strictEqual(enviosComAutomacaoDesligada, 0);
+    const [[estadoMensagemBloqueada]] = await connection.query(
+      `SELECT a.modo, a.status, m.status_entrega
+         FROM atendimentos a JOIN atendimento_mensagens m ON m.id=?
+        WHERE a.id=?`, [mensagemBloqueada.id, mensagemBloqueada.atendimento_id]
+    );
+    assert.deepStrictEqual([
+      estadoMensagemBloqueada.modo, estadoMensagemBloqueada.status,
+      estadoMensagemBloqueada.status_entrega
+    ], ['HUMANO', 'FILA', 'FALHOU']);
+
     const telefoneFalhaEnvio = `5563${String(Date.now()).slice(-9)}`;
     await connection.query(
       `INSERT INTO clientes
@@ -737,6 +808,11 @@ async function executar() {
     global.fetch = fetchOriginal;
     if (segredoOriginal === undefined) delete process.env.META_APP_SECRET;
     else process.env.META_APP_SECRET = segredoOriginal;
+    if (automacaoOriginal === undefined) {
+      delete process.env.AUTOMACAO_GM_WHATSAPP_HABILITADA;
+    } else {
+      process.env.AUTOMACAO_GM_WHATSAPP_HABILITADA = automacaoOriginal;
+    }
     try {
       await fecharServidor(servidor);
       await connection.rollback();

@@ -53,6 +53,14 @@ Sicoob. Somente a confirmação idempotente do pagamento pode iniciar a consulta
 operacional e acionar o fornecedor. Cliente com faturamento semanal deve ser
 encaminhado ao atendimento humano para preservar sua política comercial.
 
+A automação GM do WhatsApp deve permanecer desabilitada por padrão. Somente
+definir `AUTOMACAO_GM_WHATSAPP_HABILITADA=true` depois que WhatsApp, modelos,
+destinatários, Sicoob, webhook mTLS e gravação na API Joel Pires estiverem
+homologados. Enquanto estiver desabilitada, toda entrada segue para a fila
+humana sem criar pedido; mensagens automáticas pendentes não são enviadas e
+comunicações vinculadas a pedidos automáticos são canceladas. Pedidos manuais
+continuam usando sua outbox normal.
+
 A resposta do fornecedor deve estar vinculada ao protocolo, telefone cadastrado
 e consulta enviada. Antes de entregar a senha ao cliente, salvar o resultado na
 API Joel Pires e relê-lo na fonte de verdade; somente a confirmação idêntica

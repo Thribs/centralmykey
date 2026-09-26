@@ -261,8 +261,10 @@ module.exports = function (app, pool) {
 
   app.post('/webhooks/whatsapp', async (req, res) => {
     let segredo;
+    let configuracaoWhatsapp;
     try {
-      segredo = (await obterConfiguracaoWhatsapp(pool)).appSecret;
+      configuracaoWhatsapp = await obterConfiguracaoWhatsapp(pool);
+      segredo = configuracaoWhatsapp.appSecret;
     } catch (error) {
       console.error('Falha ao carregar configuração do webhook WhatsApp:', error.message);
       return res.sendStatus(503);
@@ -540,7 +542,7 @@ module.exports = function (app, pool) {
           const clienteId = clientes[0]?.id || null;
 
           const [abertos] = await conexao.query(
-            `SELECT id
+            `SELECT id, modo
                FROM atendimentos
               WHERE telefone_normalizado = ?
                 AND canal = 'WHATSAPP'
@@ -552,6 +554,7 @@ module.exports = function (app, pool) {
           );
 
           let atendimentoId = abertos[0]?.id;
+          let atendimentoModo = abertos[0]?.modo || 'ELETRONICO';
 
           if (!atendimentoId) {
             const protocolo =
@@ -577,6 +580,7 @@ module.exports = function (app, pool) {
             );
 
             atendimentoId = novo.insertId;
+            atendimentoModo = 'ELETRONICO';
           }
 
           const [resultadoMensagem] = await conexao.query(
@@ -617,6 +621,14 @@ module.exports = function (app, pool) {
           );
 
           await conexao.commit();
+          if (!configuracaoWhatsapp.automacaoGmHabilitada) {
+            if (atendimentoModo === 'ELETRONICO') {
+              await encaminharHumano(pool, atendimentoId,
+                'AUTOMACAO_GM_DESABILITADA',
+                'Automacao GM ainda nao foi habilitada para homologacao');
+            }
+            continue;
+          }
           try {
             await processarEntradaClienteWhatsapp(pool, app, {
               atendimentoId,

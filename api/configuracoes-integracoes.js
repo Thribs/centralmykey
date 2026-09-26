@@ -1,5 +1,7 @@
 'use strict';
 
+const fs = require('fs');
+
 const CHAVES = {
   whatsappAccessToken: ['WHATSAPP_ACCESS_TOKEN', 'META_ACCESS_TOKEN'],
   whatsappPhoneNumberId: ['WHATSAPP_PHONE_NUMBER_ID', 'META_PHONE_NUMBER_ID'],
@@ -11,6 +13,7 @@ const CHAVES = {
   modeloEntrega: ['WHATSAPP_MODELO_ENTREGA_RESULTADO'],
   idiomaModeloEntrega: ['WHATSAPP_MODELO_ENTREGA_RESULTADO_IDIOMA'],
   outboxHabilitada: ['COMUNICACOES_OUTBOX_HABILITADO'],
+  automacaoGmWhatsappHabilitada: ['AUTOMACAO_GM_WHATSAPP_HABILITADA'],
   whatsappMediaDir: ['WHATSAPP_MEDIA_DIR'],
   whatsappMediaMaxBytes: ['WHATSAPP_MEDIA_MAX_BYTES'],
   joelPiresChave: ['CHAVE_API_JOELPIRES'],
@@ -20,10 +23,14 @@ const CHAVES = {
   sicoobCertPath: ['SICOOB_CERT_PATH'],
   sicoobKeyPath: ['SICOOB_KEY_PATH'],
   sicoobCaPath: ['SICOOB_CA_PATH'],
+  sicoobWebhookCaPath: ['SICOOB_WEBHOOK_CA_PATH'],
   sicoobChavePix: ['SICOOB_CHAVE_PIX'],
   sicoobAmbiente: ['SICOOB_AMBIENTE'],
   sicoobCobrancaHabilitada: ['SICOOB_COBRANCA_HABILITADA'],
   sicoobWebhookHabilitado: ['SICOOB_WEBHOOK_HABILITADO'],
+  sicoobWebhookMtlsConfigurado: ['SICOOB_WEBHOOK_MTLS_CONFIGURADO'],
+  sicoobWebhookUrl: ['SICOOB_WEBHOOK_URL'],
+  sicoobWebhookCadastrado: ['SICOOB_WEBHOOK_CADASTRADO'],
   plugPayToken: ['PLUGPAY_TOKEN', 'PLUGPAY_API_KEY'],
   wbuyUsuario: ['WBUY_USUARIO', 'WBUY_USERNAME'],
   wbuySenha: ['WBUY_SENHA', 'WBUY_PASSWORD'],
@@ -93,6 +100,7 @@ function resumirIntegracoes(config) {
   const whatsappWebhook = Boolean(config.metaVerifyToken && config.metaAppSecret);
   const whatsappModelos = Boolean(config.modeloFornecedor && config.modeloEntrega);
   const whatsappHabilitado = verdadeiro(config.outboxHabilitada);
+  const automacaoGmHabilitada = verdadeiro(config.automacaoGmWhatsappHabilitada);
   const sicoobCobrancaHabilitada = verdadeiro(config.sicoobCobrancaHabilitada);
   const sicoobWebhookHabilitado = verdadeiro(config.sicoobWebhookHabilitado);
   return [
@@ -108,7 +116,8 @@ function resumirIntegracoes(config) {
         transporte: whatsappTransporte,
         webhook: whatsappWebhook,
         modelos: whatsappModelos,
-        outbox: whatsappHabilitado
+        outbox: whatsappHabilitado,
+        automacao_gm: automacaoGmHabilitada
       }
     },
     {
@@ -126,12 +135,15 @@ function resumirIntegracoes(config) {
         implementado: true,
         requisitos: [Boolean(config.sicoobClientId), Boolean(config.sicoobClientSecret),
           Boolean(config.sicoobCertPath), Boolean(config.sicoobKeyPath),
-          Boolean(config.sicoobChavePix)],
+          Boolean(config.sicoobChavePix), Boolean(config.sicoobWebhookCaPath),
+          verdadeiro(config.sicoobWebhookMtlsConfigurado),
+          verdadeiro(config.sicoobWebhookCadastrado)],
         habilitado: sicoobCobrancaHabilitada && sicoobWebhookHabilitado
       }),
       componentes: { cobranca: true, conciliacao: true,
         cobranca_habilitada: sicoobCobrancaHabilitada,
-        webhook_publico_mtls: sicoobWebhookHabilitado }
+        webhook_publico_mtls: sicoobWebhookHabilitado &&
+          verdadeiro(config.sicoobWebhookMtlsConfigurado) }
     },
     {
       codigo: 'PLUGPAY',
@@ -181,6 +193,76 @@ function resumirIntegracoes(config) {
       }
     }
   ];
+}
+
+function arquivoLegivel(caminho) {
+  if (!caminho) return false;
+  try {
+    fs.accessSync(caminho, fs.constants.R_OK);
+    return fs.statSync(caminho).isFile();
+  } catch {
+    return false;
+  }
+}
+
+function webhookUrlValida(valor) {
+  try {
+    const url = new URL(String(valor || ''));
+    return url.protocol === 'https:' && Boolean(url.hostname) &&
+      !url.username && !url.password && !url.hash;
+  } catch {
+    return false;
+  }
+}
+
+function diagnosticarProntidaoSicoob(config, opcoes = {}) {
+  const legivel = opcoes.arquivoLegivel || arquivoLegivel;
+  const ambiente = String(config.sicoobAmbiente || 'homologacao')
+    .trim().toLowerCase();
+  const ambienteValido = ['homologacao', 'producao'].includes(ambiente);
+  const credenciais = Boolean(
+    config.sicoobClientId && config.sicoobClientSecret && config.sicoobChavePix
+  );
+  const certificadoLegivel = legivel(config.sicoobCertPath);
+  const chaveLegivel = legivel(config.sicoobKeyPath);
+  const caSaidaLegivel = !config.sicoobCaPath || legivel(config.sicoobCaPath);
+  const caWebhookLegivel = legivel(config.sicoobWebhookCaPath);
+  const proxyMtls = verdadeiro(config.sicoobWebhookMtlsConfigurado);
+  const webhookUrlConfigurada = webhookUrlValida(config.sicoobWebhookUrl);
+  const webhookCadastrado = verdadeiro(config.sicoobWebhookCadastrado);
+  const cobrancaHabilitada = verdadeiro(config.sicoobCobrancaHabilitada);
+  const webhookHabilitado = verdadeiro(config.sicoobWebhookHabilitado);
+  const bloqueios = [];
+
+  if (!ambienteValido) bloqueios.push('AMBIENTE_SICOOB_INVALIDO');
+  if (!credenciais) bloqueios.push('CREDENCIAIS_SICOOB_INCOMPLETAS');
+  if (!certificadoLegivel) bloqueios.push('CERTIFICADO_SICOOB_INACESSIVEL');
+  if (!chaveLegivel) bloqueios.push('CHAVE_PRIVADA_SICOOB_INACESSIVEL');
+  if (!caSaidaLegivel) bloqueios.push('CA_SICOOB_INACESSIVEL');
+  if (!caWebhookLegivel) bloqueios.push('CA_WEBHOOK_SICOOB_INACESSIVEL');
+  if (!proxyMtls) bloqueios.push('PROXY_MTLS_SICOOB_NAO_CONFIGURADO');
+  if (!webhookUrlConfigurada) bloqueios.push('URL_WEBHOOK_SICOOB_INVALIDA');
+  if (!webhookCadastrado) bloqueios.push('WEBHOOK_SICOOB_NAO_CADASTRADO');
+  if (!cobrancaHabilitada) bloqueios.push('COBRANCA_SICOOB_DESABILITADA');
+  if (!webhookHabilitado) bloqueios.push('WEBHOOK_SICOOB_DESABILITADO');
+
+  return {
+    pronto_para_teste: bloqueios.length === 0,
+    ambiente: ambienteValido ? ambiente.toUpperCase() : 'INVALIDO',
+    componentes: {
+      credenciais,
+      certificado_cliente_legivel: certificadoLegivel,
+      chave_privada_legivel: chaveLegivel,
+      ca_saida_legivel: caSaidaLegivel,
+      ca_webhook_legivel: caWebhookLegivel,
+      proxy_mtls: proxyMtls,
+      webhook_url_configurada: webhookUrlConfigurada,
+      webhook_cadastrado: webhookCadastrado,
+      cobranca_habilitada: cobrancaHabilitada,
+      webhook_habilitado: webhookHabilitado
+    },
+    bloqueios
+  };
 }
 
 function destinatarioWhatsappValido(valor) {
@@ -240,6 +322,7 @@ async function diagnosticarProntidaoWhatsapp(pool, config) {
 
   if (!resumo.componentes.transporte) bloqueios.push('TRANSPORTE_WHATSAPP_INCOMPLETO');
   if (!resumo.componentes.webhook) bloqueios.push('WEBHOOK_WHATSAPP_INCOMPLETO');
+  if (!resumo.componentes.automacao_gm) bloqueios.push('AUTOMACAO_GM_DESABILITADA');
   if (!fornecedorAprovado) bloqueios.push('MODELO_CONSULTA_FORNECEDOR_NAO_HOMOLOGADO');
   if (!entregaAprovada) bloqueios.push('MODELO_ENTREGA_CLIENTE_NAO_HOMOLOGADO');
   if (!fornecedores.length) bloqueios.push('FORNECEDOR_GM_NAO_CADASTRADO');
@@ -251,6 +334,7 @@ async function diagnosticarProntidaoWhatsapp(pool, config) {
   return {
     pronto_para_homologar: bloqueios.length === 0,
     worker_habilitado: resumo.componentes.outbox,
+    automacao_habilitada: resumo.componentes.automacao_gm,
     bloqueios,
     modelos: {
       consulta_fornecedor: {
@@ -287,27 +371,24 @@ async function obterConfiguracaoWhatsapp(pool) {
     modeloEntrega: config.modeloEntrega,
     idiomaModeloEntrega: config.idiomaModeloEntrega || 'pt_BR',
     outboxHabilitada: verdadeiro(config.outboxHabilitada),
+    automacaoGmHabilitada: verdadeiro(config.automacaoGmWhatsappHabilitada),
     mediaDir: config.whatsappMediaDir,
     mediaMaxBytes: Number(config.whatsappMediaMaxBytes) || null
   };
 }
 
-async function obterConfiguracaoSicoob(pool) {
+async function obterConfiguracaoSicoob(pool, opcoes = {}) {
   const config = await carregarConfiguracoesIntegracoes(pool);
   const producao = String(config.sicoobAmbiente).toLowerCase() === 'producao';
-  const webhookHabilitado = verdadeiro(config.sicoobWebhookHabilitado);
-  const cobrancaHabilitada = verdadeiro(config.sicoobCobrancaHabilitada);
-  const credenciaisConfiguradas = Boolean(
-    config.sicoobClientId && config.sicoobClientSecret &&
-    config.sicoobCertPath && config.sicoobKeyPath && config.sicoobChavePix
-  );
+  const prontidao = diagnosticarProntidaoSicoob(config, opcoes);
   return {
     clientId: config.sicoobClientId, clientSecret: config.sicoobClientSecret,
     certPath: config.sicoobCertPath, keyPath: config.sicoobKeyPath,
     caPath: config.sicoobCaPath, chavePix: config.sicoobChavePix,
-    webhookHabilitado,
+    webhookHabilitado: prontidao.componentes.webhook_habilitado &&
+      prontidao.componentes.proxy_mtls && prontidao.componentes.ca_webhook_legivel,
     // A criação só pode ser ativada junto com o webhook autenticado por mTLS.
-    habilitado: credenciaisConfiguradas && cobrancaHabilitada && webhookHabilitado,
+    habilitado: prontidao.pronto_para_teste,
     tokenUrl: producao
       ? 'https://apis.sisbr.com.br/cooperado/pix/token'
       : 'https://api-homol.sicoob.com.br/cooperado/pix/token',
@@ -341,6 +422,7 @@ async function obterConfiguracaoWBuy(pool) {
 
 module.exports = {
   carregarConfiguracoesIntegracoes,
+  diagnosticarProntidaoSicoob,
   diagnosticarProntidaoWhatsapp,
   obterConfiguracaoBling,
   obterConfiguracaoWhatsapp,

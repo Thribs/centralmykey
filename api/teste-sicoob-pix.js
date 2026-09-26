@@ -226,7 +226,7 @@ async function executar() {
     assert.strictEqual(respostaWebhook.status, 200);
     assert.strictEqual(recebido.ok, true);
     assert.strictEqual(recebido.resultados[0].processamento.status, 'CONCLUIDO');
-    const respostaRepetida = await fetchOriginal(`${api.url}/webhooks/sicoob`, {
+    const respostaRepetida = await fetchOriginal(`${api.url}/webhooks/sicoob/pix`, {
       method: 'POST', headers: { 'content-type': 'application/json',
         'x-client-cert-verify': 'SUCCESS' }, body: corpo
     });

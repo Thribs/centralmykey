@@ -521,6 +521,7 @@ export function Integracoes({ permissoes: permissoesSessao = [] }) {
   const [opcoesStatus, setOpcoesStatus] = useState({ provedores: [], dominios: [], situacoes: [] });
   const [resumo, setResumo] = useState({});
   const [prontidaoWhatsapp, setProntidaoWhatsapp] = useState(null);
+  const [prontidaoSicoob, setProntidaoSicoob] = useState(null);
   const [filtrosEventos, setFiltrosEventos] = useState({
     provedor: '', status: ''
   });
@@ -572,6 +573,7 @@ export function Integracoes({ permissoes: permissoesSessao = [] }) {
       setIntegracoes(dadosIntegracoes.integracoes || []);
       setResumo(dadosIntegracoes.modelos_whatsapp || {});
       setProntidaoWhatsapp(dadosIntegracoes.prontidao_whatsapp || null);
+      setProntidaoSicoob(dadosIntegracoes.prontidao_sicoob || null);
       setModelos(dadosModelos.dados || []);
       setEventos(dadosEventos.dados || []);
       setMapeamentos(dadosMapeamentos.dados || []);
@@ -877,6 +879,8 @@ export function Integracoes({ permissoes: permissoesSessao = [] }) {
             ? 'Worker habilitado' : 'Worker desabilitado'}</strong>
         </header>
         <div className="whatsapp-readiness-metrics">
+          <span>Automação GM <strong>{prontidaoWhatsapp.automacao_habilitada
+            ? 'Habilitada' : 'Desabilitada'}</strong></span>
           <span>Fornecedores GM <strong>{Number(
             prontidaoWhatsapp.fornecedores_gm?.destinatarios_validos || 0
           )}/{Number(prontidaoWhatsapp.fornecedores_gm?.total || 0)}</strong></span>
@@ -894,6 +898,7 @@ export function Integracoes({ permissoes: permissoesSessao = [] }) {
           {prontidaoWhatsapp.bloqueios.map(codigo => <li key={codigo}>{({
             TRANSPORTE_WHATSAPP_INCOMPLETO: 'Credenciais de transporte incompletas',
             WEBHOOK_WHATSAPP_INCOMPLETO: 'Autenticação do webhook incompleta',
+            AUTOMACAO_GM_DESABILITADA: 'Automação GM permanece desabilitada',
             MODELO_CONSULTA_FORNECEDOR_NAO_HOMOLOGADO:
               'Modelo de consulta ao fornecedor não está aprovado e ativo',
             MODELO_ENTREGA_CLIENTE_NAO_HOMOLOGADO:
@@ -903,6 +908,49 @@ export function Integracoes({ permissoes: permissoesSessao = [] }) {
               'Há fornecedor GM sem destinatário válido',
             FILA_WHATSAPP_REQUER_REVISAO:
               'A fila contém envio em processamento ou com estado incerto'
+          })[codigo] || codigo}</li>)}
+        </ul>}
+      </div>}
+
+      {prontidaoSicoob && <div className="admin-panel whatsapp-readiness">
+        <header>
+          <div>
+            <span>PRONTIDÃO SICOOB PIX</span>
+            <h2>{prontidaoSicoob.pronto_para_teste
+              ? 'Pronto para teste controlado'
+              : 'Teste externo bloqueado'}</h2>
+          </div>
+          <strong>Ambiente {prontidaoSicoob.ambiente || 'INVALIDO'}</strong>
+        </header>
+        <div className="whatsapp-readiness-metrics">
+          <span>Credenciais <strong>{prontidaoSicoob.componentes?.credenciais
+            ? 'Configuradas' : 'Pendentes'}</strong></span>
+          <span>Certificado <strong>{
+            prontidaoSicoob.componentes?.certificado_cliente_legivel &&
+            prontidaoSicoob.componentes?.chave_privada_legivel
+              ? 'Legível' : 'Pendente'}</strong></span>
+          <span>Webhook mTLS <strong>{prontidaoSicoob.componentes?.proxy_mtls
+            ? 'Configurado' : 'Pendente'}</strong></span>
+          <span>Webhook Sicoob <strong>{prontidaoSicoob.componentes?.webhook_cadastrado
+            ? 'Cadastrado' : 'Pendente'}</strong></span>
+          <span>Cobrança <strong>{prontidaoSicoob.componentes?.cobranca_habilitada
+            ? 'Habilitada' : 'Desabilitada'}</strong></span>
+        </div>
+        {prontidaoSicoob.bloqueios?.length > 0 && <ul>
+          {prontidaoSicoob.bloqueios.map(codigo => <li key={codigo}>{({
+            AMBIENTE_SICOOB_INVALIDO: 'Ambiente Sicoob inválido',
+            CREDENCIAIS_SICOOB_INCOMPLETAS: 'Client ID, segredo ou chave Pix ausente',
+            CERTIFICADO_SICOOB_INACESSIVEL: 'Certificado cliente ausente ou ilegível',
+            CHAVE_PRIVADA_SICOOB_INACESSIVEL: 'Chave privada ausente ou ilegível',
+            CA_SICOOB_INACESSIVEL: 'CA da conexão de saída está ilegível',
+            CA_WEBHOOK_SICOOB_INACESSIVEL: 'CA do webhook Sicoob ausente ou ilegível',
+            PROXY_MTLS_SICOOB_NAO_CONFIGURADO:
+              'Proxy exclusivo do webhook ainda não confirma mTLS',
+            URL_WEBHOOK_SICOOB_INVALIDA: 'URL HTTPS do webhook não está configurada',
+            WEBHOOK_SICOOB_NAO_CADASTRADO:
+              'Webhook ainda não foi cadastrado e confirmado no Sicoob',
+            COBRANCA_SICOOB_DESABILITADA: 'Criação de cobrança está desabilitada',
+            WEBHOOK_SICOOB_DESABILITADO: 'Recepção do webhook está desabilitada'
           })[codigo] || codigo}</li>)}
         </ul>}
       </div>}

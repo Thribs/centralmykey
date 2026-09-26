@@ -169,7 +169,7 @@ module.exports = function registrarRotasIntegracoes(app, pool, opcoes = {}) {
       }
     });
 
-  app.post('/webhooks/sicoob', async (req, res) => {
+  app.post(['/webhooks/sicoob', '/webhooks/sicoob/pix'], async (req, res) => {
     try {
       const config = opcoes.configuracaoSicoob || await obterConfiguracaoSicoob(pool);
       if (!config.webhookHabilitado) {

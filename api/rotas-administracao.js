@@ -1,5 +1,6 @@
 const {
   carregarConfiguracoesIntegracoes,
+  diagnosticarProntidaoSicoob,
   diagnosticarProntidaoWhatsapp,
   resumirIntegracoes
 } = require('./configuracoes-integracoes');
@@ -566,6 +567,7 @@ module.exports = function(app, pool) {
         const prontidaoWhatsapp = await diagnosticarProntidaoWhatsapp(
           pool, configuracoes
         );
+        const prontidaoSicoob = diagnosticarProntidaoSicoob(configuracoes);
 
         const [modelos] = await pool.query(`
           SELECT
@@ -580,7 +582,8 @@ module.exports = function(app, pool) {
           ok: true,
           integracoes: grupos,
           modelos_whatsapp: modelos[0],
-          prontidao_whatsapp: prontidaoWhatsapp
+          prontidao_whatsapp: prontidaoWhatsapp,
+          prontidao_sicoob: prontidaoSicoob
         });
       } catch (error) {
         console.error('Erro ao resumir integrações:', error);

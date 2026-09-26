@@ -5,6 +5,7 @@ const crypto = require('crypto');
 const express = require('express');
 const {
   carregarConfiguracoesIntegracoes,
+  diagnosticarProntidaoSicoob,
   diagnosticarProntidaoWhatsapp,
   obterConfiguracaoSicoob,
   obterConfiguracaoWhatsapp,
@@ -20,9 +21,13 @@ const CHAVES_TESTE = [
   'META_VERIFY_TOKEN', 'META_APP_SECRET',
   'WHATSAPP_MODELO_CONSULTA_FORNECEDOR',
   'WHATSAPP_MODELO_ENTREGA_RESULTADO', 'COMUNICACOES_OUTBOX_HABILITADO',
+  'AUTOMACAO_GM_WHATSAPP_HABILITADA',
   'SICOOB_CLIENT_ID', 'SICOOB_CLIENT_SECRET', 'SICOOB_CERT_PATH',
-  'SICOOB_KEY_PATH', 'SICOOB_CA_PATH', 'SICOOB_CHAVE_PIX', 'SICOOB_AMBIENTE',
+  'SICOOB_KEY_PATH', 'SICOOB_CA_PATH', 'SICOOB_WEBHOOK_CA_PATH',
+  'SICOOB_CHAVE_PIX', 'SICOOB_AMBIENTE',
   'SICOOB_COBRANCA_HABILITADA', 'SICOOB_WEBHOOK_HABILITADO',
+  'SICOOB_WEBHOOK_MTLS_CONFIGURADO',
+  'SICOOB_WEBHOOK_URL', 'SICOOB_WEBHOOK_CADASTRADO',
   'WBUY_USUARIO', 'WBUY_USERNAME', 'WBUY_SENHA', 'WBUY_PASSWORD',
   'WBUY_LOJA_URL', 'WBUY_TOKEN', 'WBUY_API_KEY',
   'BLING_CLIENT_ID', 'BLING_CLIENT_SECRET', 'BLING_REDIRECT_URI',
@@ -69,6 +74,7 @@ async function executar() {
     WHATSAPP_MODELO_CONSULTA_FORNECEDOR: 'consulta_teste',
     WHATSAPP_MODELO_ENTREGA_RESULTADO: 'entrega_teste',
     COMUNICACOES_OUTBOX_HABILITADO: 'true',
+    AUTOMACAO_GM_WHATSAPP_HABILITADA: 'true',
     SICOOB_CLIENT_ID: 'id-ficticio',
     WBUY_TOKEN: 'token-legado-ficticio'
   };
@@ -97,6 +103,7 @@ async function executar() {
     const whatsapp = await obterConfiguracaoWhatsapp(pool);
     assert.strictEqual(whatsapp.accessToken, valores.WHATSAPP_ACCESS_TOKEN);
     assert.strictEqual(whatsapp.outboxHabilitada, true);
+    assert.strictEqual(whatsapp.automacaoGmHabilitada, true);
 
     const resumo = resumirIntegracoes(carregada);
     const itemWhatsapp = resumo.find(item => item.codigo === 'WHATSAPP');
@@ -165,21 +172,48 @@ async function executar() {
       'FORNECEDORES_GM_SEM_DESTINATARIO_VALIDO'));
     assert.ok(prontidaoBloqueada.bloqueios.includes('FILA_WHATSAPP_REQUER_REVISAO'));
 
-    const sicoobHabilitado = await obterConfiguracaoSicoob(poolFalso({
+    const configuracaoSicoobCompleta = {
       SICOOB_CLIENT_ID: 'id-ficticio',
       SICOOB_CLIENT_SECRET: 'segredo-ficticio',
       SICOOB_CERT_PATH: '/certificado/ficticio',
       SICOOB_KEY_PATH: '/chave/ficticia',
+      SICOOB_WEBHOOK_CA_PATH: '/ca-webhook/ficticia',
       SICOOB_CHAVE_PIX: 'pix-ficticia',
       SICOOB_COBRANCA_HABILITADA: 'true',
-      SICOOB_WEBHOOK_HABILITADO: 'true'
-    }));
+      SICOOB_WEBHOOK_HABILITADO: 'true',
+      SICOOB_WEBHOOK_MTLS_CONFIGURADO: 'true',
+      SICOOB_WEBHOOK_URL: 'https://sicoob-webhook.teste.invalid/webhooks/sicoob',
+      SICOOB_WEBHOOK_CADASTRADO: 'true'
+    };
+    const diagnosticoSicoob = diagnosticarProntidaoSicoob(
+      await carregarConfiguracoesIntegracoes(poolFalso(configuracaoSicoobCompleta)),
+      { arquivoLegivel: () => true }
+    );
+    assert.strictEqual(diagnosticoSicoob.pronto_para_teste, true);
+    assert.deepStrictEqual(diagnosticoSicoob.bloqueios, []);
+    assert.ok(!JSON.stringify(diagnosticoSicoob).includes('fictici'),
+      'O diagnóstico Sicoob não deve expor valores de configuração');
+    const sicoobHabilitado = await obterConfiguracaoSicoob(
+      poolFalso(configuracaoSicoobCompleta), { arquivoLegivel: () => true }
+    );
     assert.strictEqual(sicoobHabilitado.habilitado, true);
+    assert.strictEqual(sicoobHabilitado.webhookHabilitado, true);
     const sicoobSemCredencial = await obterConfiguracaoSicoob(poolFalso({
       SICOOB_COBRANCA_HABILITADA: 'true',
       SICOOB_WEBHOOK_HABILITADO: 'true'
     }));
     assert.strictEqual(sicoobSemCredencial.habilitado, false);
+    const diagnosticoSicoobBloqueado = diagnosticarProntidaoSicoob({
+      sicoobAmbiente: 'desconhecido',
+      sicoobCobrancaHabilitada: 'true', sicoobWebhookHabilitado: 'true'
+    });
+    assert.strictEqual(diagnosticoSicoobBloqueado.pronto_para_teste, false);
+    assert.ok(diagnosticoSicoobBloqueado.bloqueios.includes(
+      'PROXY_MTLS_SICOOB_NAO_CONFIGURADO'));
+    assert.ok(diagnosticoSicoobBloqueado.bloqueios.includes(
+      'CA_WEBHOOK_SICOOB_INACESSIVEL'));
+    assert.ok(diagnosticoSicoobBloqueado.bloqueios.includes(
+      'WEBHOOK_SICOOB_NAO_CADASTRADO'));
 
     global.fetch = async (url, opcoes) => {
       assert.match(String(url), /^https:\/\/graph\.facebook\.com\/v98\.0\//);

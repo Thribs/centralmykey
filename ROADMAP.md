@@ -339,3 +339,13 @@ controlados; somente depois deve ocorrer um ensaio externo completo.
 Esta etapa deixa o cenário funcional com integrações simuladas. A ativação real
 continua bloqueada pela homologação WhatsApp/Sicoob e pela autorização de escrita
 do usuário de staging na API Joel Pires.
+
+O diagnóstico administrativo do Sicoob agora separa credenciais, certificado e
+chave legíveis, CA do webhook, proxy mTLS e as duas chaves de ativação. A
+cobrança automática só pode ficar disponível quando todos esses controles estão
+prontos. A leitura do VPS confirmou que o Nginx ativo ainda não valida o
+certificado cliente do webhook; nenhuma configuração de produção foi alterada.
+A chave geral da automação GM também nasce desligada: novas mensagens seguem
+para humano sem pedido, respostas IA pendentes não saem e a outbox cancela
+somente as comunicações ligadas a atendimentos automáticos; os testes com
+rollback comprovam os três bloqueios.

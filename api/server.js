@@ -242,7 +242,8 @@ async function executarComunicacoesOutbox() {
         nomeModeloFornecedor: whatsapp.modeloFornecedor,
         nomeModeloEntrega: whatsapp.modeloEntrega,
         idiomaModeloFornecedor: whatsapp.idiomaModeloFornecedor,
-        idiomaModeloEntrega: whatsapp.idiomaModeloEntrega
+        idiomaModeloEntrega: whatsapp.idiomaModeloEntrega,
+        automacaoGmHabilitada: whatsapp.automacaoGmHabilitada
       }
     );
     if (
@@ -268,7 +269,8 @@ async function executarMensagensAtendimento() {
     const resultado = await processarMensagensAtendimento(
       pool,
       app.locals.enviarMensagemWhatsapp,
-      { habilitado: whatsapp.outboxHabilitada }
+      { habilitado: whatsapp.outboxHabilitada,
+        automacaoGmHabilitada: whatsapp.automacaoGmHabilitada }
     );
     if (resultado.executado && (resultado.encontrados > 0 || resultado.falhas > 0)) {
       console.log('Processamento das mensagens de atendimento:', resultado);

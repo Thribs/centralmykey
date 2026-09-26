@@ -1474,7 +1474,14 @@ test('integrações administram modelos e mapeamentos sem chamar serviços exter
     hasText: 'PRONTIDÃO WHATSAPP GM'
   });
   await expect(prontidaoWhatsapp).toContainText('Worker desabilitado');
+  await expect(prontidaoWhatsapp).toContainText('Automação GM');
   await expect(prontidaoWhatsapp).not.toContainText(/\d{10,15}/);
+  const prontidaoSicoob = page.locator('.whatsapp-readiness', {
+    hasText: 'PRONTIDÃO SICOOB PIX'
+  });
+  await expect(prontidaoSicoob).toContainText('Teste externo bloqueado');
+  await expect(prontidaoSicoob).toContainText('Webhook mTLS');
+  await expect(prontidaoSicoob).not.toContainText(/client-secret|BEGIN PRIVATE KEY/i);
   const prontidaoComercio = page.locator('.whatsapp-readiness', {
     hasText: 'PRONTIDÃO DO COMÉRCIO ELETRÔNICO'
   });

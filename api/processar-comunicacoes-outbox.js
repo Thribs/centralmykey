@@ -47,7 +47,8 @@ function configuracao(opcoes = {}) {
       opcoes.idiomaModeloEntrega || opcoes.idiomaModelo ||
       process.env.WHATSAPP_MODELO_ENTREGA_RESULTADO_IDIOMA ||
       'pt_BR'
-    ).trim()
+    ).trim(),
+    automacaoGmHabilitada: opcoes.automacaoGmHabilitada ?? true
   };
 }
 
@@ -177,12 +178,21 @@ async function processarComunicacao(connection, itemId, enviarModelo, opcoes = {
       'SELECT modo FROM atendimentos WHERE id=? LIMIT 1',
       [atendimentoAutomaticoId]
     );
-    if (atendimentoAutomatico?.modo === 'HUMANO') {
+    if (atendimentoAutomatico?.modo === 'HUMANO' ||
+        cfg.automacaoGmHabilitada === false) {
+      const codigoCancelamento = cfg.automacaoGmHabilitada === false
+        ? 'AUTOMACAO_GM_DESABILITADA' : 'AUTOMACAO_ENCAMINHADA_HUMANO';
+      if (cfg.automacaoGmHabilitada === false &&
+          atendimentoAutomatico?.modo !== 'HUMANO') {
+        await encaminharHumanoConnection(connection, atendimentoAutomaticoId,
+          'AUTOMACAO_GM_DESABILITADA',
+          'Automacao GM desabilitada antes da comunicacao externa');
+      }
       await connection.query(
         `UPDATE comunicacoes_outbox
-            SET status='CANCELADA', erro_codigo='AUTOMACAO_ENCAMINHADA_HUMANO',
+            SET status='CANCELADA', erro_codigo=?,
                 erro_detalhe='Atendimento transferido para operação humana'
-          WHERE id=? AND status='PROCESSANDO'`, [item.id]
+          WHERE id=? AND status='PROCESSANDO'`, [codigoCancelamento, item.id]
       );
       await connection.query(
         `INSERT INTO pedido_historico
@@ -193,7 +203,7 @@ async function processarComunicacao(connection, itemId, enviarModelo, opcoes = {
           JSON.stringify({ comunicacao_id: item.id, finalidade: item.finalidade })]
       );
       return { processada: true, enviada: false, status: 'CANCELADA',
-        erro_codigo: 'AUTOMACAO_ENCAMINHADA_HUMANO' };
+        erro_codigo: codigoCancelamento };
     }
   }
   const payload = objetoJson(item.payload);
