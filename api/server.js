@@ -13,6 +13,9 @@ const {
   processarComunicacoesOutbox
 } = require('./processar-comunicacoes-outbox');
 const {
+  processarMensagensAtendimento
+} = require('./processar-mensagens-atendimento');
+const {
   obterConfiguracaoWhatsapp
 } = require('./configuracoes-integracoes');
 const {
@@ -102,6 +105,7 @@ require('./rotas-fechamentos-fornecedores')(app, pool);
 require('./rotas-estornos')(app, pool);
 require('./rotas-notificacoes')(app, pool);
 require('./rotas-auditoria')(app, pool);
+require('./rotas-pedidos')(app, pool);
 require('./rotas-whatsapp')(app, pool);
 require('./rotas-whatsapp-admin')(app, pool);
 require('./rotas-atendimento')(app, pool);
@@ -111,7 +115,6 @@ require('./rotas-mapeamentos-integracoes')(app, pool);
 require('./rotas-relatorios')(app, pool);
 require('./rotas-cadastros')(app, pool);
 require('./rotas-operacionais')(app, pool);
-require('./rotas-pedidos')(app, pool);
 
 /* =========================
    START
@@ -255,6 +258,28 @@ async function executarComunicacoesOutbox() {
   }
 }
 
+let mensagensAtendimentoEmAndamento = false;
+
+async function executarMensagensAtendimento() {
+  if (mensagensAtendimentoEmAndamento) return;
+  mensagensAtendimentoEmAndamento = true;
+  try {
+    const whatsapp = await obterConfiguracaoWhatsapp(pool);
+    const resultado = await processarMensagensAtendimento(
+      pool,
+      app.locals.enviarMensagemWhatsapp,
+      { habilitado: whatsapp.outboxHabilitada }
+    );
+    if (resultado.executado && (resultado.encontrados > 0 || resultado.falhas > 0)) {
+      console.log('Processamento das mensagens de atendimento:', resultado);
+    }
+  } catch (error) {
+    console.error('Erro no processamento das mensagens de atendimento:', error);
+  } finally {
+    mensagensAtendimentoEmAndamento = false;
+  }
+}
+
 let alertasOperacionaisEmAndamento = false;
 
 async function executarAlertasOperacionais() {
@@ -362,6 +387,18 @@ app.listen(port, '127.0.0.1', () => {
   );
 
   intervaloComunicacoes.unref();
+
+  executarMensagensAtendimento();
+
+  const intervaloMensagensAtendimento = setInterval(
+    executarMensagensAtendimento,
+    inteiroConfiguradoIntervalo(
+      process.env.MENSAGENS_ATENDIMENTO_INTERVALO_MS,
+      15 * 1000
+    )
+  );
+
+  intervaloMensagensAtendimento.unref();
 
   executarAlertasOperacionais();
 

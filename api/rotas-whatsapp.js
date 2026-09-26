@@ -3,6 +3,13 @@ const { obterConfiguracaoWhatsapp } = require('./configuracoes-integracoes');
 const {
   processarRespostaFornecedorWhatsapp
 } = require('./resposta-fornecedor-whatsapp');
+const {
+  encaminharHumano,
+  processarEntradaClienteWhatsapp
+} = require('./automacao-gm-whatsapp');
+const {
+  finalizarResultadoGmAutomatico
+} = require('./finalizar-resultado-gm-automatico');
 
 module.exports = function (app, pool) {
   // ============================================================
@@ -505,6 +512,9 @@ module.exports = function (app, pool) {
             );
             if (respostaFornecedor.processada) {
               await conexao.commit();
+              await finalizarResultadoGmAutomatico(
+                pool, respostaFornecedor.pedidoId
+              );
               continue;
             }
           }
@@ -607,6 +617,18 @@ module.exports = function (app, pool) {
           );
 
           await conexao.commit();
+          try {
+            await processarEntradaClienteWhatsapp(pool, app, {
+              atendimentoId,
+              mensagemExternaId,
+              tipoConteudo,
+              texto: conteudo
+            });
+          } catch (erroAutomacao) {
+            console.error('Falha na automação GM do WhatsApp:', erroAutomacao.message);
+            await encaminharHumano(pool, atendimentoId,
+              erroAutomacao.codigo || 'FALHA_AUTOMACAO_GM', erroAutomacao.message);
+          }
         } catch (erro) {
           await conexao.rollback();
 

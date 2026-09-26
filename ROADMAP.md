@@ -307,3 +307,19 @@ commit `188c864` em 21/09/2026, sem merge ou nova tag:
 - a ativação continua bloqueada até homologar os dois modelos da Meta e confirmar contatos válidos de fornecedores e clientes.
 
 Esses itens continuam **PARCIAIS** até as migrações serem validadas para publicação, os modelos serem homologados, o fluxo ser publicado com backup e um envio controlado ser comprovado sem dados reais. O fechamento de fornecedores também depende da aprovação da política operacional de período e pagamento; ele registra pagamentos realizados, mas não movimenta a conta bancária.
+
+## Atualização — automação WhatsApp da senha GM (26/09/2026)
+
+| Requisito | Situação | Evidência concreta no código | Teste existente | Lacuna | Próximo passo | Risco operacional |
+|---|---|---|---|---|---|---|
+| Receber intenção e pedir chassi | COMPROVADO EM TESTE | `api/automacao-gm-whatsapp.js` mantém o estado do atendimento, identifica senha GM, vincula cliente e agenda a pergunta | `teste-fluxo-whatsapp-gm.js` percorre webhook assinado, mensagem pendente e envio simulado | Falta homologação Meta | Homologar em número controlado | Texto fora do reconhecido vai para humano |
+| Consultar fonte de verdade e decidir cache/API/fornecedor | COMPROVADO EM TESTE | A automação reutiliza a mesma criação de pedido e o mesmo processamento GM das rotas operacionais | O novo teste comprova 404 simulado, fornecedor, custo e outbox; a suíte GM cobre cache, encontrado, inválidos e indisponibilidade | Nenhuma chamada externa faz parte do teste automático | Manter os mocks na regressão | Alteração do contrato externo pode exigir adaptação |
+| Enviar e receber fornecedor | COMPROVADO EM TESTE | Outbox existente envia o modelo; webhook exige protocolo, telefone e consulta previamente enviada | O novo teste envia a consulta simulada, recebe resposta estruturada e comprova idempotência | Modelos e números reais ainda não homologados | Homologar modelos e contatos | Sem homologação, a outbox deve continuar desabilitada |
+| Salvar resultado na API Joel Pires | BLOQUEADO EXTERNAMENTE | `api/salvar-senha-api-joelpires.js` envia `userId` e o objeto `senha`, sem `ID_TRANSACAO`; `api/finalizar-resultado-gm-automatico.js` exige POST e releitura idêntica | O novo teste usa mocks e comprova payload, gravação, releitura, cache e ausência de entrega quando o POST falha | O usuário configurado no staging foi recusado como `UsuarioNaoEncontrado` no ensaio de contrato | Joel Pires deve habilitar/corrigir o usuário de staging para gravação e confirmar o contrato do POST `/senhas/` | Ativar antes disso transfere respostas de fornecedor para atendimento humano |
+| Entregar ao cliente | COMPROVADO EM TESTE | A entrega só é agendada depois da releitura; sucesso finaliza o atendimento eletrônico | O novo teste comprova uma única entrega e estado `FINALIZADO` | Transporte Meta real pendente | Realizar ensaio controlado após resolver os dois bloqueios externos | Falha de envio transfere para humano |
+| Contingência humana | COMPROVADO EM TESTE | Todas as interrupções mudam o atendimento para `HUMANO/FILA`; a outbox cancela comunicação automática de atendimento já transferido | O teste comprova falha no envio da pergunta e falha na publicação Joel Pires, sem entrega | A operação humana precisa de procedimento de triagem | Documentar e ensaiar a fila com atendentes | Sem triagem, casos interrompidos podem aguardar na fila |
+
+O código desta atualização está apenas na branch `teste`. Não representa nova
+versão nem publicação. O próximo marco é resolver o acesso de gravação no
+staging da API Joel Pires e homologar os modelos WhatsApp com destinatários
+controlados; somente depois deve ocorrer um ensaio externo completo.

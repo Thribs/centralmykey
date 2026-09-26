@@ -77,7 +77,7 @@ module.exports = function (app, pool) {
   // ============================================================
 
   // Criar novo pedido
-  app.post('/api/pedidos', autenticarToken, exigirPermissao('PEDIDOS_SENHAS', 'criar'), async (req, res) => {
+  const criarPedido = async (req, res) => {
 
     const connection = await pool.getConnection();
 
@@ -815,6 +815,16 @@ if (bancoProprio.length) {
         },
         ip: req.ip || null
       });
+      if (Number.isInteger(Number(req.automacaoAtendimentoId)) &&
+          Number(req.automacaoAtendimentoId) > 0) {
+        await connection.query(
+          `INSERT INTO pedido_historico
+             (pedido_id, usuario_id, tipo, descricao, dados)
+           VALUES (?, NULL, 'ORIGEM_ATENDIMENTO_WHATSAPP_AUTOMATICO', ?, ?)`,
+          [resultado.insertId, 'Pedido criado pela automação GM do WhatsApp',
+            JSON.stringify({ atendimento_id: Number(req.automacaoAtendimentoId) })]
+        );
+      }
       await connection.commit();
 
       return res.status(201).json({
@@ -868,7 +878,26 @@ if (bancoProprio.length) {
 
     }
 
-  });
+  };
+
+  app.post('/api/pedidos', autenticarToken,
+    exigirPermissao('PEDIDOS_SENHAS', 'criar'), criarPedido);
+
+  app.locals.criarPedidoInterno = async ({
+    dados, usuarioId = null, ip = null, atendimentoId = null
+  }) => {
+    let statusHttp = 200;
+    let corpo = null;
+    const resposta = {
+      status(valor) { statusHttp = Number(valor); return this; },
+      json(valor) { corpo = valor; return valor; }
+    };
+    await criarPedido({
+      body: dados || {}, usuario: { id: usuarioId }, ip,
+      automacaoAtendimentoId: atendimentoId
+    }, resposta);
+    return { statusHttp, corpo };
+  };
 
   // ============================================================
   // CORRIGIR DADOS REJEITADOS E REPROCESSAR PEDIDO GM

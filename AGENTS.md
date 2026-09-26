@@ -13,7 +13,7 @@
   `feature/pagamento-manual-idempotente`, sem merge ou nova tag; backup
   `/opt/centralmykey-backups/20260922T024848Z`.
 
-O repositório é a fonte das alterações. Nunca desenvolver diretamente nos diretórios publicados. Antes de iniciar trabalho, inspecionar o estado do Git, preservar modificações existentes e criar uma branch. Nunca usar `git reset --hard`.
+O repositório é a fonte das alterações. Nunca desenvolver diretamente nos diretórios publicados. Antes de iniciar trabalho, inspecionar o estado do Git, preservar modificações existentes e trabalhar na branch `teste`. Nunca usar `git reset --hard`.
 
 O fluxo permanente usa somente duas branches de trabalho: `teste`, onde toda
 alteração é desenvolvida e validada, e `publico`, que deve apontar exatamente
@@ -43,6 +43,16 @@ O fluxo GM obrigatório é:
 5. Tratar HTTP 400, 417 e 422 como `DADOS_INVALIDOS`: manter o pedido em `AGUARDANDO_DADOS` e não acionar fornecedor.
 6. Em indisponibilidade real da API, manter o pedido aguardando reprocessamento e não acionar fornecedor.
 7. Selecionar o fornecedor ativo e disponível de menor custo: Márcio das 08h às 22h, custo R$ 22; Emerson das 08h às 19h, custo R$ 25.
+
+No atendimento automático pelo WhatsApp, reconhecer a intenção de senha GM,
+identificar um cliente ativo pelo telefone e solicitar o chassi. Depois do 404,
+a consulta ao fornecedor deve sair pela outbox. A resposta do fornecedor deve
+estar vinculada ao protocolo, telefone cadastrado e consulta enviada. Antes de
+entregar a senha ao cliente, salvar o resultado na API Joel Pires e relê-lo na
+fonte de verdade; somente a confirmação idêntica pode alimentar o cache local e
+liberar a entrega. Falha de reconhecimento, cadastro, criação, pagamento,
+transporte, gravação ou releitura deve transferir o atendimento para o modo
+humano e bloquear comunicações automáticas posteriores daquele atendimento.
 
 Qualquer mudança nesse fluxo deve manter as transições, o histórico e os lançamentos financeiros consistentes e idempotentes.
 

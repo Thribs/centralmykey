@@ -4,6 +4,11 @@ const {
   registrarNotificacao,
   resolverNotificacao
 } = require('./notificacoes-internas');
+const {
+  buscarAtendimentoAutomaticoDoPedido,
+  encaminharHumanoConnection,
+  registrarEstado
+} = require('./automacao-gm-whatsapp');
 
 const NOME_BLOQUEIO = 'central_mykey_comunicacoes_outbox';
 
@@ -126,6 +131,16 @@ async function registrarFalha(connection, item, erro) {
     console.error('Falha ao criar notificação de comunicação:', error.message);
   });
 
+  const atendimentoId = await buscarAtendimentoAutomaticoDoPedido(
+    connection, item.pedido_id
+  );
+  if (atendimentoId) {
+    await encaminharHumanoConnection(connection, atendimentoId, codigo,
+      entregaCliente
+        ? 'Falha ao entregar a senha GM ao cliente'
+        : 'Falha ao enviar a consulta GM ao fornecedor');
+  }
+
   return { processada: true, enviada: false, status, erro_codigo: codigo };
 }
 
@@ -153,6 +168,33 @@ async function processarComunicacao(connection, itemId, enviarModelo, opcoes = {
 
   if (!item) {
     return { processada: false, motivo: 'NAO_ENCONTRADA' };
+  }
+  const atendimentoAutomaticoId = await buscarAtendimentoAutomaticoDoPedido(
+    connection, item.pedido_id
+  );
+  if (atendimentoAutomaticoId) {
+    const [[atendimentoAutomatico]] = await connection.query(
+      'SELECT modo FROM atendimentos WHERE id=? LIMIT 1',
+      [atendimentoAutomaticoId]
+    );
+    if (atendimentoAutomatico?.modo === 'HUMANO') {
+      await connection.query(
+        `UPDATE comunicacoes_outbox
+            SET status='CANCELADA', erro_codigo='AUTOMACAO_ENCAMINHADA_HUMANO',
+                erro_detalhe='Atendimento transferido para operação humana'
+          WHERE id=? AND status='PROCESSANDO'`, [item.id]
+      );
+      await connection.query(
+        `INSERT INTO pedido_historico
+           (pedido_id, usuario_id, tipo, descricao, dados)
+         VALUES (?, NULL, 'COMUNICACAO_AUTOMATICA_CANCELADA', ?, ?)`,
+        [item.pedido_id,
+          'Comunicação automática cancelada após transferência para atendimento humano',
+          JSON.stringify({ comunicacao_id: item.id, finalidade: item.finalidade })]
+      );
+      return { processada: true, enviada: false, status: 'CANCELADA',
+        erro_codigo: 'AUTOMACAO_ENCAMINHADA_HUMANO' };
+    }
   }
   const payload = objetoJson(item.payload);
   const entregaCliente = item.finalidade === 'ENTREGA_CLIENTE';
@@ -227,6 +269,21 @@ async function processarComunicacao(connection, itemId, enviarModelo, opcoes = {
     ).catch(error => {
       console.error('Falha ao resolver notificação de comunicação:', error.message);
     });
+
+    if (entregaCliente) {
+      const atendimentoId = atendimentoAutomaticoId;
+      if (atendimentoId) {
+        await connection.query(
+          `UPDATE atendimentos SET status='FINALIZADO', modo='ELETRONICO',
+            assunto='Senha GM · entregue', finalizado_em=NOW()
+           WHERE id=? AND status NOT IN ('FINALIZADO','CANCELADO')`,
+          [atendimentoId]
+        );
+        await registrarEstado(connection, atendimentoId, {
+          etapa: 'CONCLUIDO', pedido_id: Number(item.pedido_id)
+        });
+      }
+    }
 
     return {
       processada: true,
