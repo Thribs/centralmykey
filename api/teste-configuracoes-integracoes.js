@@ -18,6 +18,9 @@ const {
 } = require('./seguranca-configuracoes');
 
 const CHAVES_TESTE = [
+  'WHATSAPP_PROVEDOR', 'SENDPULSE_CLIENT_ID', 'SENDPULSE_CLIENT_SECRET',
+  'SENDPULSE_WHATSAPP_BOT_ID', 'SENDPULSE_WEBHOOK_TOKEN',
+  'WHATSAPP_FORNECEDOR_MARCIO', 'WHATSAPP_FORNECEDOR_EMERSON',
   'WHATSAPP_ACCESS_TOKEN', 'WHATSAPP_PHONE_NUMBER_ID', 'WHATSAPP_API_VERSION',
   'META_VERIFY_TOKEN', 'META_APP_SECRET',
   'WHATSAPP_MODELO_CONSULTA_FORNECEDOR',
@@ -77,6 +80,8 @@ async function executar() {
     WHATSAPP_MODELO_ENTREGA_RESULTADO: 'entrega_teste',
     COMUNICACOES_OUTBOX_HABILITADO: 'true',
     AUTOMACAO_GM_WHATSAPP_HABILITADA: 'true',
+    WHATSAPP_FORNECEDOR_MARCIO: '5511999999999',
+    WHATSAPP_FORNECEDOR_EMERSON: '5511888888888',
     CHAVE_API_JOELPIRES: 'chave-joel-ficticia',
     ID_USUARIO_API_JOELPIRES: 'usuario-joel-ficticio',
     APIJOELPIRES_GRAVACAO_HOMOLOGADA: 'true',
@@ -101,6 +106,8 @@ async function executar() {
     );
     for (const chave of CHAVES_TESTE) delete process.env[chave];
     process.env.WHATSAPP_API_VERSION = 'v98.0';
+    process.env.WHATSAPP_FORNECEDOR_MARCIO = '5511999999999';
+    process.env.WHATSAPP_FORNECEDOR_EMERSON = '5511888888888';
     const pool = poolFalso(valores);
     const carregada = await carregarConfiguracoesIntegracoes(pool);
     assert.strictEqual(carregada.whatsappApiVersion, 'v98.0',
@@ -117,7 +124,7 @@ async function executar() {
     const itemBling = resumo.find(item => item.codigo === 'BLING');
     const itemWbuy = resumo.find(item => item.codigo === 'WBUY');
     assert.strictEqual(itemWhatsapp.status, 'CONFIGURADO');
-    assert.strictEqual(itemSicoob.status, 'PARCIAL');
+    assert.strictEqual(itemSicoob.status, 'PENDENTE');
     assert.strictEqual(itemSicoob.habilitado, false);
     assert.strictEqual(itemSicoob.componentes.cobranca_habilitada, false);
     assert.strictEqual(itemSicoob.componentes.webhook_publico_mtls, false);
@@ -168,7 +175,8 @@ async function executar() {
         }]];
         throw new Error('Consulta inesperada no diagnóstico bloqueado');
       }
-    }, { ...carregada, whatsappAccessToken: '', modeloEntrega: '' });
+    }, { ...carregada, whatsappAccessToken: '', modeloEntrega: '',
+      fornecedorMarcioWhatsapp: '', fornecedorEmersonWhatsapp: '' });
     assert.strictEqual(prontidaoBloqueada.pronto_para_homologar, false);
     assert.ok(prontidaoBloqueada.bloqueios.includes('TRANSPORTE_WHATSAPP_INCOMPLETO'));
     assert.ok(prontidaoBloqueada.bloqueios.includes(
@@ -190,6 +198,7 @@ async function executar() {
       SICOOB_WEBHOOK_URL: 'https://sicoob-webhook.teste.invalid/webhooks/sicoob',
       SICOOB_WEBHOOK_CADASTRADO: 'true'
     };
+    Object.assign(process.env, configuracaoSicoobCompleta);
     const diagnosticoSicoob = diagnosticarProntidaoSicoob(
       await carregarConfiguracoesIntegracoes(poolFalso(configuracaoSicoobCompleta)),
       { arquivoLegivel: () => true }

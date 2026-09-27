@@ -53,6 +53,13 @@ Sicoob. Somente a confirmação idempotente do pagamento pode iniciar a consulta
 operacional e acionar o fornecedor. Cliente com faturamento semanal deve ser
 encaminhado ao atendimento humano para preservar sua política comercial.
 
+O transporte WhatsApp atual é a SendPulse. As credenciais da conta, o ID do
+bot, o token privado do webhook e os números de Márcio e Emerson devem existir
+somente em variáveis de ambiente. O aplicativo publicado no Meta Developers é
+a infraestrutura vinculada à SendPulse; a Central não deve depender do número
+de teste da Meta para operar pelo provedor atual. Modelos devem ser aprovados no
+canal WhatsApp conectado à SendPulse antes de habilitar a automação.
+
 A automação GM do WhatsApp deve permanecer desabilitada por padrão. Somente
 definir `AUTOMACAO_GM_WHATSAPP_HABILITADA=true` depois que WhatsApp, modelos,
 destinatários, Sicoob, webhook mTLS e gravação na API Joel Pires estiverem

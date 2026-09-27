@@ -1,6 +1,10 @@
 const crypto = require('crypto');
 const { obterConfiguracaoWhatsapp } = require('./configuracoes-integracoes');
 const {
+  enviarMensagemSendPulse,
+  enviarModeloSendPulse
+} = require('./cliente-sendpulse-whatsapp');
+const {
   processarRespostaFornecedorWhatsapp
 } = require('./resposta-fornecedor-whatsapp');
 const {
@@ -12,12 +16,233 @@ const {
 } = require('./finalizar-resultado-gm-automatico');
 
 module.exports = function (app, pool) {
+  async function processarMensagensRecebidas(mensagens, configuracaoWhatsapp, origemMidia = 'meta') {
+    for (const item of mensagens) {
+        const mensagem = item.mensagem;
+        const telefone = String(mensagem.from || '').replace(/\D/g, '');
+        const mensagemExternaId = String(mensagem.id || '');
+
+        if (!telefone || !mensagemExternaId) {
+          continue;
+        }
+
+        let tipoConteudo = 'OUTRO';
+        let conteudo = null;
+        let midia = null;
+
+        if (mensagem.type === 'text') {
+          tipoConteudo = 'TEXTO';
+          conteudo = mensagem.text?.body || null;
+        } else if (mensagem.type === 'audio') {
+          tipoConteudo = 'AUDIO';
+          conteudo = 'Áudio recebido pelo WhatsApp';
+          midia = mensagem.audio;
+        } else if (mensagem.type === 'image') {
+          tipoConteudo = 'IMAGEM';
+          conteudo = mensagem.image?.caption || 'Imagem recebida pelo WhatsApp';
+          midia = mensagem.image;
+        } else if (mensagem.type === 'document') {
+          tipoConteudo = 'DOCUMENTO';
+          conteudo =
+            mensagem.document?.caption ||
+            mensagem.document?.filename ||
+            'Documento recebido pelo WhatsApp';
+          midia = mensagem.document;
+        } else if (mensagem.type === 'location') {
+          tipoConteudo = 'LOCALIZACAO';
+          conteudo = JSON.stringify({
+            latitude: mensagem.location?.latitude,
+            longitude: mensagem.location?.longitude,
+            nome: mensagem.location?.name || null,
+            endereco: mensagem.location?.address || null
+          });
+        } else if (mensagem.type === 'button') {
+          tipoConteudo = 'TEXTO';
+          conteudo = mensagem.button?.text || null;
+        } else if (mensagem.type === 'interactive') {
+          tipoConteudo = 'TEXTO';
+          conteudo =
+            mensagem.interactive?.button_reply?.title ||
+            mensagem.interactive?.list_reply?.title ||
+            'Resposta interativa recebida';
+        } else {
+          conteudo = `Mensagem do tipo ${mensagem.type || 'desconhecido'}`;
+        }
+
+        const conexao = await pool.getConnection();
+
+        try {
+          await conexao.beginTransaction();
+
+          const [duplicadas] = await conexao.query(
+            'SELECT id FROM atendimento_mensagens WHERE mensagem_externa_id = ? LIMIT 1',
+            [mensagemExternaId]
+          );
+
+          if (duplicadas.length) {
+            await conexao.rollback();
+            continue;
+          }
+
+          if (tipoConteudo === 'TEXTO') {
+            const respostaFornecedor = await processarRespostaFornecedorWhatsapp(
+              conexao,
+              {
+                telefone,
+                texto: conteudo,
+                mensagemExternaId
+              }
+            );
+            if (respostaFornecedor.processada) {
+              await conexao.commit();
+              await finalizarResultadoGmAutomatico(
+                pool, respostaFornecedor.pedidoId
+              );
+              continue;
+            }
+          }
+
+          const [clientes] = await conexao.query(
+            `SELECT id
+               FROM (
+                 SELECT id, 0 AS ordem
+                   FROM clientes
+                  WHERE telefone_normalizado = ? AND ativo = 1
+                 UNION ALL
+                 SELECT c.id, 1 AS ordem
+                   FROM cliente_telefones ct
+                   JOIN clientes c ON c.id = ct.cliente_id
+                  WHERE ct.telefone_normalizado = ?
+                    AND c.ativo = 1
+               ) encontrados
+              ORDER BY ordem
+              LIMIT 1`,
+            [telefone, telefone]
+          );
+
+          const clienteId = clientes[0]?.id || null;
+
+          const [abertos] = await conexao.query(
+            `SELECT id, modo
+               FROM atendimentos
+              WHERE telefone_normalizado = ?
+                AND canal = 'WHATSAPP'
+                AND status NOT IN ('FINALIZADO', 'CANCELADO')
+              ORDER BY id DESC
+              LIMIT 1
+              FOR UPDATE`,
+            [telefone]
+          );
+
+          let atendimentoId = abertos[0]?.id;
+          let atendimentoModo = abertos[0]?.modo || 'ELETRONICO';
+
+          if (!atendimentoId) {
+            const protocolo =
+              `ATD-${Date.now()}-${crypto.randomBytes(3).toString('hex').toUpperCase()}`;
+
+            const nome =
+              String(item.contato?.profile?.name || '').trim().slice(0, 120);
+
+            const [novo] = await conexao.query(
+              `INSERT INTO atendimentos
+                 (protocolo, cliente_id, telefone, telefone_normalizado,
+                  canal, modo, status, prioridade, assunto,
+                  ultima_mensagem_em)
+               VALUES (?, ?, ?, ?, 'WHATSAPP', 'ELETRONICO',
+                       'FILA', 'NORMAL', ?, NOW())`,
+              [
+                protocolo,
+                clienteId,
+                telefone,
+                telefone,
+                nome ? `WhatsApp - ${nome}` : 'Atendimento pelo WhatsApp'
+              ]
+            );
+
+            atendimentoId = novo.insertId;
+            atendimentoModo = 'ELETRONICO';
+          }
+
+          const [resultadoMensagem] = await conexao.query(
+            `INSERT INTO atendimento_mensagens
+               (atendimento_id, direcao, autor_tipo, tipo_conteudo,
+                texto, mensagem_externa_id)
+             VALUES (?, 'ENTRADA', 'CLIENTE', ?, ?, ?)`,
+            [atendimentoId, tipoConteudo, conteudo, mensagemExternaId]
+          );
+
+          if (midia?.id) {
+            await conexao.query(
+              `INSERT INTO atendimento_anexos
+                 (atendimento_id, mensagem_id, nome_arquivo, tipo_mime,
+                  caminho_arquivo, expira_em)
+               VALUES (?, ?, ?, ?, ?, DATE_ADD(NOW(), INTERVAL 7 DAY))`,
+              [
+                atendimentoId,
+                resultadoMensagem.insertId,
+                midia.filename || null,
+                midia.mime_type || null,
+                `${origemMidia}://${midia.id}`
+              ]
+            );
+          }
+
+          await conexao.query(
+            `UPDATE atendimentos
+                SET cliente_id = COALESCE(cliente_id, ?),
+                    ultima_mensagem_em = NOW(),
+                    status = CASE
+                      WHEN status = 'AGUARDANDO_CLIENTE'
+                        THEN IF(responsavel_id IS NULL, 'FILA', 'EM_ATENDIMENTO')
+                      ELSE status
+                    END
+              WHERE id = ?`,
+            [clienteId, atendimentoId]
+          );
+
+          await conexao.commit();
+          if (!configuracaoWhatsapp.automacaoGmHabilitada) {
+            if (atendimentoModo === 'ELETRONICO') {
+              await encaminharHumano(pool, atendimentoId,
+                'AUTOMACAO_GM_DESABILITADA',
+                'Automacao GM ainda nao foi habilitada para homologacao');
+            }
+            continue;
+          }
+          try {
+            await processarEntradaClienteWhatsapp(pool, app, {
+              atendimentoId,
+              mensagemExternaId,
+              tipoConteudo,
+              texto: conteudo
+            });
+          } catch (erroAutomacao) {
+            console.error('Falha na automação GM do WhatsApp:', erroAutomacao.message);
+            await encaminharHumano(pool, atendimentoId,
+              erroAutomacao.codigo || 'FALHA_AUTOMACAO_GM', erroAutomacao.message);
+          }
+        } catch (erro) {
+          await conexao.rollback();
+
+          if (erro.code !== 'ER_DUP_ENTRY') {
+            throw erro;
+          }
+        } finally {
+          conexao.release();
+        }
+      }
+  }
+
   // ============================================================
   // ENVIAR MENSAGEM PELA API OFICIAL DA META
   // ============================================================
 
   app.locals.enviarMensagemWhatsapp = async ({ telefone, texto }) => {
     const configuracao = await obterConfiguracaoWhatsapp(pool);
+    if (configuracao.provedor === 'SENDPULSE') {
+      return enviarMensagemSendPulse(configuracao, { telefone, texto });
+    }
     const token = configuracao.accessToken;
     const phoneNumberId = configuracao.phoneNumberId;
     const versao = configuracao.apiVersion;
@@ -103,6 +328,11 @@ module.exports = function (app, pool) {
     parametros = []
   }) => {
     const configuracao = await obterConfiguracaoWhatsapp(pool);
+    if (configuracao.provedor === 'SENDPULSE') {
+      return enviarModeloSendPulse(configuracao, {
+        telefone, nome, idioma, parametros
+      });
+    }
     const token = configuracao.accessToken;
     const phoneNumberId = configuracao.phoneNumberId;
     const versao = configuracao.apiVersion;
@@ -436,225 +666,59 @@ module.exports = function (app, pool) {
         return res.sendStatus(200);
       }
 
-      for (const item of mensagens) {
-        const mensagem = item.mensagem;
-        const telefone = String(mensagem.from || '').replace(/\D/g, '');
-        const mensagemExternaId = String(mensagem.id || '');
-
-        if (!telefone || !mensagemExternaId) {
-          continue;
-        }
-
-        let tipoConteudo = 'OUTRO';
-        let conteudo = null;
-        let midia = null;
-
-        if (mensagem.type === 'text') {
-          tipoConteudo = 'TEXTO';
-          conteudo = mensagem.text?.body || null;
-        } else if (mensagem.type === 'audio') {
-          tipoConteudo = 'AUDIO';
-          conteudo = 'Áudio recebido pelo WhatsApp';
-          midia = mensagem.audio;
-        } else if (mensagem.type === 'image') {
-          tipoConteudo = 'IMAGEM';
-          conteudo = mensagem.image?.caption || 'Imagem recebida pelo WhatsApp';
-          midia = mensagem.image;
-        } else if (mensagem.type === 'document') {
-          tipoConteudo = 'DOCUMENTO';
-          conteudo =
-            mensagem.document?.caption ||
-            mensagem.document?.filename ||
-            'Documento recebido pelo WhatsApp';
-          midia = mensagem.document;
-        } else if (mensagem.type === 'location') {
-          tipoConteudo = 'LOCALIZACAO';
-          conteudo = JSON.stringify({
-            latitude: mensagem.location?.latitude,
-            longitude: mensagem.location?.longitude,
-            nome: mensagem.location?.name || null,
-            endereco: mensagem.location?.address || null
-          });
-        } else if (mensagem.type === 'button') {
-          tipoConteudo = 'TEXTO';
-          conteudo = mensagem.button?.text || null;
-        } else if (mensagem.type === 'interactive') {
-          tipoConteudo = 'TEXTO';
-          conteudo =
-            mensagem.interactive?.button_reply?.title ||
-            mensagem.interactive?.list_reply?.title ||
-            'Resposta interativa recebida';
-        } else {
-          conteudo = `Mensagem do tipo ${mensagem.type || 'desconhecido'}`;
-        }
-
-        const conexao = await pool.getConnection();
-
-        try {
-          await conexao.beginTransaction();
-
-          const [duplicadas] = await conexao.query(
-            'SELECT id FROM atendimento_mensagens WHERE mensagem_externa_id = ? LIMIT 1',
-            [mensagemExternaId]
-          );
-
-          if (duplicadas.length) {
-            await conexao.rollback();
-            continue;
-          }
-
-          if (tipoConteudo === 'TEXTO') {
-            const respostaFornecedor = await processarRespostaFornecedorWhatsapp(
-              conexao,
-              {
-                telefone,
-                texto: conteudo,
-                mensagemExternaId
-              }
-            );
-            if (respostaFornecedor.processada) {
-              await conexao.commit();
-              await finalizarResultadoGmAutomatico(
-                pool, respostaFornecedor.pedidoId
-              );
-              continue;
-            }
-          }
-
-          const [clientes] = await conexao.query(
-            `SELECT id
-               FROM (
-                 SELECT id, 0 AS ordem
-                   FROM clientes
-                  WHERE telefone_normalizado = ? AND ativo = 1
-                 UNION ALL
-                 SELECT c.id, 1 AS ordem
-                   FROM cliente_telefones ct
-                   JOIN clientes c ON c.id = ct.cliente_id
-                  WHERE ct.telefone_normalizado = ?
-                    AND c.ativo = 1
-               ) encontrados
-              ORDER BY ordem
-              LIMIT 1`,
-            [telefone, telefone]
-          );
-
-          const clienteId = clientes[0]?.id || null;
-
-          const [abertos] = await conexao.query(
-            `SELECT id, modo
-               FROM atendimentos
-              WHERE telefone_normalizado = ?
-                AND canal = 'WHATSAPP'
-                AND status NOT IN ('FINALIZADO', 'CANCELADO')
-              ORDER BY id DESC
-              LIMIT 1
-              FOR UPDATE`,
-            [telefone]
-          );
-
-          let atendimentoId = abertos[0]?.id;
-          let atendimentoModo = abertos[0]?.modo || 'ELETRONICO';
-
-          if (!atendimentoId) {
-            const protocolo =
-              `ATD-${Date.now()}-${crypto.randomBytes(3).toString('hex').toUpperCase()}`;
-
-            const nome =
-              String(item.contato?.profile?.name || '').trim().slice(0, 120);
-
-            const [novo] = await conexao.query(
-              `INSERT INTO atendimentos
-                 (protocolo, cliente_id, telefone, telefone_normalizado,
-                  canal, modo, status, prioridade, assunto,
-                  ultima_mensagem_em)
-               VALUES (?, ?, ?, ?, 'WHATSAPP', 'ELETRONICO',
-                       'FILA', 'NORMAL', ?, NOW())`,
-              [
-                protocolo,
-                clienteId,
-                telefone,
-                telefone,
-                nome ? `WhatsApp - ${nome}` : 'Atendimento pelo WhatsApp'
-              ]
-            );
-
-            atendimentoId = novo.insertId;
-            atendimentoModo = 'ELETRONICO';
-          }
-
-          const [resultadoMensagem] = await conexao.query(
-            `INSERT INTO atendimento_mensagens
-               (atendimento_id, direcao, autor_tipo, tipo_conteudo,
-                texto, mensagem_externa_id)
-             VALUES (?, 'ENTRADA', 'CLIENTE', ?, ?, ?)`,
-            [atendimentoId, tipoConteudo, conteudo, mensagemExternaId]
-          );
-
-          if (midia?.id) {
-            await conexao.query(
-              `INSERT INTO atendimento_anexos
-                 (atendimento_id, mensagem_id, nome_arquivo, tipo_mime,
-                  caminho_arquivo, expira_em)
-               VALUES (?, ?, ?, ?, ?, DATE_ADD(NOW(), INTERVAL 7 DAY))`,
-              [
-                atendimentoId,
-                resultadoMensagem.insertId,
-                midia.filename || null,
-                midia.mime_type || null,
-                `meta://${midia.id}`
-              ]
-            );
-          }
-
-          await conexao.query(
-            `UPDATE atendimentos
-                SET cliente_id = COALESCE(cliente_id, ?),
-                    ultima_mensagem_em = NOW(),
-                    status = CASE
-                      WHEN status = 'AGUARDANDO_CLIENTE'
-                        THEN IF(responsavel_id IS NULL, 'FILA', 'EM_ATENDIMENTO')
-                      ELSE status
-                    END
-              WHERE id = ?`,
-            [clienteId, atendimentoId]
-          );
-
-          await conexao.commit();
-          if (!configuracaoWhatsapp.automacaoGmHabilitada) {
-            if (atendimentoModo === 'ELETRONICO') {
-              await encaminharHumano(pool, atendimentoId,
-                'AUTOMACAO_GM_DESABILITADA',
-                'Automacao GM ainda nao foi habilitada para homologacao');
-            }
-            continue;
-          }
-          try {
-            await processarEntradaClienteWhatsapp(pool, app, {
-              atendimentoId,
-              mensagemExternaId,
-              tipoConteudo,
-              texto: conteudo
-            });
-          } catch (erroAutomacao) {
-            console.error('Falha na automação GM do WhatsApp:', erroAutomacao.message);
-            await encaminharHumano(pool, atendimentoId,
-              erroAutomacao.codigo || 'FALHA_AUTOMACAO_GM', erroAutomacao.message);
-          }
-        } catch (erro) {
-          await conexao.rollback();
-
-          if (erro.code !== 'ER_DUP_ENTRY') {
-            throw erro;
-          }
-        } finally {
-          conexao.release();
-        }
-      }
+      await processarMensagensRecebidas(mensagens, configuracaoWhatsapp);
 
       return res.sendStatus(200);
     } catch (erro) {
       console.error('Erro ao processar webhook WhatsApp:', erro.message);
+      return res.sendStatus(500);
+    }
+  });
+
+  // A SendPulse não documenta assinatura criptográfica para webhooks globais.
+  // O token aleatório no caminho autentica a origem sem aparecer no payload.
+  app.post('/webhooks/sendpulse/whatsapp/:token', async (req, res) => {
+    let configuracao;
+    try {
+      configuracao = await obterConfiguracaoWhatsapp(pool);
+    } catch (error) {
+      console.error('Falha ao carregar configuração SendPulse:', error.message);
+      return res.sendStatus(503);
+    }
+    if (configuracao.provedor !== 'SENDPULSE' ||
+        !/^[A-Za-z0-9_-]{32,128}$/.test(configuracao.sendpulseWebhookToken || '')) {
+      return res.sendStatus(404);
+    }
+    const recebido = Buffer.from(String(req.params.token || ''));
+    const esperado = Buffer.from(String(configuracao.sendpulseWebhookToken));
+    if (recebido.length !== esperado.length ||
+        !crypto.timingSafeEqual(recebido, esperado)) {
+      return res.sendStatus(401);
+    }
+    const eventos = Array.isArray(req.body) ? req.body : [req.body];
+    const mensagens = [];
+    for (const evento of eventos) {
+      if (evento?.service !== 'whatsapp' || evento?.title !== 'incoming_message' ||
+          String(evento?.bot?.id || '') !== String(configuracao.sendpulseBotId || '')) {
+        continue;
+      }
+      const canal = evento?.info?.message?.channel_data || {};
+      const original = canal.message || {};
+      const telefone = String(evento?.contact?.phone || original.from || '')
+        .replace(/\D/g, '');
+      const id = String(original.id || canal.message_id ||
+        evento?.info?.message?.id || '');
+      if (!telefone || !id) continue;
+      mensagens.push({
+        mensagem: { ...original, from: telefone, id },
+        contato: { profile: { name: String(evento?.contact?.name || '') } }
+      });
+    }
+    try {
+      await processarMensagensRecebidas(mensagens, configuracao, 'sendpulse');
+      return res.sendStatus(200);
+    } catch (error) {
+      console.error('Erro ao processar webhook SendPulse:', error.message);
       return res.sendStatus(500);
     }
   });

@@ -3,6 +3,13 @@
 const fs = require('fs');
 
 const CHAVES = {
+  whatsappProvedor: ['WHATSAPP_PROVEDOR'],
+  sendpulseClientId: ['SENDPULSE_CLIENT_ID'],
+  sendpulseClientSecret: ['SENDPULSE_CLIENT_SECRET'],
+  sendpulseBotId: ['SENDPULSE_WHATSAPP_BOT_ID', 'SENDPULSE_BOT_ID'],
+  sendpulseWebhookToken: ['SENDPULSE_WEBHOOK_TOKEN'],
+  fornecedorMarcioWhatsapp: ['WHATSAPP_FORNECEDOR_MARCIO'],
+  fornecedorEmersonWhatsapp: ['WHATSAPP_FORNECEDOR_EMERSON'],
   whatsappAccessToken: ['WHATSAPP_ACCESS_TOKEN', 'META_ACCESS_TOKEN'],
   whatsappPhoneNumberId: ['WHATSAPP_PHONE_NUMBER_ID', 'META_PHONE_NUMBER_ID'],
   whatsappApiVersion: ['WHATSAPP_API_VERSION'],
@@ -43,6 +50,14 @@ const CHAVES = {
   blingOAuthHabilitado: ['BLING_OAUTH_HABILITADO']
 };
 
+const SOMENTE_AMBIENTE = new Set([
+  'whatsappProvedor', 'sendpulseClientId', 'sendpulseClientSecret',
+  'sendpulseBotId', 'sendpulseWebhookToken', 'fornecedorMarcioWhatsapp',
+  'fornecedorEmersonWhatsapp', 'sicoobClientId', 'sicoobClientSecret',
+  'sicoobCertPath', 'sicoobKeyPath', 'sicoobCaPath',
+  'sicoobWebhookCaPath', 'sicoobChavePix'
+]);
+
 function primeiroValor(mapa, aliases) {
   for (const chave of aliases) {
     const ambiente = process.env[chave];
@@ -69,6 +84,9 @@ async function carregarConfiguracoesIntegracoes(pool) {
   const configuracoes = Object.fromEntries(
     Object.entries(CHAVES).map(([nome, aliases]) => [nome, primeiroValor(mapa, aliases)])
   );
+  for (const nome of SOMENTE_AMBIENTE) {
+    configuracoes[nome] = primeiroValor({}, CHAVES[nome]);
+  }
   // A chave que cifra tokens deve existir apenas no ambiente do processo.
   configuracoes.blingTokenEncryptionKey =
     String(process.env.BLING_TOKEN_ENCRYPTION_KEY || '').trim();
@@ -79,6 +97,10 @@ function verdadeiro(valor) {
   return ['1', 'true', 'sim', 'yes', 'on'].includes(
     String(valor || '').trim().toLowerCase()
   );
+}
+
+function tokenWebhookSendPulseValido(valor) {
+  return /^[A-Za-z0-9_-]{32,128}$/.test(String(valor || ''));
 }
 
 function estadoConector({ implementado, requisitos, habilitado = null }) {
@@ -94,11 +116,17 @@ function estadoConector({ implementado, requisitos, habilitado = null }) {
 }
 
 function resumirIntegracoes(config) {
-  const whatsappTransporte = Boolean(
-    config.whatsappAccessToken && config.whatsappPhoneNumberId &&
-    config.whatsappApiVersion && /^v\d+\.\d+$/.test(config.whatsappApiVersion)
-  );
-  const whatsappWebhook = Boolean(config.metaVerifyToken && config.metaAppSecret);
+  const provedorWhatsapp = String(config.whatsappProvedor || 'META').toUpperCase();
+  const usandoSendPulse = provedorWhatsapp === 'SENDPULSE';
+  const whatsappTransporte = usandoSendPulse
+    ? Boolean(config.sendpulseClientId && config.sendpulseClientSecret &&
+      config.sendpulseBotId)
+    : Boolean(config.whatsappAccessToken && config.whatsappPhoneNumberId &&
+      config.whatsappApiVersion && /^v\d+\.\d+$/.test(config.whatsappApiVersion));
+  const whatsappWebhook = usandoSendPulse
+    ? Boolean(tokenWebhookSendPulseValido(config.sendpulseWebhookToken) &&
+      config.sendpulseBotId)
+    : Boolean(config.metaVerifyToken && config.metaAppSecret);
   const whatsappModelos = Boolean(config.modeloFornecedor && config.modeloEntrega);
   const whatsappHabilitado = verdadeiro(config.outboxHabilitada);
   const automacaoGmHabilitada = verdadeiro(config.automacaoGmWhatsappHabilitada);
@@ -107,13 +135,14 @@ function resumirIntegracoes(config) {
   return [
     {
       codigo: 'WHATSAPP',
-      nome: 'WhatsApp Cloud API',
+      nome: usandoSendPulse ? 'WhatsApp via SendPulse' : 'WhatsApp Cloud API',
       ...estadoConector({
         implementado: true,
         requisitos: [whatsappTransporte, whatsappWebhook, whatsappModelos],
         habilitado: whatsappHabilitado
       }),
       componentes: {
+        provedor: provedorWhatsapp,
         transporte: whatsappTransporte,
         webhook: whatsappWebhook,
         modelos: whatsappModelos,
@@ -335,9 +364,11 @@ async function diagnosticarProntidaoWhatsapp(pool, config) {
   );
   const fornecedorAprovado = modeloOperacional(modeloFornecedor, idiomaFornecedor);
   const entregaAprovada = modeloOperacional(modeloEntrega, idiomaEntrega);
-  const fornecedoresValidos = fornecedores.filter(item =>
-    destinatarioWhatsappValido(item.whatsapp || item.telefone)
-  ).length;
+  const numerosAmbiente = [
+    config.fornecedorMarcioWhatsapp,
+    config.fornecedorEmersonWhatsapp
+  ];
+  const fornecedoresValidos = numerosAmbiente.filter(destinatarioWhatsappValido).length;
   const filaSegura = Number(fila.processando || 0) === 0 &&
     Number(fila.incertas || 0) === 0;
   const bloqueios = [];
@@ -348,7 +379,7 @@ async function diagnosticarProntidaoWhatsapp(pool, config) {
   if (!fornecedorAprovado) bloqueios.push('MODELO_CONSULTA_FORNECEDOR_NAO_HOMOLOGADO');
   if (!entregaAprovada) bloqueios.push('MODELO_ENTREGA_CLIENTE_NAO_HOMOLOGADO');
   if (!fornecedores.length) bloqueios.push('FORNECEDOR_GM_NAO_CADASTRADO');
-  else if (fornecedoresValidos !== fornecedores.length) {
+  else if (fornecedoresValidos !== 2) {
     bloqueios.push('FORNECEDORES_GM_SEM_DESTINATARIO_VALIDO');
   }
   if (!filaSegura) bloqueios.push('FILA_WHATSAPP_REQUER_REVISAO');
@@ -369,7 +400,7 @@ async function diagnosticarProntidaoWhatsapp(pool, config) {
     fornecedores_gm: {
       total: fornecedores.length,
       destinatarios_validos: fornecedoresValidos,
-      destinatarios_invalidos: fornecedores.length - fornecedoresValidos
+      destinatarios_invalidos: 2 - fornecedoresValidos
     },
     fila: {
       pendentes: Number(fila.pendentes || 0),
@@ -383,6 +414,11 @@ async function diagnosticarProntidaoWhatsapp(pool, config) {
 async function obterConfiguracaoWhatsapp(pool) {
   const config = await carregarConfiguracoesIntegracoes(pool);
   return {
+    provedor: String(config.whatsappProvedor || 'META').trim().toUpperCase(),
+    sendpulseClientId: config.sendpulseClientId,
+    sendpulseClientSecret: config.sendpulseClientSecret,
+    sendpulseBotId: config.sendpulseBotId,
+    sendpulseWebhookToken: config.sendpulseWebhookToken,
     accessToken: config.whatsappAccessToken,
     phoneNumberId: config.whatsappPhoneNumberId,
     apiVersion: config.whatsappApiVersion,

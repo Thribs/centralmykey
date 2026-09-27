@@ -9,6 +9,18 @@ function textoParametro(valor, fallback = '-') {
   return (texto || fallback).slice(0, 1024);
 }
 
+function removerAcentos(valor) {
+  return String(valor || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .trim().toUpperCase();
+}
+
+function destinatarioFornecedor(fornecedor) {
+  const nome = removerAcentos(fornecedor?.fornecedor || fornecedor?.nome);
+  if (nome.includes('MARCIO')) return somenteNumeros(process.env.WHATSAPP_FORNECEDOR_MARCIO);
+  if (nome.includes('EMERSON')) return somenteNumeros(process.env.WHATSAPP_FORNECEDOR_EMERSON);
+  return somenteNumeros(fornecedor?.whatsapp || fornecedor?.telefone);
+}
+
 async function agendarConsultaFornecedor(connection, {
   pedido,
   fornecedor,
@@ -16,9 +28,7 @@ async function agendarConsultaFornecedor(connection, {
 }) {
   const pedidoId = Number(pedido?.id);
   const fornecedorId = Number(fornecedor?.fornecedor_id || fornecedor?.id);
-  const destinatario = somenteNumeros(
-    fornecedor?.whatsapp || fornecedor?.telefone
-  );
+  const destinatario = destinatarioFornecedor(fornecedor);
 
   if (!Number.isInteger(pedidoId) || pedidoId <= 0) {
     throw new Error('Pedido inválido para comunicação com fornecedor');
@@ -118,6 +128,7 @@ async function reagendarConsultaFornecedor(connection, {
        co.id,
        co.status,
        co.fornecedor_id,
+       f.nome AS fornecedor,
        f.whatsapp,
        f.telefone
      FROM comunicacoes_outbox co
@@ -151,9 +162,7 @@ async function reagendarConsultaFornecedor(connection, {
     throw erro;
   }
 
-  const destinatario = somenteNumeros(
-    comunicacao.whatsapp || comunicacao.telefone
-  );
+  const destinatario = destinatarioFornecedor(comunicacao);
   if (destinatario.length < 10 || destinatario.length > 15) {
     const erro = new Error('Fornecedor continua sem WhatsApp válido');
     erro.codigo = 'FORNECEDOR_SEM_WHATSAPP';

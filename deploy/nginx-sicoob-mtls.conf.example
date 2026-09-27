@@ -1,13 +1,17 @@
 # Modelo para um host HTTPS exclusivo do webhook Sicoob.
-# Substitua os caminhos e o server_name somente durante a homologação.
+# Use um subdomínio exclusivo de aiepires.com.br com certificado público
+# emitido/renovado pelo Certbot. Substitua os caminhos e o server_name somente
+# durante a homologação.
 # Este arquivo não deve conter certificados, chaves ou segredos reais.
 server {
     listen 443 ssl;
     server_name SICOOB_WEBHOOK_HOST;
 
-    ssl_certificate /CAMINHO/CERTIFICADO_TLS_PUBLICO.pem;
-    ssl_certificate_key /CAMINHO/CHAVE_TLS_PUBLICA.pem;
+    ssl_certificate /etc/letsencrypt/live/SICOOB_WEBHOOK_HOST/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/SICOOB_WEBHOOK_HOST/privkey.pem;
 
+    # CA fornecida pelo Sicoob para validar o certificado cliente do webhook.
+    # Ela é adicional ao certificado público emitido pelo Certbot.
     ssl_client_certificate /CAMINHO/CA_CLIENTE_SICOOB.pem;
     ssl_verify_client on;
     ssl_verify_depth 3;

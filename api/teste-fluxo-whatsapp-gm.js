@@ -1,7 +1,6 @@
 'use strict';
 
 const assert = require('assert');
-const crypto = require('crypto');
 const path = require('path');
 const express = require('express');
 const dotenv = require('dotenv');
@@ -112,23 +111,20 @@ async function fecharServidor(servidor) {
 
 async function webhook(url, segredo, { telefone, mensagemId, texto, nome }) {
   const corpo = JSON.stringify({
-    object: 'whatsapp_business_account',
-    entry: [{ changes: [{ value: {
-      contacts: [{ wa_id: telefone, profile: { name: nome || 'Teste GM' } }],
-      messages: [{
-        from: telefone,
-        id: mensagemId,
-        timestamp: String(Math.floor(Date.now() / 1000)),
-        type: 'text',
-        text: { body: texto }
-      }]
-    } }] }]
+    service: 'whatsapp',
+    title: 'incoming_message',
+    bot: { id: 'bot-sendpulse-ficticio' },
+    contact: { phone: telefone, name: nome || 'Teste GM' },
+    info: { message: { id: `sp-${mensagemId}`, channel_data: {
+      message_id: mensagemId,
+      message: { from: telefone, id: mensagemId,
+        timestamp: Math.floor(Date.now() / 1000), type: 'text',
+        text: { body: texto } }
+    } } }
   });
-  const assinatura = `sha256=${crypto.createHmac('sha256', segredo)
-    .update(Buffer.from(corpo)).digest('hex')}`;
-  return fetch(`${url}/webhooks/whatsapp`, {
+  return fetch(`${url}/webhooks/sendpulse/whatsapp/${segredo}`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'x-hub-signature-256': assinatura },
+    headers: { 'Content-Type': 'application/json' },
     body: corpo
   });
 }
@@ -151,10 +147,12 @@ async function enviarMensagemIaPendente(connection, atendimentoId, referencia) {
 async function executar() {
   const connection = await mysql.createConnection(configBanco);
   const fetchOriginal = global.fetch;
-  const segredoOriginal = process.env.META_APP_SECRET;
+  const segredoOriginal = process.env.SENDPULSE_WEBHOOK_TOKEN;
+  const provedorOriginal = process.env.WHATSAPP_PROVEDOR;
+  const botOriginal = process.env.SENDPULSE_WHATSAPP_BOT_ID;
   const automacaoOriginal = process.env.AUTOMACAO_GM_WHATSAPP_HABILITADA;
   const gravacaoJoelOriginal = process.env.APIJOELPIRES_GRAVACAO_HOMOLOGADA;
-  const segredo = 'segredo-ficticio-fluxo-gm';
+  const segredo = 'segredo_ficticio_fluxo_gm_1234567890';
   const marcador = `${process.pid}-${String(Date.now()).slice(-8)}`;
   const clienteNome = `CLIENTE WHATSAPP GM ${marcador}`;
   const fornecedorNome = `FORNECEDOR WHATSAPP GM ${marcador}`;
@@ -168,7 +166,9 @@ async function executar() {
   let erro;
 
   try {
-    process.env.META_APP_SECRET = segredo;
+    process.env.WHATSAPP_PROVEDOR = 'SENDPULSE';
+    process.env.SENDPULSE_WEBHOOK_TOKEN = segredo;
+    process.env.SENDPULSE_WHATSAPP_BOT_ID = 'bot-sendpulse-ficticio';
     process.env.AUTOMACAO_GM_WHATSAPP_HABILITADA = 'true';
     process.env.APIJOELPIRES_GRAVACAO_HOMOLOGADA = 'true';
     await connection.beginTransaction();
@@ -825,8 +825,12 @@ async function executar() {
     erro = falha;
   } finally {
     global.fetch = fetchOriginal;
-    if (segredoOriginal === undefined) delete process.env.META_APP_SECRET;
-    else process.env.META_APP_SECRET = segredoOriginal;
+    if (segredoOriginal === undefined) delete process.env.SENDPULSE_WEBHOOK_TOKEN;
+    else process.env.SENDPULSE_WEBHOOK_TOKEN = segredoOriginal;
+    if (provedorOriginal === undefined) delete process.env.WHATSAPP_PROVEDOR;
+    else process.env.WHATSAPP_PROVEDOR = provedorOriginal;
+    if (botOriginal === undefined) delete process.env.SENDPULSE_WHATSAPP_BOT_ID;
+    else process.env.SENDPULSE_WHATSAPP_BOT_ID = botOriginal;
     if (automacaoOriginal === undefined) {
       delete process.env.AUTOMACAO_GM_WHATSAPP_HABILITADA;
     } else {
