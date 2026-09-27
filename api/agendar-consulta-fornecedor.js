@@ -204,6 +204,7 @@ async function reagendarConsultaFornecedor(connection, {
 
 module.exports = {
   agendarConsultaFornecedor,
+  destinatarioFornecedor,
   reagendarConsultaFornecedor,
   somenteNumeros
 };

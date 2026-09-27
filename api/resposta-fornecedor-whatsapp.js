@@ -3,6 +3,7 @@
 const {
   registrarResultadoFornecedor
 } = require('./resultado-fornecedor');
+const { destinatarioFornecedor } = require('./agendar-consulta-fornecedor');
 
 function semAcentos(valor) {
   return String(valor || '')
@@ -89,14 +90,11 @@ async function processarRespostaFornecedorWhatsapp(connection, {
   }
 
   const [pedidos] = await connection.query(
-    `SELECT p.id, p.fornecedor_id
+    `SELECT p.id, p.fornecedor_id, f.nome AS fornecedor,
+            f.whatsapp, f.telefone
        FROM pedidos_senha p
        INNER JOIN fornecedores f ON f.id = p.fornecedor_id AND f.ativo = 1
       WHERE UPPER(p.protocolo) = ?
-        AND (
-          REGEXP_REPLACE(COALESCE(NULLIF(f.whatsapp, ''), f.telefone), '[^0-9]', '') = ?
-          OR RIGHT(REGEXP_REPLACE(COALESCE(NULLIF(f.whatsapp, ''), f.telefone), '[^0-9]', ''), 11) = RIGHT(?, 11)
-        )
         AND EXISTS (
           SELECT 1
             FROM comunicacoes_outbox co
@@ -107,9 +105,16 @@ async function processarRespostaFornecedorWhatsapp(connection, {
         )
       ORDER BY p.id DESC
       LIMIT 1`,
-    [interpretada.protocolo, numero, numero]
+    [interpretada.protocolo]
   );
-  if (!pedidos.length) {
+  const destinatarioEsperado = pedidos[0]
+    ? destinatarioFornecedor(pedidos[0])
+    : '';
+  const remetenteValido = destinatarioEsperado && (
+    destinatarioEsperado === numero ||
+    destinatarioEsperado.slice(-11) === numero.slice(-11)
+  );
+  if (!pedidos.length || !remetenteValido) {
     return { processada: false, reconhecida: true, erro: 'VINCULO_NAO_ENCONTRADO' };
   }
 

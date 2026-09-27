@@ -97,6 +97,7 @@ async function enviarMensagem(url, segredo, { telefone, mensagemId, texto }) {
 async function executar() {
   const connection = await mysql.createConnection(configBanco);
   const segredoOriginal = process.env.META_APP_SECRET;
+  const marcioOriginal = process.env.WHATSAPP_FORNECEDOR_MARCIO;
   const segredo = 'segredo-ficticio-retorno-fornecedor';
   const marcador = `${process.pid}-${String(Date.now()).slice(-8)}`;
   const protocolo = `WFR${process.pid}${String(Date.now()).slice(-7)}`.toUpperCase();
@@ -122,6 +123,7 @@ async function executar() {
     );
 
     process.env.META_APP_SECRET = segredo;
+    process.env.WHATSAPP_FORNECEDOR_MARCIO = fornecedorTelefone;
     await connection.beginTransaction();
     await criarTabelaOutboxTemporaria(connection);
 
@@ -142,7 +144,7 @@ async function executar() {
       `INSERT INTO fornecedores
          (nome, whatsapp, tipo, horario_inicio, horario_fim, ativo)
        VALUES (?, ?, 'PESSOA', '00:00:00', '23:59:59', 1)`,
-      [`FORNECEDOR WEBHOOK ${marcador}`, fornecedorTelefone]
+      [`MÁRCIO WEBHOOK ${marcador}`, 'telefone-antigo-invalido']
     );
     const [pedido] = await connection.query(
       `INSERT INTO pedidos_senha
@@ -268,6 +270,8 @@ async function executar() {
   } finally {
     if (segredoOriginal === undefined) delete process.env.META_APP_SECRET;
     else process.env.META_APP_SECRET = segredoOriginal;
+    if (marcioOriginal === undefined) delete process.env.WHATSAPP_FORNECEDOR_MARCIO;
+    else process.env.WHATSAPP_FORNECEDOR_MARCIO = marcioOriginal;
     try {
       await fecharServidor(servidor);
       await connection.rollback();
@@ -278,7 +282,7 @@ async function executar() {
            (SELECT COUNT(*) FROM clientes WHERE nome = ?) AS clientes`,
         [
           protocolo,
-          `FORNECEDOR WEBHOOK ${marcador}`,
+          `MÁRCIO WEBHOOK ${marcador}`,
           `CLIENTE WEBHOOK FORNECEDOR ${marcador}`
         ]
       );
