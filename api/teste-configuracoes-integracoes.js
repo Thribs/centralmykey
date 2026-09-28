@@ -201,6 +201,15 @@ async function executar() {
       'FORNECEDORES_GM_SEM_DESTINATARIO_VALIDO'));
     assert.ok(prontidaoBloqueada.bloqueios.includes('FILA_WHATSAPP_REQUER_REVISAO'));
 
+    const prontidaoSemWorker = await diagnosticarProntidaoWhatsapp(
+      poolProntidao,
+      { ...carregada, outboxHabilitada: '' }
+    );
+    assert.strictEqual(prontidaoSemWorker.pronto_para_homologar, false);
+    assert.strictEqual(prontidaoSemWorker.worker_habilitado, false);
+    assert.ok(prontidaoSemWorker.bloqueios.includes(
+      'OUTBOX_WHATSAPP_DESABILITADA'));
+
     const configuracaoSicoobCompleta = {
       SICOOB_CLIENT_ID: 'id-ficticio',
       SICOOB_CLIENT_SECRET: 'segredo-ficticio',

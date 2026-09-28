@@ -935,6 +935,7 @@ export function Integracoes({ permissoes: permissoesSessao = [] }) {
           {prontidaoWhatsapp.bloqueios.map(codigo => <li key={codigo}>{({
             TRANSPORTE_WHATSAPP_INCOMPLETO: 'Credenciais de transporte incompletas',
             WEBHOOK_WHATSAPP_INCOMPLETO: 'Autenticação do webhook incompleta',
+            OUTBOX_WHATSAPP_DESABILITADA: 'Worker de envio da outbox está desabilitado',
             AUTOMACAO_GM_DESABILITADA: 'Automação GM permanece desabilitada',
             MODELO_CONSULTA_FORNECEDOR_NAO_HOMOLOGADO:
               'Modelo de consulta ao fornecedor não está aprovado e ativo',

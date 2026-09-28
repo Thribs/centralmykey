@@ -384,6 +384,7 @@ async function diagnosticarProntidaoWhatsapp(pool, config) {
 
   if (!resumo.componentes.transporte) bloqueios.push('TRANSPORTE_WHATSAPP_INCOMPLETO');
   if (!resumo.componentes.webhook) bloqueios.push('WEBHOOK_WHATSAPP_INCOMPLETO');
+  if (!resumo.componentes.outbox) bloqueios.push('OUTBOX_WHATSAPP_DESABILITADA');
   if (!resumo.componentes.automacao_gm) bloqueios.push('AUTOMACAO_GM_DESABILITADA');
   if (!fornecedorAprovado) bloqueios.push('MODELO_CONSULTA_FORNECEDOR_NAO_HOMOLOGADO');
   if (!entregaAprovada) bloqueios.push('MODELO_ENTREGA_CLIENTE_NAO_HOMOLOGADO');
