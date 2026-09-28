@@ -89,9 +89,29 @@ async function enviarEvento(url, segredo, mensagemId, status, timestamp) {
   });
 }
 
+async function enviarFalhaSendPulse(url, token, botId, telefone, mensagemId) {
+  return fetch(`${url}/webhooks/sendpulse/whatsapp/${token}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify([{
+      service: 'whatsapp', title: 'failed_delivery',
+      bot: { id: botId }, contact: { phone: telefone },
+      info: {
+        timestamp: Math.floor(Date.now() / 1000),
+        error_message: 'Falha fictícia de entrega',
+        error_code: 470,
+        message_id: mensagemId
+      }
+    }])
+  });
+}
+
 async function executar() {
   const connection = await mysql.createConnection(configBanco);
   const segredoOriginal = process.env.META_APP_SECRET;
+  const provedorOriginal = process.env.WHATSAPP_PROVEDOR;
+  const botOriginal = process.env.SENDPULSE_WHATSAPP_BOT_ID;
+  const tokenOriginal = process.env.SENDPULSE_WEBHOOK_TOKEN;
   const segredoTeste = 'segredo-ficticio-webhook';
   const marcador = `${process.pid}-${String(Date.now()).slice(-8)}`;
   const protocolo = `TW${process.pid}${String(Date.now()).slice(-6)}`;
@@ -204,11 +224,88 @@ async function executar() {
       [mensagemId]
     );
     assert.strictEqual(estado.status, 'LIDA');
+
+    const tokenSendPulse = 'token_sendpulse_status_1234567890123456';
+    const botSendPulse = 'bot-sendpulse-status-ficticio';
+    const telefoneSendPulse = '5511555555555';
+    const [atendimento] = await connection.query(
+      `INSERT INTO atendimentos
+         (protocolo, cliente_id, telefone, telefone_normalizado, canal,
+          modo, status, prioridade, assunto, ultima_mensagem_em)
+       VALUES (?, ?, ?, ?, 'WHATSAPP', 'ELETRONICO', 'EM_ATENDIMENTO',
+               'NORMAL', 'Teste falha SendPulse', NOW())`,
+      [`ATD-SP-${marcador}`, cliente.id, telefoneSendPulse, telefoneSendPulse]
+    );
+    await connection.query(
+      `INSERT INTO pedido_historico
+         (pedido_id, tipo, descricao, dados)
+       VALUES (?, 'ORIGEM_ATENDIMENTO_WHATSAPP_AUTOMATICO', 'Teste',
+               JSON_OBJECT('atendimento_id', ?))`,
+      [pedido.insertId, atendimento.insertId]
+    );
+    await connection.query(
+      `UPDATE comunicacoes_outbox
+          SET status='ENVIADA', mensagem_externa_id='sendpulse:referencia-local',
+              destinatario=?, enviado_em=NOW(), erro_codigo=NULL, erro_detalhe=NULL
+        WHERE pedido_id=?`,
+      [telefoneSendPulse, pedido.insertId]
+    );
+    process.env.WHATSAPP_PROVEDOR = 'SENDPULSE';
+    process.env.SENDPULSE_WHATSAPP_BOT_ID = botSendPulse;
+    process.env.SENDPULSE_WEBHOOK_TOKEN = tokenSendPulse;
+
+    resposta = await enviarFalhaSendPulse(
+      api.url, tokenSendPulse, botSendPulse, telefoneSendPulse,
+      'mensagem-sendpulse-sem-correlacao-direta'
+    );
+    assert.strictEqual(resposta.status, 200);
+    const [[falhaSendPulse]] = await connection.query(
+      `SELECT co.status, co.erro_codigo, a.modo, a.prioridade,
+              (SELECT COUNT(*) FROM atendimento_mensagens m
+                WHERE m.atendimento_id=a.id AND m.direcao='INTERNA'
+                  AND m.texto LIKE 'Encaminhado para atendimento humano:%') AS avisos
+         FROM comunicacoes_outbox co
+         JOIN pedido_historico ph ON ph.pedido_id=co.pedido_id
+          AND ph.tipo='ORIGEM_ATENDIMENTO_WHATSAPP_AUTOMATICO'
+         JOIN atendimentos a ON a.id=CAST(JSON_UNQUOTE(
+           JSON_EXTRACT(ph.dados, '$.atendimento_id')) AS UNSIGNED)
+        WHERE co.pedido_id=? LIMIT 1`,
+      [pedido.insertId]
+    );
+    assert.deepStrictEqual({
+      status: falhaSendPulse.status,
+      erro: falhaSendPulse.erro_codigo,
+      modo: falhaSendPulse.modo,
+      prioridade: falhaSendPulse.prioridade,
+      avisos: Number(falhaSendPulse.avisos)
+    }, {
+      status: 'INCERTA', erro: 'SENDPULSE_470',
+      modo: 'HUMANO', prioridade: 'ALTA', avisos: 1
+    });
+
+    resposta = await enviarFalhaSendPulse(
+      api.url, tokenSendPulse, botSendPulse, telefoneSendPulse,
+      'mensagem-sendpulse-sem-correlacao-direta'
+    );
+    assert.strictEqual(resposta.status, 200);
+    const [[duplicada]] = await connection.query(
+      `SELECT COUNT(*) AS avisos FROM atendimento_mensagens
+        WHERE atendimento_id=? AND direcao='INTERNA'
+          AND texto LIKE 'Encaminhado para atendimento humano:%'`,
+      [atendimento.insertId]
+    );
+    assert.strictEqual(Number(duplicada.avisos), 1);
   } catch (falha) {
     erro = falha;
   } finally {
     if (segredoOriginal === undefined) delete process.env.META_APP_SECRET;
     else process.env.META_APP_SECRET = segredoOriginal;
+    if (provedorOriginal === undefined) delete process.env.WHATSAPP_PROVEDOR;
+    else process.env.WHATSAPP_PROVEDOR = provedorOriginal;
+    if (botOriginal === undefined) delete process.env.SENDPULSE_WHATSAPP_BOT_ID;
+    else process.env.SENDPULSE_WHATSAPP_BOT_ID = botOriginal;
+    if (tokenOriginal === undefined) delete process.env.SENDPULSE_WEBHOOK_TOKEN;
+    else process.env.SENDPULSE_WEBHOOK_TOKEN = tokenOriginal;
     try {
       await fecharServidor(servidor);
       await connection.rollback();
@@ -226,7 +323,7 @@ async function executar() {
 
   if (erro) throw erro;
   console.log(
-    'OK: webhook comprova entrega e leitura sem regressão (rollback confirmado)'
+    'OK: webhooks Meta e SendPulse atualizam entrega e escalam falha (rollback confirmado)'
   );
 }
 

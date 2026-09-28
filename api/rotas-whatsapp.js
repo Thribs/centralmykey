@@ -8,7 +8,9 @@ const {
   processarRespostaFornecedorWhatsapp
 } = require('./resposta-fornecedor-whatsapp');
 const {
+  buscarAtendimentoAutomaticoDoPedido,
   encaminharHumano,
+  encaminharHumanoConnection,
   processarEntradaClienteWhatsapp
 } = require('./automacao-gm-whatsapp');
 const {
@@ -16,6 +18,113 @@ const {
 } = require('./finalizar-resultado-gm-automatico');
 
 module.exports = function (app, pool) {
+  async function processarFalhasEntregaSendPulse(eventos) {
+    for (const evento of eventos) {
+      const info = evento?.info || {};
+      const mensagemExternaId = String(info.message_id || '').trim();
+      const telefone = String(evento?.contact?.phone || '').replace(/\D/g, '');
+      const codigo = `SENDPULSE_${String(info.error_code || 'FALHA_ENTREGA')}`
+        .slice(0, 80);
+      const detalhe = String(
+        info.error_message || 'Falha de entrega informada pela SendPulse'
+      ).slice(0, 500);
+      if (!mensagemExternaId) continue;
+
+      const conexao = await pool.getConnection();
+      try {
+        await conexao.beginTransaction();
+        let [comunicacoes] = await conexao.query(
+          `SELECT id, pedido_id
+             FROM comunicacoes_outbox
+            WHERE mensagem_externa_id = ?
+              AND status NOT IN ('ENTREGUE', 'LIDA', 'FALHOU', 'CANCELADA')
+            FOR UPDATE`,
+          [mensagemExternaId]
+        );
+        let correlacaoExata = comunicacoes.length > 0;
+        if (!correlacaoExata && telefone.length >= 10) {
+          [comunicacoes] = await conexao.query(
+            `SELECT id, pedido_id
+               FROM comunicacoes_outbox
+              WHERE canal = 'WHATSAPP' AND status = 'ENVIADA'
+                AND enviado_em >= DATE_SUB(NOW(), INTERVAL 1 HOUR)
+                AND RIGHT(REGEXP_REPLACE(destinatario, '[^0-9]', ''), 11)
+                    = RIGHT(?, 11)
+              FOR UPDATE`,
+            [telefone]
+          );
+        }
+
+        let [mensagens] = await conexao.query(
+          `SELECT id, atendimento_id
+             FROM atendimento_mensagens
+            WHERE mensagem_externa_id = ? AND status_entrega = 'ENVIADA'
+            FOR UPDATE`,
+          [mensagemExternaId]
+        );
+        correlacaoExata = correlacaoExata || mensagens.length > 0;
+        if (!mensagens.length && !correlacaoExata && telefone.length >= 10) {
+          [mensagens] = await conexao.query(
+            `SELECT m.id, m.atendimento_id
+               FROM atendimento_mensagens m
+               JOIN atendimentos a ON a.id = m.atendimento_id
+              WHERE m.direcao = 'SAIDA' AND m.status_entrega = 'ENVIADA'
+                AND m.status_atualizado_em >= DATE_SUB(NOW(), INTERVAL 1 HOUR)
+                AND RIGHT(REGEXP_REPLACE(a.telefone_normalizado, '[^0-9]', ''), 11)
+                    = RIGHT(?, 11)
+              FOR UPDATE`,
+            [telefone]
+          );
+        }
+
+        const totalCandidatos = comunicacoes.length + mensagens.length;
+        if (!totalCandidatos) {
+          await conexao.rollback();
+          continue;
+        }
+        const statusOutbox = correlacaoExata && totalCandidatos === 1
+          ? 'FALHOU' : 'INCERTA';
+        for (const item of comunicacoes) {
+          await conexao.query(
+            `UPDATE comunicacoes_outbox
+                SET status = ?, erro_codigo = ?, erro_detalhe = ?
+              WHERE id = ?`,
+            [statusOutbox, codigo, detalhe, item.id]
+          );
+        }
+        for (const item of mensagens) {
+          await conexao.query(
+            `UPDATE atendimento_mensagens
+                SET status_entrega = 'FALHOU', status_atualizado_em = NOW(),
+                    erro_codigo = ?, erro_detalhe = ?
+              WHERE id = ?`,
+            [codigo.slice(0, 64), detalhe, item.id]
+          );
+        }
+
+        const atendimentos = new Set(mensagens.map(item => Number(item.atendimento_id)));
+        for (const item of comunicacoes) {
+          const atendimentoId = await buscarAtendimentoAutomaticoDoPedido(
+            conexao, item.pedido_id
+          );
+          if (atendimentoId) atendimentos.add(atendimentoId);
+        }
+        for (const atendimentoId of atendimentos) {
+          await encaminharHumanoConnection(conexao, atendimentoId, codigo,
+            correlacaoExata
+              ? 'A SendPulse informou falha na entrega da mensagem'
+              : 'Falha de entrega SendPulse com correlação incerta; revisão obrigatória');
+        }
+        await conexao.commit();
+      } catch (error) {
+        await conexao.rollback();
+        throw error;
+      } finally {
+        conexao.release();
+      }
+    }
+  }
+
   async function processarMensagensRecebidas(mensagens, configuracaoWhatsapp, origemMidia = 'meta') {
     for (const item of mensagens) {
         const mensagem = item.mensagem;
@@ -697,11 +806,17 @@ module.exports = function (app, pool) {
     }
     const eventos = Array.isArray(req.body) ? req.body : [req.body];
     const mensagens = [];
+    const falhasEntrega = [];
     for (const evento of eventos) {
-      if (evento?.service !== 'whatsapp' || evento?.title !== 'incoming_message' ||
+      if (evento?.service !== 'whatsapp' ||
           String(evento?.bot?.id || '') !== String(configuracao.sendpulseBotId || '')) {
         continue;
       }
+      if (evento?.title === 'failed_delivery') {
+        falhasEntrega.push(evento);
+        continue;
+      }
+      if (evento?.title !== 'incoming_message') continue;
       const canal = evento?.info?.message?.channel_data || {};
       const original = canal.message || {};
       const telefone = String(evento?.contact?.phone || original.from || '')
@@ -715,6 +830,7 @@ module.exports = function (app, pool) {
       });
     }
     try {
+      await processarFalhasEntregaSendPulse(falhasEntrega);
       await processarMensagensRecebidas(mensagens, configuracao, 'sendpulse');
       return res.sendStatus(200);
     } catch (error) {
