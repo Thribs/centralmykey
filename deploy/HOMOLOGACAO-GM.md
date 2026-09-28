@@ -1,5 +1,25 @@
 # Homologação das integrações do fluxo GM
 
+## Dependências externas exatas
+
+Esta é a lista completa do que ainda precisa vir de fora do repositório. Os
+valores secretos devem ser instalados diretamente no VPS; não devem ser
+enviados por conversa nem registrados no Git.
+
+| Origem | O que precisa ser fornecido ou executado | O que isso libera |
+|---|---|---|
+| SendPulse | Instalar `SENDPULSE_CLIENT_ID`, `SENDPULSE_CLIENT_SECRET`, `SENDPULSE_WHATSAPP_BOT_ID` e um `SENDPULSE_WEBHOOK_TOKEN` privado no `.env` publicado | Autenticação do transporte e recepção do webhook |
+| Operação GM | Instalar `WHATSAPP_FORNECEDOR_MARCIO` e `WHATSAPP_FORNECEDOR_EMERSON`, em formato internacional somente com dígitos | Envio e validação do retorno de cada fornecedor |
+| Painel SendPulse | Criar e enviar para aprovação os dois modelos descritos abaixo no bot operacional | Sincronização dos modelos e envio fora da janela livre de 24 horas |
+| DNS de `aiepires.com.br` | Criar o registro A de `pix-central.aiepires.com.br` apontando para este VPS | Emissão do certificado público pelo Certbot |
+| Sicoob | Fornecer Client ID, segredo, chave Pix, certificado cliente, chave privada e cadeias de CA; depois cadastrar `https://pix-central.aiepires.com.br/webhooks/sicoob` | Cobrança Pix em homologação e confirmação por webhook mTLS |
+| API Joel Pires | Autorizar o `ID_USUARIO_API_JOELPIRES` já configurado a gravar no staging e informar um registro fictício removível ou um meio de limpeza | Ensaio seguro de POST, releitura e liberação da entrega de resultado do fornecedor |
+
+Depois que cada dependência estiver disponível no VPS ou no serviço
+correspondente, a equipe técnica pode executar sozinha backup, Certbot, Nginx,
+sincronização, testes controlados e diagnóstico de prontidão. A automação
+permanece desabilitada até todos os diagnósticos passarem.
+
 ## WhatsApp pela SendPulse
 
 Instalar no `.env` publicado, sem registrar valores no Git:
