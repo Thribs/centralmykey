@@ -1,3 +1,9 @@
+'use strict';
+
+const { obterConfiguracaoWhatsapp } = require('./configuracoes-integracoes');
+const { listarModelosSendPulse } = require('./cliente-sendpulse-whatsapp');
+const { sincronizarModelosSendPulse } = require('./sincronizar-modelos-sendpulse');
+
 module.exports = function (app, pool) {
   const autenticarToken = app.locals.autenticarToken;
   const exigirPermissao = app.locals.exigirPermissao;
@@ -53,6 +59,57 @@ module.exports = function (app, pool) {
           ok: false,
           error: 'Erro ao listar modelos do WhatsApp'
         });
+      }
+    }
+  );
+
+  // ============================================================
+  // CONFIRMAR STATUS DOS MODELOS NO PROVEDOR
+  // ============================================================
+
+  app.post(
+    '/api/whatsapp/modelos/sincronizar-sendpulse',
+    autenticarToken,
+    exigirPermissao('INTEGRACOES', 'editar'),
+    async (req, res) => {
+      let configuracao;
+      let remotos;
+      try {
+        configuracao = await obterConfiguracaoWhatsapp(pool);
+        if (configuracao.provedor !== 'SENDPULSE') {
+          return res.status(409).json({
+            ok: false,
+            error: 'A SendPulse não é o provedor WhatsApp ativo'
+          });
+        }
+        remotos = await listarModelosSendPulse(configuracao);
+      } catch (error) {
+        const status = error.codigo === 'WHATSAPP_NAO_CONFIGURADO' ? 409 : 502;
+        return res.status(status).json({
+          ok: false,
+          error: 'Não foi possível consultar os modelos na SendPulse',
+          codigo: error.codigo || 'SENDPULSE_INDISPONIVEL'
+        });
+      }
+
+      const connection = await pool.getConnection();
+      try {
+        await connection.beginTransaction();
+        const resultado = await sincronizarModelosSendPulse(connection, remotos, {
+          usuarioId: req.usuario.id,
+          ip: req.ip || null
+        });
+        await connection.commit();
+        return res.json({ ok: true, ...resultado });
+      } catch (error) {
+        await connection.rollback();
+        console.error('Erro ao sincronizar modelos SendPulse:', error.message);
+        return res.status(500).json({
+          ok: false,
+          error: 'Erro ao salvar os status dos modelos'
+        });
+      } finally {
+        connection.release();
       }
     }
   );

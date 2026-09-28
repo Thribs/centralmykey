@@ -1120,6 +1120,14 @@ export async function listarModelosWhatsapp(token) {
   return lerResposta(resposta);
 }
 
+export async function sincronizarModelosWhatsappSendPulse(token) {
+  const resposta = await requisitar(
+    `${API_URL}/api/whatsapp/modelos/sincronizar-sendpulse`,
+    { method: 'POST', headers: cabecalhoAutenticado(token) }
+  );
+  return lerResposta(resposta);
+}
+
 export async function cadastrarModeloWhatsapp(token, dados) {
   const resposta = await requisitar(`${API_URL}/api/whatsapp/modelos`, {
     method: 'POST',

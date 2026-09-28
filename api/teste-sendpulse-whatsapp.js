@@ -4,6 +4,7 @@ const assert = require('assert');
 const {
   enviarMensagemSendPulse,
   enviarModeloSendPulse,
+  listarModelosSendPulse,
   limparCacheTokenParaTeste
 } = require('./cliente-sendpulse-whatsapp');
 
@@ -22,6 +23,13 @@ async function executar() {
       if (String(url).endsWith('/oauth/access_token')) {
         return { ok: true, status: 200, json: async () => ({
           access_token: 'token-ficticio', expires_in: 3600
+        }) };
+      }
+      if (String(url).includes('/whatsapp/templates?')) {
+        return { ok: true, status: 200, json: async () => ({
+          success: true,
+          data: [{ id: 'modelo-1', name: 'consulta_fornecedor_gm',
+            language: 'pt_BR', status: 'APPROVED' }]
         }) };
       }
       return { ok: true, status: 200, json: async () => ({
@@ -47,6 +55,10 @@ async function executar() {
     assert.strictEqual(corpoModelo.template.name, 'consulta_fornecedor_gm');
     assert.deepStrictEqual(corpoModelo.template.components[0].parameters,
       [{ type: 'text', text: 'PROTOCOLO' }, { type: 'text', text: 'CHASSI' }]);
+    const modelos = await listarModelosSendPulse(config);
+    assert.strictEqual(modelos[0].status, 'APPROVED');
+    assert.match(chamadas[3].url,
+      /\/whatsapp\/templates\?bot_id=bot-ficticio$/);
     assert.ok(!JSON.stringify({ texto, modelo }).includes('segredo-ficticio'));
     console.log('OK: transporte SendPulse usa OAuth, texto e modelo com mocks');
   } finally {

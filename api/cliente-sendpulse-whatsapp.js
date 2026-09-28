@@ -86,6 +86,28 @@ async function enviar(config, caminho, corpo) {
   };
 }
 
+async function listarModelosSendPulse(config) {
+  if (!config.sendpulseBotId) {
+    throw erro('WHATSAPP_NAO_CONFIGURADO', 'Bot WhatsApp da SendPulse não configurado');
+  }
+  const token = await obterToken(config);
+  const parametros = new URLSearchParams({ bot_id: config.sendpulseBotId });
+  const resposta = await requisicao(
+    `https://api.sendpulse.com/whatsapp/templates?${parametros}`,
+    { headers: { Authorization: `Bearer ${token}` } }
+  );
+  const dados = await resposta.json().catch(() => ({}));
+  const modelos = Array.isArray(dados.data) ? dados.data
+    : Array.isArray(dados.data?.items) ? dados.data.items
+      : dados.data?.name ? [dados.data] : null;
+  if (!resposta.ok || dados.success === false || !modelos) {
+    throw erro('WHATSAPP_MODELOS_CONSULTA_FALHOU',
+      dados.message || 'Não foi possível consultar os modelos na SendPulse',
+      resposta.status);
+  }
+  return modelos;
+}
+
 function cryptoId(corpo) {
   // Identificador apenas para correlação quando a API aceita o envio sem retornar ID.
   return require('crypto').createHash('sha256')
@@ -139,5 +161,6 @@ function limparCacheTokenParaTeste() {
 module.exports = {
   enviarMensagemSendPulse,
   enviarModeloSendPulse,
+  listarModelosSendPulse,
   limparCacheTokenParaTeste
 };

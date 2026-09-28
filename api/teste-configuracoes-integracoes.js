@@ -164,6 +164,22 @@ async function executar() {
     assert.ok(!JSON.stringify(prontidao).includes('99999'),
       'O diagnóstico não deve expor telefones');
 
+    const prontidaoSendPulseSemConfirmacao = await diagnosticarProntidaoWhatsapp(
+      poolProntidao,
+      {
+        ...carregada,
+        whatsappProvedor: 'SENDPULSE',
+        sendpulseClientId: 'id-ficticio',
+        sendpulseClientSecret: 'segredo-ficticio',
+        sendpulseBotId: 'bot-ficticio',
+        sendpulseWebhookToken: 'token_ficticio_12345678901234567890'
+      }
+    );
+    assert.ok(prontidaoSendPulseSemConfirmacao.bloqueios.includes(
+      'MODELO_CONSULTA_FORNECEDOR_NAO_HOMOLOGADO'));
+    assert.ok(prontidaoSendPulseSemConfirmacao.bloqueios.includes(
+      'MODELO_ENTREGA_CLIENTE_NAO_HOMOLOGADO'));
+
     const prontidaoBloqueada = await diagnosticarProntidaoWhatsapp({
       query: async sql => {
         if (/FROM whatsapp_modelos/.test(sql)) return [[]];

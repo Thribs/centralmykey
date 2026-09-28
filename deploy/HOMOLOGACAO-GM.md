@@ -28,9 +28,42 @@ log de acesso.
 
 Os modelos definidos por `WHATSAPP_MODELO_CONSULTA_FORNECEDOR` e
 `WHATSAPP_MODELO_ENTREGA_RESULTADO` devem estar aprovados e ativos no bot
-WhatsApp indicado por `SENDPULSE_WHATSAPP_BOT_ID`. A falta do número de teste
-da Meta não bloqueia o conector da Central quando o bot SendPulse já possui um
-número operacional conectado.
+WhatsApp indicado por `SENDPULSE_WHATSAPP_BOT_ID`. A especificação atual da API
+SendPulse permite listar os modelos, mas não publica uma operação para enviar
+um novo modelo à aprovação. A criação deve ser feita no painel SendPulse. Em
+seguida, usar **Sincronizar SendPulse** na administração da Central para
+confirmar o status real; aprovação digitada somente no banco não libera o
+fluxo.
+
+Modelos sugeridos, ambos na categoria Utilidade e idioma `pt_BR`:
+
+```text
+centralmykey_consulta_gm_fornecedor
+Central MyKey | Consulta GM {{1}}
+Chassi: {{2}}
+Marca: {{3}}
+Modelo: {{4}}
+Ano: {{5}}
+Responda iniciando com MYKEY {{1}} e informe os códigos encontrados.
+
+centralmykey_entrega_gm_cliente
+Central MyKey | Pedido {{1}}
+Código mecânico: {{2}}
+Imobilizador: {{3}}
+Rádio: {{4}}
+Alarme: {{5}}
+PIN: {{6}}
+```
+
+Depois do cadastro local, definir os nomes no `.env`:
+
+```dotenv
+WHATSAPP_MODELO_CONSULTA_FORNECEDOR=centralmykey_consulta_gm_fornecedor
+WHATSAPP_MODELO_ENTREGA_RESULTADO=centralmykey_entrega_gm_cliente
+```
+
+A falta do número de teste da Meta não bloqueia o conector da Central quando o
+bot SendPulse já possui um número operacional conectado.
 
 ## Sicoob Pix
 

@@ -331,8 +331,15 @@ async function diagnosticarProntidaoWhatsapp(pool, config) {
   const [resultadoModelos, resultadoFornecedores, resultadoFila] =
     await Promise.all([
       pool.query(
-        `SELECT nome, idioma, status, ativo
+        `SELECT wm.nome, wm.idioma, wm.status, wm.ativo,
+                EXISTS(
+                  SELECT 1 FROM auditoria aud
+                   WHERE aud.entidade='whatsapp_modelos'
+                     AND aud.entidade_id=CAST(wm.id AS CHAR)
+                     AND aud.acao='SINCRONIZAR_MODELO_SENDPULSE'
+                ) AS confirmado_sendpulse
            FROM whatsapp_modelos
+             wm
           WHERE (nome = ? AND idioma = ?)
              OR (nome = ? AND idioma = ?)`,
         [modeloFornecedor, idiomaFornecedor, modeloEntrega, idiomaEntrega]
@@ -358,9 +365,11 @@ async function diagnosticarProntidaoWhatsapp(pool, config) {
   const modelos = resultadoModelos[0];
   const fornecedores = resultadoFornecedores[0];
   const fila = resultadoFila[0][0] || {};
+  const exigirConfirmacaoSendPulse = resumo.componentes.provedor === 'SENDPULSE';
   const modeloOperacional = (nome, idioma) => Boolean(nome) && modelos.some(item =>
     item.nome === nome && item.idioma === idioma &&
-    item.status === 'APROVADO' && Number(item.ativo) === 1
+    item.status === 'APROVADO' && Number(item.ativo) === 1 &&
+    (!exigirConfirmacaoSendPulse || Number(item.confirmado_sendpulse) === 1)
   );
   const fornecedorAprovado = modeloOperacional(modeloFornecedor, idiomaFornecedor);
   const entregaAprovada = modeloOperacional(modeloEntrega, idiomaEntrega);

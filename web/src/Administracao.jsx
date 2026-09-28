@@ -46,7 +46,8 @@ import {
   salvarPermissoesUsuario,
   alterarStatusMapeamentoIntegracao,
   sincronizarPedidoBling,
-  sincronizarPedidoWBuy
+  sincronizarPedidoWBuy,
+  sincronizarModelosWhatsappSendPulse
 } from './api';
 
 function tokenLocal() {
@@ -622,6 +623,19 @@ export function Integracoes({ permissoes: permissoesSessao = [] }) {
       await carregar();
     } catch (falha) {
       setErro(falha.message);
+    }
+  }
+
+  async function sincronizarModelosSendPulse() {
+    setSalvando(true);
+    setErro('');
+    try {
+      await sincronizarModelosWhatsappSendPulse(token);
+      await carregar();
+    } catch (falha) {
+      setErro(falha.message);
+    } finally {
+      setSalvando(false);
     }
   }
 
@@ -1291,6 +1305,12 @@ export function Integracoes({ permissoes: permissoesSessao = [] }) {
             <span>Total: <strong>{Number(resumo.total || 0)}</strong></span>
             <span>Aprovados: <strong>{Number(resumo.aprovados || 0)}</strong></span>
             <span>Ativos: <strong>{Number(resumo.ativos || 0)}</strong></span>
+            {podeEditar && (
+              <button type="button" onClick={sincronizarModelosSendPulse}
+                disabled={salvando}>
+                <RefreshCw size={15} /> Sincronizar SendPulse
+              </button>
+            )}
           </div>
         </header>
 
