@@ -49,7 +49,8 @@ module.exports = async function processarAnexosExpirados(pool) {
 
         if (
           caminhoRegistrado &&
-          !caminhoRegistrado.startsWith('meta://')
+          !caminhoRegistrado.startsWith('meta://') &&
+          !caminhoRegistrado.startsWith('sendpulse://')
         ) {
           const caminho = path.resolve(
             diretorio,

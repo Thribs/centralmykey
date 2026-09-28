@@ -441,6 +441,13 @@ async function processarEntradaClienteWhatsapp(pool, app, entrada) {
       return { automatizado: false, motivo: 'ATENDIMENTO_NAO_ELETRONICO' };
     }
     const estado = await lerEstado(connection, atendimentoId);
+    if (entrada.tipoConteudo !== 'TEXTO') {
+      await encaminharHumanoConnection(connection, atendimentoId,
+        'CONTEUDO_NAO_TEXTUAL',
+        'Cliente enviou mídia ou conteúdo não textual durante a automação GM');
+      await connection.commit();
+      return { automatizado: false, humano: true };
+    }
     const texto = entrada.tipoConteudo === 'TEXTO' ? String(entrada.texto || '') : '';
     if (!estado) {
       if (!identificaSenhaGm(texto)) {

@@ -331,6 +331,7 @@ module.exports = function (app, pool) {
                tamanho_bytes,
                CASE
                  WHEN caminho_arquivo LIKE 'meta://%' THEN 'PENDENTE'
+                 WHEN caminho_arquivo LIKE 'sendpulse://%' THEN 'INDISPONIVEL'
                  WHEN caminho_arquivo IS NULL THEN 'INDISPONIVEL'
                  ELSE 'DISPONIVEL'
                END AS status_arquivo,
@@ -1693,7 +1694,8 @@ module.exports = function (app, pool) {
 
         if (
           !anexo.caminho_arquivo ||
-          String(anexo.caminho_arquivo).startsWith('meta://')
+          String(anexo.caminho_arquivo).startsWith('meta://') ||
+          String(anexo.caminho_arquivo).startsWith('sendpulse://')
         ) {
           return res.status(409).json({
             ok: false,

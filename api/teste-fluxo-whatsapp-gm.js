@@ -109,7 +109,17 @@ async function fecharServidor(servidor) {
   });
 }
 
-async function webhook(url, segredo, { telefone, mensagemId, texto, nome }) {
+async function webhook(url, segredo, {
+  telefone, mensagemId, texto, nome, tipo = 'text', midia = null
+}) {
+  const mensagem = {
+    from: telefone,
+    id: mensagemId,
+    timestamp: Math.floor(Date.now() / 1000),
+    type: tipo
+  };
+  if (tipo === 'text') mensagem.text = { body: texto };
+  else mensagem[tipo] = midia || { id: `midia-${mensagemId}` };
   const corpo = JSON.stringify({
     service: 'whatsapp',
     title: 'incoming_message',
@@ -117,9 +127,7 @@ async function webhook(url, segredo, { telefone, mensagemId, texto, nome }) {
     contact: { phone: telefone, name: nome || 'Teste GM' },
     info: { message: { id: `sp-${mensagemId}`, channel_data: {
       message_id: mensagemId,
-      message: { from: telefone, id: mensagemId,
-        timestamp: Math.floor(Date.now() / 1000), type: 'text',
-        text: { body: texto } }
+      message: mensagem
     } } }
   });
   return fetch(`${url}/webhooks/sendpulse/whatsapp/${segredo}`, {
@@ -570,6 +578,46 @@ async function executar() {
       automacaoDesabilitada.modo, automacaoDesabilitada.status,
       Number(automacaoDesabilitada.pedidos)
     ], ['HUMANO', 'FILA', 0]);
+
+    const telefoneMidia = `5568${String(Date.now()).slice(-9)}`;
+    await connection.query(
+      `INSERT INTO clientes
+         (nome, telefone, telefone_normalizado, cadastro_status, ativo,
+          tipo_cobranca, credito_status)
+       VALUES (?, ?, ?, 'COMPLETO', 1, 'ANTECIPADO', 'LIBERADO')`,
+      [`CLIENTE MIDIA SENDPULSE ${marcador}`, telefoneMidia, telefoneMidia]
+    );
+    resposta = await webhook(api.url, segredo, {
+      telefone: telefoneMidia,
+      mensagemId: `wamid.mock.midia.inicio.${marcador}`,
+      texto: 'Preciso de senha GM'
+    });
+    assert.strictEqual(resposta.status, 200);
+    resposta = await webhook(api.url, segredo, {
+      telefone: telefoneMidia,
+      mensagemId: `wamid.mock.midia.imagem.${marcador}`,
+      tipo: 'image',
+      midia: { id: `midia-sendpulse-${marcador}`, mime_type: 'image/jpeg' }
+    });
+    assert.strictEqual(resposta.status, 200);
+    const [[midiaEncaminhada]] = await connection.query(
+      `SELECT a.modo, a.status,
+              (SELECT aa.caminho_arquivo FROM atendimento_anexos aa
+                WHERE aa.atendimento_id=a.id ORDER BY aa.id DESC LIMIT 1) AS caminho,
+              (SELECT JSON_UNQUOTE(JSON_EXTRACT(aud.dados_depois, '$.erro_codigo'))
+                 FROM auditoria aud WHERE aud.entidade='atendimentos'
+                  AND aud.entidade_id=CAST(a.id AS CHAR)
+                  AND aud.acao='ESTADO_AUTOMACAO_GM'
+                 ORDER BY aud.id DESC LIMIT 1) AS erro_codigo
+         FROM atendimentos a WHERE a.telefone_normalizado=?
+         ORDER BY a.id DESC LIMIT 1`,
+      [telefoneMidia]
+    );
+    assert.deepStrictEqual([
+      midiaEncaminhada.modo, midiaEncaminhada.status,
+      midiaEncaminhada.erro_codigo
+    ], ['HUMANO', 'FILA', 'CONTEUDO_NAO_TEXTUAL']);
+    assert.match(midiaEncaminhada.caminho, /^sendpulse:\/\//);
 
     const telefoneDesligadaAntesEnvio = `5567${String(Date.now()).slice(-9)}`;
     await connection.query(
