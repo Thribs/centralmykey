@@ -11,6 +11,10 @@ produção:
   histórico e auditoria e deixa uma nova cobrança gerar outro `txid`;
 - um reconciliador com trava executa na inicialização e periodicamente para
   expirar referências vencidas mesmo que ninguém tente gerar outra cobrança;
+- quando `SICOOB_CONSULTA_HABILITADA=true`, o mesmo ciclo consulta cada cobrança
+  registrada por `GET /cob/{txid}` usando OAuth2 e mTLS; uma cobrança
+  `CONCLUIDA` é processada pela mesma rotina idempotente do webhook e libera a
+  continuação do atendimento GM;
 - o cancelamento do pedido encerra referências locais ainda ativas, e um Pix
   confirmado tardiamente registra a entrada, mantém o pedido cancelado e vira
   exceção até a devolução ser confirmada pelo financeiro; depois do estorno, a
@@ -27,11 +31,12 @@ produção:
 - a rota `POST /webhooks/sicoob` permanece desabilitada por padrão e só aceita
   chamadas locais encaminhadas pelo proxy com validação mTLS positiva.
 
-As chaves `SICOOB_COBRANCA_HABILITADA` e
+As chaves `SICOOB_COBRANCA_HABILITADA`, `SICOOB_CONSULTA_HABILITADA` e
 `SICOOB_WEBHOOK_HABILITADO` começam como `false`. A cobrança só fica disponível
-quando as credenciais exigidas estão configuradas e ambas as chaves estão
-habilitadas; assim, a Central não cria um Pix que ainda não possa ser conciliado
-por um webhook autenticado.
+quando as credenciais exigidas estão configuradas, a criação está habilitada e
+há ao menos um canal seguro de confirmação: consulta autenticada ou webhook
+mTLS. Para o primeiro teste controlado será usada a consulta; o webhook legado
+do n8n não precisa ser alterado.
 
 Mesmo com o Sicoob pronto, o atendimento automático permanece protegido pela
 chave independente `AUTOMACAO_GM_WHATSAPP_HABILITADA`, desabilitada por padrão.
@@ -59,9 +64,10 @@ chaves de ativação desligadas até o momento do ensaio.
 o cadastro no Sicoob e confirmar a mesma URL. O receptor aceita tanto o caminho
 configurado quanto a variante com o sufixo `/pix` prevista no contrato Pix.
 
-`SICOOB_RECONCILIACAO_INTERVALO_MS` controla a reconciliação local, com padrão
-de cinco minutos. Essa rotina não chama o Sicoob e pode permanecer ativa mesmo
-com o conector externo desligado.
+`SICOOB_RECONCILIACAO_INTERVALO_MS` controla a reconciliação, com padrão de cinco
+minutos. A expiração local sempre funciona. A consulta externa só ocorre quando
+`SICOOB_CONSULTA_HABILITADA=true`; timeout, rede ou HTTP inválido preserva o
+pedido em `AGUARDANDO_PAGAMENTO` para o ciclo seguinte.
 
 A preparação local não afirma que uma cobrança existe no Sicoob. A referência
 só muda de `PREPARADA` para `REGISTRADA` quando o cliente da API confirma o
@@ -86,7 +92,8 @@ Antes da ativação serão necessários:
 4. encaminhar à aplicação somente depois da validação positiva da origem;
 5. cadastro e consulta do webhook para a chave Pix no Sicoob;
 6. teste de homologação de cobrança, pagamento, reentrega e evento inválido;
-7. habilitar as duas chaves somente depois dos testes de homologação;
+7. habilitar criação e exatamente o canal de confirmação homologado somente no
+   teste controlado;
 8. backup e plano de rollback antes da publicação.
 
 A consulta somente de leitura realizada em 6 de outubro de 2026 encontrou um

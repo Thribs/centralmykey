@@ -2,6 +2,7 @@
 
 const fs = require('fs');
 const https = require('https');
+const TXID = /^[A-Za-z0-9]{26,35}$/;
 
 function falha(mensagem, codigo, status = 502) {
   const erro = new Error(mensagem);
@@ -112,4 +113,38 @@ async function criarCobranca(config, dados, transporte = requisitarMtls) {
   return corpo;
 }
 
-module.exports = { criarCobranca, obterToken, requisitarMtls, validarUrlSicoob };
+async function consultarCobranca(config, txid, transporte = requisitarMtls) {
+  const referencia = String(txid || '').trim();
+  if (!TXID.test(referencia)) {
+    throw falha('txid Pix inválido', 'TXID_INVALIDO', 400);
+  }
+  if (!config.consultaHabilitada) {
+    throw falha('Consulta Sicoob está desabilitada', 'SICOOB_CONSULTA_DESABILITADA', 503);
+  }
+  const obrigatorios = ['clientId', 'certPath', 'keyPath', 'certPassword',
+    'tokenUrl', 'apiUrl'];
+  if (obrigatorios.some(chave => !String(config[chave] || '').trim())) {
+    throw falha('Configuração Sicoob incompleta', 'SICOOB_CONFIGURACAO_INCOMPLETA', 503);
+  }
+  const token = await obterToken(config, transporte);
+  const resposta = await transporte({
+    url: `${config.apiUrl.replace(/\/$/, '')}/cob/${referencia}`,
+    method: 'GET', certPath: config.certPath, keyPath: config.keyPath,
+    certPassword: config.certPassword, caPath: config.caPath,
+    headers: { authorization: `Bearer ${token}`, client_id: config.clientId },
+    body: undefined
+  });
+  const corpo = interpretarResposta(resposta, 'SICOOB_CONSULTA_RECUSADA');
+  if (String(corpo.txid || '') !== referencia || !corpo.status) {
+    throw falha('Resposta da consulta Sicoob está incompleta', 'SICOOB_CONSULTA_INVALIDA');
+  }
+  return corpo;
+}
+
+module.exports = {
+  consultarCobranca,
+  criarCobranca,
+  obterToken,
+  requisitarMtls,
+  validarUrlSicoob
+};

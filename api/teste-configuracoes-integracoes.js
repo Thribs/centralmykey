@@ -33,7 +33,8 @@ const CHAVES_TESTE = [
   'SICOOB_CLIENT_ID', 'SICOOB_CERT_PATH', 'SICOOB_KEY_PATH',
   'SICOOB_CERTIFICADO_SENHA', 'SICOOB_CA_PATH', 'SICOOB_WEBHOOK_CA_PATH',
   'SICOOB_CHAVE_PIX', 'SICOOB_AMBIENTE',
-  'SICOOB_COBRANCA_HABILITADA', 'SICOOB_WEBHOOK_HABILITADO',
+  'SICOOB_COBRANCA_HABILITADA', 'SICOOB_CONSULTA_HABILITADA',
+  'SICOOB_WEBHOOK_HABILITADO',
   'SICOOB_WEBHOOK_MTLS_CONFIGURADO',
   'SICOOB_WEBHOOK_URL', 'SICOOB_WEBHOOK_CADASTRADO',
   'WBUY_USUARIO', 'WBUY_USERNAME', 'WBUY_SENHA', 'WBUY_PASSWORD',
@@ -252,6 +253,34 @@ async function executar() {
       'https://auth.sicoob.com.br/auth/realms/cooperado/protocol/openid-connect/token');
     assert.strictEqual(sicoobHabilitado.apiUrl,
       'https://api.sicoob.com.br/pix/api/v2');
+    const configuracaoSicoobConsulta = {
+      ...configuracaoSicoobCompleta,
+      SICOOB_CONSULTA_HABILITADA: 'true',
+      SICOOB_WEBHOOK_HABILITADO: 'false',
+      SICOOB_WEBHOOK_MTLS_CONFIGURADO: 'false',
+      SICOOB_WEBHOOK_URL: '',
+      SICOOB_WEBHOOK_CADASTRADO: 'false',
+      SICOOB_WEBHOOK_CA_PATH: ''
+    };
+    Object.assign(process.env, configuracaoSicoobConsulta);
+    const diagnosticoConsulta = diagnosticarProntidaoSicoob(
+      await carregarConfiguracoesIntegracoes(poolFalso(configuracaoSicoobConsulta)),
+      { arquivoLegivel: caminho => Boolean(caminho) }
+    );
+    assert.strictEqual(diagnosticoConsulta.pronto_para_teste, true);
+    assert.strictEqual(diagnosticoConsulta.componentes.consulta_habilitada, true);
+    assert.ok(!diagnosticoConsulta.bloqueios.includes(
+      'PROXY_MTLS_SICOOB_NAO_CONFIGURADO'));
+    const sicoobConsulta = await obterConfiguracaoSicoob(
+      poolFalso(configuracaoSicoobConsulta),
+      { arquivoLegivel: caminho => Boolean(caminho) }
+    );
+    assert.strictEqual(sicoobConsulta.habilitado, true);
+    assert.strictEqual(sicoobConsulta.consultaHabilitada, true);
+    assert.strictEqual(sicoobConsulta.webhookHabilitado, false);
+    for (const chave of CHAVES_TESTE.filter(item => item.startsWith('SICOOB_'))) {
+      delete process.env[chave];
+    }
     const sicoobSemCredencial = await obterConfiguracaoSicoob(poolFalso({
       SICOOB_COBRANCA_HABILITADA: 'true',
       SICOOB_WEBHOOK_HABILITADO: 'true'
@@ -268,6 +297,7 @@ async function executar() {
       'CA_WEBHOOK_SICOOB_INACESSIVEL'));
     assert.ok(diagnosticoSicoobBloqueado.bloqueios.includes(
       'WEBHOOK_SICOOB_NAO_CADASTRADO'));
+    Object.assign(process.env, configuracaoSicoobCompleta);
     const fluxoGmPronto = diagnosticarProntidaoFluxoGm(
       await carregarConfiguracoesIntegracoes(poolFalso({
         ...valores, ...configuracaoSicoobCompleta

@@ -16,6 +16,7 @@ const {
   processarMensagensAtendimento
 } = require('./processar-mensagens-atendimento');
 const {
+  obterConfiguracaoSicoob,
   obterConfiguracaoWhatsapp
 } = require('./configuracoes-integracoes');
 const {
@@ -27,6 +28,9 @@ const {
 const {
   reconciliarCobrancasSicoobExpiradas
 } = require('./expirar-cobrancas-sicoob');
+const {
+  reconciliarPagamentosSicoob
+} = require('./reconciliar-pagamentos-sicoob');
 const {
   registrarContextoRequisicao,
   registrarTratamentoFinal
@@ -352,6 +356,14 @@ async function executarReconciliacaoSicoob() {
   if (reconciliacaoSicoobEmAndamento) return;
   reconciliacaoSicoobEmAndamento = true;
   try {
+    const config = await obterConfiguracaoSicoob(pool);
+    const pagamentos = await reconciliarPagamentosSicoob(pool, config);
+    if (pagamentos.executado && pagamentos.pagas > 0) {
+      console.log('Pagamentos Sicoob confirmados por consulta:', pagamentos.pagas);
+    }
+    if (pagamentos.executado && pagamentos.falhas > 0) {
+      console.warn('Consultas Sicoob não concluídas neste ciclo:', pagamentos.falhas);
+    }
     const resultado = await reconciliarCobrancasSicoobExpiradas(pool);
     if (resultado.executado && resultado.atualizadas > 0) {
       console.log('Cobranças Sicoob expiradas reconciliadas:', resultado.atualizadas);

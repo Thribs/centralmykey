@@ -134,6 +134,7 @@ SICOOB_CERTIFICADO_SENHA=
 SICOOB_CHAVE_PIX=
 SICOOB_AMBIENTE=producao
 SICOOB_WEBHOOK_URL=https://api-central.aiepires.com.br/webhooks/sicoob
+SICOOB_CONSULTA_HABILITADA=false
 ```
 
 O arquivo `.cer` instalado é um certificado X.509 válido e está em codificação
@@ -143,9 +144,10 @@ instalada corresponde a esse certificado e é aberta com
 adotada. `SICOOB_CA_PATH` também não é necessário enquanto o servidor do Sicoob
 usar uma autoridade certificadora reconhecida pelo sistema operacional.
 
-Não será criado outro DNS. Antes de habilitar cobranças, é necessário confirmar
-no portal Sicoob como a origem do webhook atual é autenticada e homologar a URL
-existente. Até essa confirmação, a recepção de pagamentos permanece bloqueada.
+Não será criado outro DNS. O primeiro teste pode confirmar o pagamento pela
+consulta autenticada da cobrança, sem trocar o webhook atual. A Central consulta
+somente `txid` que ela mesma registrou, valida o retorno e reutiliza o
+processamento idempotente já aplicado ao webhook.
 
 O endpoint antigo de homologação foi retirado pelo Sicoob. A autenticação
 mTLS no endpoint vigente foi validada sem criar cobrança. O webhook bancário
@@ -154,9 +156,19 @@ rota da Central. O valor `producao` acima identifica a API real; as chaves de
 habilitação abaixo continuam sendo a barreira operacional.
 
 ```dotenv
+SICOOB_COBRANCA_HABILITADA=true
+SICOOB_CONSULTA_HABILITADA=true
+SICOOB_WEBHOOK_HABILITADO=false
+```
+
+Depois que o webhook da Central for homologado, o canal poderá ser trocado sem
+alterar o processamento financeiro:
+
+```dotenv
 SICOOB_WEBHOOK_MTLS_CONFIGURADO=true
 SICOOB_WEBHOOK_CADASTRADO=true
 SICOOB_COBRANCA_HABILITADA=true
+SICOOB_CONSULTA_HABILITADA=false
 SICOOB_WEBHOOK_HABILITADO=true
 ```
 

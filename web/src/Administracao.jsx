@@ -978,6 +978,9 @@ export function Integracoes({ permissoes: permissoesSessao = [] }) {
             ? 'Configurado' : 'Pendente'}</strong></span>
           <span>Webhook Sicoob <strong>{prontidaoSicoob.componentes?.webhook_cadastrado
             ? 'Cadastrado' : 'Pendente'}</strong></span>
+          <span>Consulta de pagamento <strong>{
+            prontidaoSicoob.componentes?.consulta_habilitada
+              ? 'Habilitada' : 'Desabilitada'}</strong></span>
           <span>Cobrança <strong>{prontidaoSicoob.componentes?.cobranca_habilitada
             ? 'Habilitada' : 'Desabilitada'}</strong></span>
         </div>
@@ -998,7 +1001,8 @@ export function Integracoes({ permissoes: permissoesSessao = [] }) {
             WEBHOOK_SICOOB_NAO_CADASTRADO:
               'Webhook ainda não foi cadastrado e confirmado no Sicoob',
             COBRANCA_SICOOB_DESABILITADA: 'Criação de cobrança está desabilitada',
-            WEBHOOK_SICOOB_DESABILITADO: 'Recepção do webhook está desabilitada'
+            CONFIRMACAO_PAGAMENTO_SICOOB_DESABILITADA:
+              'Consulta e webhook de confirmação estão desabilitados'
           })[codigo] || codigo}</li>)}
         </ul>}
       </div>}

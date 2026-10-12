@@ -6,7 +6,10 @@ const dotenv = require('dotenv');
 const mysql = require('mysql2/promise');
 const express = require('express');
 const { interpretarWebhook } = require('./sicoob-pix');
-const { validarUrlSicoob } = require('./cliente-sicoob-pix');
+const { consultarCobranca, validarUrlSicoob } = require('./cliente-sicoob-pix');
+const {
+  reconciliarPagamentosSicoob
+} = require('./reconciliar-pagamentos-sicoob');
 const { criarTabelaOutboxTemporaria } = require('./teste-suporte-outbox');
 
 dotenv.config({ path: process.env.CENTRALMYKEY_ENV_PATH || path.join(__dirname, '.env'), quiet: true });
@@ -101,6 +104,63 @@ async function executar() {
     assert.throws(() => validarUrlSicoob(
       'https://api-homol.sicoob.com.br/cooperado/pix/token'
     ), e => e.codigo === 'SICOOB_DESTINO_NAO_PERMITIDO');
+    const txidConsultaCliente = 'CMKCONSULTACLIENTE00000000001';
+    const requisicoesConsulta = [];
+    const cobrancaConsultada = await consultarCobranca({
+      consultaHabilitada: true,
+      clientId: 'cliente-ficticio', certPassword: 'senha-ficticia',
+      certPath: '/certificado/ficticio', keyPath: '/chave/ficticia',
+      tokenUrl: 'https://auth.sicoob.com.br/auth/realms/cooperado/protocol/openid-connect/token',
+      apiUrl: 'https://api.sicoob.com.br/pix/api/v2', scope: 'cob.read'
+    }, txidConsultaCliente, async requisicao => {
+      requisicoesConsulta.push(requisicao);
+      if (requisicao.method === 'POST') {
+        return { status: 200, body: JSON.stringify({ access_token: 'token-ficticio' }) };
+      }
+      return { status: 200, body: JSON.stringify({
+        txid: txidConsultaCliente, status: 'ATIVA'
+      }) };
+    });
+    assert.strictEqual(cobrancaConsultada.status, 'ATIVA');
+    assert.strictEqual(requisicoesConsulta[1].method, 'GET');
+    assert.strictEqual(requisicoesConsulta[1].body, undefined);
+    await assert.rejects(
+      () => consultarCobranca({ consultaHabilitada: false }, txidConsultaCliente),
+      erroConsulta => erroConsulta.codigo === 'SICOOB_CONSULTA_DESABILITADA'
+    );
+    let liberouBloqueio = false;
+    const poolConsultaSemLiquidacao = {
+      getConnection: async () => ({
+        query: async sql => {
+          if (/GET_LOCK/.test(sql)) return [[{ adquirido: 1 }]];
+          if (/RELEASE_LOCK/.test(sql)) {
+            liberouBloqueio = true;
+            return [[{ liberado: 1 }]];
+          }
+          return [[
+            { id: 1, pedido_id: 10, txid: 'CMKPENDENTE00000000000000001' },
+            { id: 2, pedido_id: 11, txid: 'CMKFALHAREDE0000000000000002' }
+          ]];
+        },
+        release: () => {}
+      })
+    };
+    const semLiquidacao = await reconciliarPagamentosSicoob(
+      poolConsultaSemLiquidacao,
+      { consultaHabilitada: true },
+      { consultarCobranca: async (config, txidConsultado) => {
+        if (txidConsultado.includes('FALHA')) throw new Error('timeout simulado');
+        return { txid: txidConsultado, status: 'ATIVA' };
+      } }
+    );
+    assert.deepStrictEqual(semLiquidacao, {
+      executado: true, analisadas: 2, pagas: 0, pendentes: 1, falhas: 1
+    });
+    assert.strictEqual(liberouBloqueio, true);
+    assert.deepStrictEqual(
+      await reconciliarPagamentosSicoob({}, { consultaHabilitada: false }),
+      { executado: false, motivo: 'DESABILITADA' }
+    );
     await connection.beginTransaction();
     await criarTabelasTemporarias(connection);
     const [[servico]] = await connection.query(
@@ -227,22 +287,28 @@ async function executar() {
       id: 980000000 + (process.pid % 100000), id_montadora: 1, chassis: chassi,
       cod_mecanico: 'MEC-SICOOB', cod_immo: 'IMMO-SICOOB'
     }]) });
-    const corpo = JSON.stringify({ pix: [{ txid, endToEndId: e2e,
-      valor: valor.toFixed(2), horario: '2026-09-21T12:01:00Z', infoPagador: 'Pedido' }] });
-    const respostaWebhook = await fetchOriginal(`${api.url}/webhooks/sicoob`, {
-      method: 'POST', headers: { 'content-type': 'application/json',
-        'x-client-cert-verify': 'SUCCESS' }, body: corpo
+    const pixPago = { txid, endToEndId: e2e, valor: valor.toFixed(2),
+      horario: '2026-09-21T12:01:00Z', infoPagador: 'Pedido' };
+    const reconciliado = await reconciliarPagamentosSicoob(
+      poolTransacional(connection),
+      { consultaHabilitada: true },
+      {
+        consultarCobranca: async (config, txidConsultado) => ({
+          txid: txidConsultado, status: 'CONCLUIDA', pix: [pixPago]
+        })
+      }
+    );
+    assert.deepStrictEqual(reconciliado, {
+      executado: true, analisadas: 1, pagas: 1, pendentes: 0, falhas: 0
     });
-    const recebido = await respostaWebhook.json();
-    assert.strictEqual(respostaWebhook.status, 200);
-    assert.strictEqual(recebido.ok, true);
-    assert.strictEqual(recebido.resultados[0].processamento.status, 'CONCLUIDO');
-    const respostaRepetida = await fetchOriginal(`${api.url}/webhooks/sicoob/pix`, {
-      method: 'POST', headers: { 'content-type': 'application/json',
-        'x-client-cert-verify': 'SUCCESS' }, body: corpo
+    const repetido = await reconciliarPagamentosSicoob(
+      poolTransacional(connection),
+      { consultaHabilitada: true },
+      { consultarCobranca: async () => { throw new Error('não deveria consultar'); } }
+    );
+    assert.deepStrictEqual(repetido, {
+      executado: true, analisadas: 0, pagas: 0, pendentes: 0, falhas: 0
     });
-    const repetido = await respostaRepetida.json();
-    assert.strictEqual(repetido.resultados[0].idempotente, true);
 
     const [[estado]] = await connection.query(
       `SELECT p.status AS pedido_status, r.status AS referencia_status,
