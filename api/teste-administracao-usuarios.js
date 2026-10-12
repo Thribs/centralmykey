@@ -112,7 +112,7 @@ async function executar() {
     const token = jwt.sign(
       { id: operadorId, login: loginOperador },
       process.env.JWT_SECRET,
-      { expiresIn: '10m' }
+      { expiresIn: '10m', issuer: 'central-mykey-api' }
     );
 
     const senhaProvisoria = `Senha-${sufixo}`;

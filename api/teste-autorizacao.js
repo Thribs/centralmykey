@@ -14,7 +14,8 @@ dotenv.config({
 if (!process.env.DB_HOST && !process.env.CENTRALMYKEY_ENV_PATH) {
   dotenv.config({ path: '/opt/central-mykey-api/.env', quiet: true });
 }
-process.env.JWT_SECRET = process.env.JWT_SECRET || 'segredo-ficticio-do-teste';
+process.env.JWT_SECRET = process.env.JWT_SECRET ||
+  'segredo-ficticio-do-teste-com-mais-de-32-bytes';
 
 const configBanco = {
   host: process.env.DB_HOST,
@@ -219,7 +220,22 @@ async function executar() {
       method: 'POST',
       body: JSON.stringify({ login, senha })
     });
-    assert.strictEqual(loginBloqueado.resposta.status, 403);
+    assert.strictEqual(loginBloqueado.resposta.status, 401);
+
+    const loginInexistente = `inexistente_${marcador}`;
+    for (let tentativa = 0; tentativa < 5; tentativa += 1) {
+      const falha = await requisitar(`${api.url}/api/auth/login`, {
+        method: 'POST',
+        body: JSON.stringify({ login: loginInexistente, senha: 'incorreta' })
+      });
+      assert.strictEqual(falha.resposta.status, 401);
+    }
+    const limitado = await requisitar(`${api.url}/api/auth/login`, {
+      method: 'POST',
+      body: JSON.stringify({ login: loginInexistente, senha: 'incorreta' })
+    });
+    assert.strictEqual(limitado.resposta.status, 429);
+    assert.strictEqual(limitado.corpo.codigo, 'LOGIN_TEMPORARIAMENTE_BLOQUEADO');
   } catch (falha) {
     erro = falha;
   } finally {

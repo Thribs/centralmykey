@@ -35,6 +35,10 @@ const { mascararConfiguracao } = require('./seguranca-configuracoes');
 
 const app = express();
 
+app.disable('x-powered-by');
+// A API escuta apenas em loopback; somente o Nginx local pode informar o IP.
+app.set('trust proxy', 'loopback');
+
 function inteiroConfiguradoIntervalo(valor, padrao) {
   const numero = Number(valor);
   return Number.isInteger(numero) && numero >= 10000 && numero <= 86400000
@@ -42,9 +46,35 @@ function inteiroConfiguradoIntervalo(valor, padrao) {
     : padrao;
 }
 
-app.use(cors());
+const origensPermitidas = new Set(
+  String(process.env.CORS_ORIGENS || 'https://teste-central.aiepires.com.br')
+    .split(',')
+    .map(item => item.trim())
+    .filter(Boolean)
+);
+app.use(cors({
+  origin(origem, callback) {
+    if (!origem || origensPermitidas.has(origem)) return callback(null, true);
+    return callback(null, false);
+  },
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Authorization', 'Content-Type'],
+  maxAge: 600
+}));
+app.use((req, res, next) => {
+  res.set({
+    'Content-Security-Policy': "default-src 'none'; frame-ancestors 'none'; base-uri 'none'",
+    'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
+    'Referrer-Policy': 'no-referrer',
+    'Strict-Transport-Security': 'max-age=31536000; includeSubDomains',
+    'X-Content-Type-Options': 'nosniff',
+    'X-Frame-Options': 'DENY'
+  });
+  next();
+});
 registrarContextoRequisicao(app);
 app.use(express.json({
+  limit: '512kb',
   verify: (req, res, buffer) => {
     req.rawBody = buffer;
   }

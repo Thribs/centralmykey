@@ -1,11 +1,17 @@
 const bcrypt = require('bcryptjs');
+const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
+const { criarLimitadorLogin } = require('./limite-login');
+
+const HASH_USUARIO_INEXISTENTE =
+  '$2b$12$oqXXFSs7FrfxAAMJf7wTje6LmCFtXsq1.YVdXk2cliy6wnw958trW';
 
 module.exports = function (app, pool) {
   const jwtSecret = process.env.JWT_SECRET;
+  const limitadorLogin = criarLimitadorLogin();
 
-  if (!jwtSecret) {
-    throw new Error('JWT_SECRET não configurado');
+  if (!jwtSecret || Buffer.byteLength(jwtSecret) < 32) {
+    throw new Error('JWT_SECRET deve possuir ao menos 32 bytes');
   }
 
   async function autenticarToken(req, res, next) {
@@ -28,7 +34,10 @@ module.exports = function (app, pool) {
         });
       }
 
-      const payload = jwt.verify(token, jwtSecret);
+      const payload = jwt.verify(token, jwtSecret, {
+        algorithms: ['HS256'],
+        issuer: 'central-mykey-api'
+      });
 
       const [usuarios] = await pool.query(
         `SELECT
@@ -150,6 +159,18 @@ module.exports = function (app, pool) {
 
   app.post('/api/auth/bootstrap', async (req, res) => {
     try {
+      const bootstrapHabilitado = String(
+        process.env.BOOTSTRAP_HABILITADO || ''
+      ).toLowerCase() === 'true';
+      const segredoConfigurado = String(process.env.BOOTSTRAP_SECRET || '');
+      const segredoRecebido = String(req.get('x-bootstrap-token') || '');
+      const configurado = Buffer.from(segredoConfigurado);
+      const recebido = Buffer.from(segredoRecebido);
+      const segredoValido = bootstrapHabilitado && configurado.length >= 32 &&
+        recebido.length === configurado.length &&
+        crypto.timingSafeEqual(recebido, configurado);
+      if (!segredoValido) return res.sendStatus(404);
+
       const {
         nome,
         email,
@@ -180,7 +201,6 @@ module.exports = function (app, pool) {
       const loginNormalizado = String(login)
         .trim()
         .toLowerCase();
-
       if (loginNormalizado.length < 3) {
         return res.status(400).json({
           ok: false,
@@ -264,6 +284,19 @@ module.exports = function (app, pool) {
       const loginNormalizado = String(login)
         .trim()
         .toLowerCase();
+      const identificadoresTentativa = {
+        login: loginNormalizado,
+        ip: req.ip || req.socket?.remoteAddress || 'desconhecido'
+      };
+      const limite = limitadorLogin.verificar(identificadoresTentativa);
+      if (!limite.permitido) {
+        res.set('Retry-After', String(limite.tentarNovamenteEm));
+        return res.status(429).json({
+          ok: false,
+          error: 'Muitas tentativas de acesso. Aguarde antes de tentar novamente',
+          codigo: 'LOGIN_TEMPORARIAMENTE_BLOQUEADO'
+        });
+      }
 
       const [usuarios] = await pool.query(
         `SELECT
@@ -286,6 +319,8 @@ module.exports = function (app, pool) {
       );
 
       if (!usuarios.length) {
+        await bcrypt.compare(String(senha), HASH_USUARIO_INEXISTENTE);
+        limitadorLogin.registrarFalha(identificadoresTentativa);
         return res.status(401).json({
           ok: false,
           error: 'Login ou senha inválidos'
@@ -295,9 +330,10 @@ module.exports = function (app, pool) {
       const usuario = usuarios[0];
 
       if (usuario.status !== 'ATIVO') {
-        return res.status(403).json({
+        limitadorLogin.registrarFalha(identificadoresTentativa);
+        return res.status(401).json({
           ok: false,
-          error: 'Usuário inativo ou bloqueado'
+          error: 'Login ou senha inválidos'
         });
       }
 
@@ -307,6 +343,7 @@ module.exports = function (app, pool) {
       );
 
       if (!senhaCorreta) {
+        limitadorLogin.registrarFalha(identificadoresTentativa);
         return res.status(401).json({
           ok: false,
           error: 'Login ou senha inválidos'
@@ -331,6 +368,8 @@ module.exports = function (app, pool) {
          WHERE id = ?`,
         [usuario.id]
       );
+
+      limitadorLogin.registrarSucesso(identificadoresTentativa);
 
       return res.json({
         ok: true,
