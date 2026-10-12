@@ -244,8 +244,7 @@ async function executar() {
       'MC-ENTREGA',
       'IM-ENTREGA',
       'RD-ENTREGA',
-      'AL-ENTREGA',
-      'PIN-ENTREGA'
+      'AL-ENTREGA'
     ]);
 
     const repeticao = await processarComunicacao(

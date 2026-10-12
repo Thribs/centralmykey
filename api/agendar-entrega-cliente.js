@@ -44,13 +44,14 @@ async function agendarEntregaCliente(connection, {
     : {};
   const payload = {
     tipo: 'MODELO_WHATSAPP',
+    // Ordem das variáveis nomeadas do modelo: pedido, mecanica,
+    // imobilizador, radio e alarme. A SendPulse recebe os valores em ordem.
     parametros: [
       textoParametro(pedido.protocolo),
       textoParametro(resultado.codigo_mecanico),
       textoParametro(resultado.codigo_imobilizador),
       textoParametro(resultado.codigo_radio),
-      textoParametro(dadosResultado.codigo_alarme),
-      textoParametro(resultado.pin)
+      textoParametro(dadosResultado.codigo_alarme)
     ]
   };
 
