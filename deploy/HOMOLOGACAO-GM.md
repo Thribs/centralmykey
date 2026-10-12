@@ -48,6 +48,20 @@ Antes do ensaio, preencher a lista de telefones apenas com o contato autorizado.
 O painel mostra somente a quantidade. Mensagens de outros números continuam na
 fila humana e não criam pedidos automáticos.
 
+O primeiro ensaio deve ser controlado pelo comando único abaixo. Ele confere se
+as filas estão vazias, cria uma cópia protegida do `.env`, ativa somente o
+contato informado, reinicia o serviço, valida saúde e prontidão e restaura a
+configuração anterior se qualquer etapa falhar:
+
+```bash
+sudo /opt/centralmykey-source/deploy/controlar-primeiro-teste-gm.sh status
+sudo /opt/centralmykey-source/deploy/controlar-primeiro-teste-gm.sh validar DDI_DDD_NUMERO
+sudo /opt/centralmykey-source/deploy/controlar-primeiro-teste-gm.sh ativar DDI_DDD_NUMERO
+sudo /opt/centralmykey-source/deploy/controlar-primeiro-teste-gm.sh desativar
+```
+
+O comando não exibe o telefone, credenciais ou valores do ambiente.
+
 ## Grupos Márcio e Emerson
 
 Márcio e Emerson são grupos de WhatsApp, não destinatários individuais. A API

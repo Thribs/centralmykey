@@ -94,6 +94,9 @@ Durante testes controlados, `AUTOMACAO_GM_WHATSAPP_TELEFONES_TESTE` deve conter
 somente os contatos autorizados. Com essa lista preenchida, qualquer outro
 telefone segue para atendimento humano sem criar pedido. Os números são dados
 de ambiente sensíveis e o diagnóstico pode exibir apenas a quantidade.
+Ativar e desativar esse ensaio pelo script
+`deploy/controlar-primeiro-teste-gm.sh`, que exige filas operacionais vazias,
+faz backup do ambiente, valida prontidão e restaura a configuração em falha.
 
 A publicação automática de uma resposta de fornecedor na API Joel Pires deve
 permanecer bloqueada até `APIJOELPIRES_GRAVACAO_HOMOLOGADA=true`. Essa chave só
