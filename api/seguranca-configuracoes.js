@@ -1,7 +1,7 @@
 'use strict';
 
 function chaveSensivel(chave) {
-  return /(TOKEN|SECRET|PASSWORD|SENHA|API_KEY|ACCESS_KEY|PRIVATE_KEY|CHAVE|(^|_)KEY($|_))/i
+  return /(TOKEN|SECRET|PASSWORD|SENHA|API_KEY|ACCESS_KEY|PRIVATE_KEY|CHAVE|TELEFONES_TESTE|(^|_)KEY($|_))/i
     .test(String(chave || ''));
 }
 

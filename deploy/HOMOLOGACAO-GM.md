@@ -29,6 +29,7 @@ SENDPULSE_CLIENT_ID=
 SENDPULSE_CLIENT_SECRET=
 SENDPULSE_WHATSAPP_BOT_ID=
 SEGREDO_WEBHOOK_SENDPULSE=
+AUTOMACAO_GM_WHATSAPP_TELEFONES_TESTE=
 ```
 
 Na SendPulse, configurar o webhook global como:
@@ -42,6 +43,10 @@ delivery failed**. O Nginx deve aplicar a configuração de
 `nginx-sendpulse-webhook.conf.example` para não gravar o token do caminho no
 log de acesso. Esse segredo é gerado pela Central MyKey porque a SendPulse não
 documenta assinatura ou token próprio para webhooks globais.
+
+Antes do ensaio, preencher a lista de telefones apenas com o contato autorizado.
+O painel mostra somente a quantidade. Mensagens de outros números continuam na
+fila humana e não criam pedidos automáticos.
 
 ## Grupos Márcio e Emerson
 

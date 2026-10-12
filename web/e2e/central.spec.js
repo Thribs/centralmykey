@@ -1456,8 +1456,13 @@ test('integrações administram modelos e mapeamentos sem chamar serviços exter
     .toBeVisible();
   await expect(page.locator('.integration-grid article', { hasText: 'PlugPay' }))
     .toContainText('Contrato não identificado');
+  const primeiroTesteGm = page.locator('.whatsapp-readiness', {
+    hasText: 'PRIMEIRO TESTE GM · SENHA ENCONTRADA NA API'
+  });
+  await expect(primeiroTesteGm).toContainText('Primeiro teste ainda bloqueado');
+  await expect(primeiroTesteGm).toContainText('Leitura Joel Pires');
   const prontidaoFluxoGm = page.locator('.whatsapp-readiness', {
-    hasText: 'PRONTIDÃO DO CENÁRIO GM'
+    hasText: 'PRONTIDÃO DO FLUXO GM COMPLETO'
   });
   await expect(prontidaoFluxoGm).toContainText('Cenário externo ainda bloqueado');
   await expect(prontidaoFluxoGm).toContainText('Gravação Joel Pires');

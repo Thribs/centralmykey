@@ -180,14 +180,16 @@ async function executar() {
     );
     pedidoId = pedido.insertId;
     const chamadasSicoob = [];
+    const configuracaoSicoobTeste = {
+      habilitado: true, webhookHabilitado: false, consultaHabilitada: true,
+      clientId: 'cliente-teste', certPassword: 'senha-ficticia',
+      certPath: '/certificado/ficticio', keyPath: '/chave/ficticia',
+      chavePix: 'pix@teste.invalid',
+      tokenUrl: 'https://auth.sicoob.com.br/auth/realms/cooperado/protocol/openid-connect/token',
+      apiUrl: 'https://api.sicoob.com.br/pix/api/v2', scope: 'cob.write'
+    };
     api = await iniciarApi(connection, {
-      configuracaoSicoob: {
-        habilitado: true, webhookHabilitado: true,
-        clientId: 'cliente-teste', certPassword: 'senha-ficticia',
-        certPath: '/certificado/ficticio', keyPath: '/chave/ficticia', chavePix: 'pix@teste.invalid',
-        tokenUrl: 'https://auth.sicoob.com.br/auth/realms/cooperado/protocol/openid-connect/token',
-        apiUrl: 'https://api.sicoob.com.br/pix/api/v2', scope: 'cob.write'
-      },
+      configuracaoSicoob: configuracaoSicoobTeste,
       transporteSicoob: async requisicao => {
         chamadasSicoob.push(requisicao);
         if (requisicao.url.endsWith('/token')) {
@@ -265,6 +267,7 @@ async function executar() {
       [1, 1, 2]
     );
     txid = txidRenovado;
+    configuracaoSicoobTeste.webhookHabilitado = true;
 
     const desconhecido = JSON.stringify({ pix: [{ txid: txidDesconhecido,
       endToEndId: `U${e2e.slice(1)}`, valor: valor.toFixed(2),

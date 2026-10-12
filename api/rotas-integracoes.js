@@ -43,7 +43,8 @@ module.exports = function registrarRotasIntegracoes(app, pool, opcoes = {}) {
     pedidoId, expiracaoSegundos, solicitacaoPagador, usuarioId = null, ip = null
   }) => {
     const config = opcoes.configuracaoSicoob || await obterConfiguracaoSicoob(pool);
-    if (!config.habilitado || !config.webhookHabilitado) {
+    if (!config.habilitado ||
+        !(config.webhookHabilitado || config.consultaHabilitada)) {
       const erro = new Error('Cobrança ou confirmação Sicoob não está habilitada');
       erro.codigo = 'SICOOB_NAO_HABILITADO';
       erro.status = 503;
@@ -233,7 +234,8 @@ module.exports = function registrarRotasIntegracoes(app, pool, opcoes = {}) {
     exigirPermissao('FINANCEIRO', 'visualizar'), async (req, res) => {
       try {
         const config = opcoes.configuracaoSicoob || await obterConfiguracaoSicoob(pool);
-        const disponivel = Boolean(config.habilitado && config.webhookHabilitado);
+        const disponivel = Boolean(config.habilitado &&
+          (config.webhookHabilitado || config.consultaHabilitada));
         return res.json({
           ok: true,
           disponivel,

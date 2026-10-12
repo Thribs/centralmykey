@@ -83,10 +83,17 @@ atendimento humano.
 A automação GM do WhatsApp deve permanecer desabilitada por padrão. Somente
 definir `AUTOMACAO_GM_WHATSAPP_HABILITADA=true` depois que WhatsApp, modelos,
 destinatários, Sicoob, webhook mTLS e gravação na API Joel Pires estiverem
-homologados. Enquanto estiver desabilitada, toda entrada segue para a fila
+homologados. A exceção é um ensaio controlado restrito por
+`AUTOMACAO_GM_WHATSAPP_TELEFONES_TESTE`, no qual somente o caminho cujas
+dependências estejam prontas pode ser executado. Enquanto estiver desabilitada, toda entrada segue para a fila
 humana sem criar pedido; mensagens automáticas pendentes não são enviadas e
 comunicações vinculadas a pedidos automáticos são canceladas. Pedidos manuais
 continuam usando sua outbox normal.
+
+Durante testes controlados, `AUTOMACAO_GM_WHATSAPP_TELEFONES_TESTE` deve conter
+somente os contatos autorizados. Com essa lista preenchida, qualquer outro
+telefone segue para atendimento humano sem criar pedido. Os números são dados
+de ambiente sensíveis e o diagnóstico pode exibir apenas a quantidade.
 
 A publicação automática de uma resposta de fornecedor na API Joel Pires deve
 permanecer bloqueada até `APIJOELPIRES_GRAVACAO_HOMOLOGADA=true`. Essa chave só

@@ -6,6 +6,7 @@ const express = require('express');
 const {
   carregarConfiguracoesIntegracoes,
   diagnosticarProntidaoFluxoGm,
+  diagnosticarProntidaoPrimeiroCenarioGm,
   diagnosticarProntidaoSicoob,
   diagnosticarProntidaoWhatsapp,
   obterConfiguracaoSicoob,
@@ -29,6 +30,7 @@ const CHAVES_TESTE = [
   'WHATSAPP_MODELO_CONSULTA_FORNECEDOR',
   'WHATSAPP_MODELO_ENTREGA_RESULTADO', 'COMUNICACOES_OUTBOX_HABILITADO',
   'AUTOMACAO_GM_WHATSAPP_HABILITADA',
+  'AUTOMACAO_GM_WHATSAPP_TELEFONES_TESTE',
   'APIJOELPIRES_GRAVACAO_HOMOLOGADA',
   'SICOOB_CLIENT_ID', 'SICOOB_CERT_PATH', 'SICOOB_KEY_PATH',
   'SICOOB_CERTIFICADO_SENHA', 'SICOOB_CA_PATH', 'SICOOB_WEBHOOK_CA_PATH',
@@ -84,6 +86,7 @@ async function executar() {
     WHATSAPP_MODELO_ENTREGA_RESULTADO: 'entrega_teste',
     COMUNICACOES_OUTBOX_HABILITADO: 'true',
     AUTOMACAO_GM_WHATSAPP_HABILITADA: 'true',
+    AUTOMACAO_GM_WHATSAPP_TELEFONES_TESTE: '5535999999999, 5535888888888',
     WHATSAPP_GRUPO_FORNECEDOR_MARCIO_ID: 'grupo_meta_marcio_1234567890',
     WHATSAPP_GRUPO_FORNECEDOR_EMERSON_ID: 'grupo_meta_emerson_1234567890',
     WHATSAPP_GRUPOS_FORNECEDORES_HOMOLOGADOS: 'true',
@@ -99,7 +102,7 @@ async function executar() {
     for (const chave of [
       'CHAVE_API_JOELPIRES', 'JWT_SECRET', 'WBUY_SENHA',
       'WHATSAPP_ACCESS_TOKEN', 'SICOOB_KEY_PATH', 'SICOOB_CERTIFICADO_SENHA',
-      'BLING_TOKEN_ENCRYPTION_KEY'
+      'BLING_TOKEN_ENCRYPTION_KEY', 'AUTOMACAO_GM_WHATSAPP_TELEFONES_TESTE'
     ]) {
       assert.strictEqual(chaveSensivel(chave), true, `${chave} deve ser sensível`);
       const mascarada = mascararConfiguracao({ chave, valor: 'nao-expor' });
@@ -117,6 +120,8 @@ async function executar() {
       'grupo_meta_marcio_1234567890';
     process.env.WHATSAPP_GRUPO_FORNECEDOR_EMERSON_ID =
       'grupo_meta_emerson_1234567890';
+    process.env.AUTOMACAO_GM_WHATSAPP_TELEFONES_TESTE =
+      valores.AUTOMACAO_GM_WHATSAPP_TELEFONES_TESTE;
     const pool = poolFalso(valores);
     const carregada = await carregarConfiguracoesIntegracoes(pool);
     assert.strictEqual(carregada.whatsappApiVersion, 'v98.0',
@@ -125,6 +130,8 @@ async function executar() {
     assert.strictEqual(whatsapp.accessToken, valores.WHATSAPP_ACCESS_TOKEN);
     assert.strictEqual(whatsapp.outboxHabilitada, true);
     assert.strictEqual(whatsapp.automacaoGmHabilitada, true);
+    assert.deepStrictEqual(whatsapp.telefonesTeste,
+      ['5535999999999', '5535888888888']);
 
     const resumo = resumirIntegracoes(carregada);
     const itemWhatsapp = resumo.find(item => item.codigo === 'WHATSAPP');
@@ -133,6 +140,7 @@ async function executar() {
     const itemBling = resumo.find(item => item.codigo === 'BLING');
     const itemWbuy = resumo.find(item => item.codigo === 'WBUY');
     assert.strictEqual(itemWhatsapp.status, 'CONFIGURADO');
+    assert.strictEqual(itemWhatsapp.componentes.telefones_teste, 2);
     assert.strictEqual(itemSicoob.status, 'PENDENTE');
     assert.strictEqual(itemSicoob.habilitado, false);
     assert.strictEqual(itemSicoob.componentes.cobranca_habilitada, false);
@@ -311,6 +319,38 @@ async function executar() {
     assert.strictEqual(fluxoGmBloqueado.pronto_para_teste, false);
     assert.ok(fluxoGmBloqueado.bloqueios.includes(
       'JOELPIRES:GRAVACAO_NAO_HOMOLOGADA'));
+
+    const whatsappPrimeiroCenario = {
+      ...prontidaoBloqueada,
+      telefones_teste: 1,
+      bloqueios: [
+        'MODELO_GRUPO_FORNECEDOR_NAO_HOMOLOGADO',
+        'FORNECEDOR_GM_NAO_CADASTRADO',
+        'GRUPOS_FORNECEDORES_GM_NAO_CONFIGURADOS',
+        'GRUPOS_FORNECEDORES_META_NAO_HOMOLOGADOS'
+      ]
+    };
+    const primeiroCenarioPronto = diagnosticarProntidaoPrimeiroCenarioGm(
+      await carregarConfiguracoesIntegracoes(poolFalso({
+        ...valores, ...configuracaoSicoobCompleta,
+        APIJOELPIRES_GRAVACAO_HOMOLOGADA: 'false'
+      })),
+      whatsappPrimeiroCenario,
+      diagnosticoSicoob
+    );
+    assert.strictEqual(primeiroCenarioPronto.pronto_para_teste, true);
+    assert.deepStrictEqual(primeiroCenarioPronto.bloqueios, []);
+    assert.strictEqual(primeiroCenarioPronto.componentes.joel_pires_leitura, true);
+    assert.strictEqual(primeiroCenarioPronto.componentes.contato_teste, true);
+
+    const primeiroCenarioSemContato = diagnosticarProntidaoPrimeiroCenarioGm(
+      { joelPiresChave: 'chave', joelPiresUsuario: 'usuario' },
+      { ...whatsappPrimeiroCenario, telefones_teste: 0 },
+      diagnosticoSicoob
+    );
+    assert.strictEqual(primeiroCenarioSemContato.pronto_para_teste, false);
+    assert.ok(primeiroCenarioSemContato.bloqueios.includes(
+      'WHATSAPP:CONTATO_TESTE_NAO_CONFIGURADO'));
 
     const requisicoesMeta = [];
     global.fetch = async (url, opcoes) => {

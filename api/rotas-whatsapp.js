@@ -312,11 +312,18 @@ module.exports = function (app, pool) {
           );
 
           await conexao.commit();
-          if (!configuracaoWhatsapp.automacaoGmHabilitada) {
+          const telefonesTeste = configuracaoWhatsapp.telefonesTeste || [];
+          const foraDaHomologacao = telefonesTeste.length > 0 &&
+            !telefonesTeste.includes(telefone);
+          if (!configuracaoWhatsapp.automacaoGmHabilitada || foraDaHomologacao) {
             if (atendimentoModo === 'ELETRONICO') {
               await encaminharHumano(pool, atendimentoId,
-                'AUTOMACAO_GM_DESABILITADA',
-                'Automacao GM ainda nao foi habilitada para homologacao');
+                foraDaHomologacao
+                  ? 'FORA_DA_HOMOLOGACAO_GM'
+                  : 'AUTOMACAO_GM_DESABILITADA',
+                foraDaHomologacao
+                  ? 'Contato fora da lista controlada de homologacao GM'
+                  : 'Automacao GM ainda nao foi habilitada para homologacao');
             }
             continue;
           }

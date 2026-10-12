@@ -524,6 +524,7 @@ export function Integracoes({ permissoes: permissoesSessao = [] }) {
   const [prontidaoWhatsapp, setProntidaoWhatsapp] = useState(null);
   const [prontidaoSicoob, setProntidaoSicoob] = useState(null);
   const [prontidaoFluxoGm, setProntidaoFluxoGm] = useState(null);
+  const [prontidaoPrimeiroCenarioGm, setProntidaoPrimeiroCenarioGm] = useState(null);
   const [filtrosEventos, setFiltrosEventos] = useState({
     provedor: '', status: ''
   });
@@ -577,6 +578,9 @@ export function Integracoes({ permissoes: permissoesSessao = [] }) {
       setProntidaoWhatsapp(dadosIntegracoes.prontidao_whatsapp || null);
       setProntidaoSicoob(dadosIntegracoes.prontidao_sicoob || null);
       setProntidaoFluxoGm(dadosIntegracoes.prontidao_fluxo_gm || null);
+      setProntidaoPrimeiroCenarioGm(
+        dadosIntegracoes.prontidao_primeiro_cenario_gm || null
+      );
       setModelos(dadosModelos.dados || []);
       setEventos(dadosEventos.dados || []);
       setMapeamentos(dadosMapeamentos.dados || []);
@@ -856,8 +860,31 @@ export function Integracoes({ permissoes: permissoesSessao = [] }) {
         ))}
       </div>
 
+      {prontidaoPrimeiroCenarioGm && <div className="admin-panel whatsapp-readiness">
+        <header><div><span>PRIMEIRO TESTE GM · SENHA ENCONTRADA NA API</span>
+          <h2>{prontidaoPrimeiroCenarioGm.pronto_para_teste
+            ? 'Pronto para teste externo controlado'
+            : 'Primeiro teste ainda bloqueado'}</h2></div>
+          <strong>{Number(prontidaoPrimeiroCenarioGm.bloqueios?.length || 0)} bloqueio(s)</strong>
+        </header>
+        <div className="whatsapp-readiness-metrics">
+          <span>WhatsApp e contato <strong>{
+            prontidaoPrimeiroCenarioGm.componentes?.whatsapp
+              ? 'Prontos' : 'Pendentes'}</strong></span>
+          <span>Sicoob <strong>{prontidaoPrimeiroCenarioGm.componentes?.sicoob
+            ? 'Pronto' : 'Pendente'}</strong></span>
+          <span>Leitura Joel Pires <strong>{
+            prontidaoPrimeiroCenarioGm.componentes?.joel_pires_leitura
+              ? 'Configurada' : 'Pendente'}</strong></span>
+        </div>
+        {prontidaoPrimeiroCenarioGm.bloqueios?.length > 0 && <ul>
+          {prontidaoPrimeiroCenarioGm.bloqueios.map(codigo =>
+            <li key={codigo}>{codigo}</li>)}
+        </ul>}
+      </div>}
+
       {prontidaoFluxoGm && <div className="admin-panel whatsapp-readiness">
-        <header><div><span>PRONTIDÃO DO CENÁRIO GM</span>
+        <header><div><span>PRONTIDÃO DO FLUXO GM COMPLETO</span>
           <h2>{prontidaoFluxoGm.pronto_para_teste
             ? 'Cenário pronto para teste externo controlado'
             : 'Cenário externo ainda bloqueado'}</h2></div>
@@ -919,6 +946,9 @@ export function Integracoes({ permissoes: permissoesSessao = [] }) {
         <div className="whatsapp-readiness-metrics">
           <span>Automação GM <strong>{prontidaoWhatsapp.automacao_habilitada
             ? 'Habilitada' : 'Desabilitada'}</strong></span>
+          <span>Contatos de teste <strong>{Number(
+            prontidaoWhatsapp.telefones_teste || 0
+          )}</strong></span>
           <span>Grupos GM <strong>{Number(
             prontidaoWhatsapp.fornecedores_gm?.grupos_configurados || 0
           )}/{Number(

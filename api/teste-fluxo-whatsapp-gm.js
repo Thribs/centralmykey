@@ -163,6 +163,8 @@ async function executar() {
   const provedorOriginal = process.env.WHATSAPP_PROVEDOR;
   const botOriginal = process.env.SENDPULSE_WHATSAPP_BOT_ID;
   const automacaoOriginal = process.env.AUTOMACAO_GM_WHATSAPP_HABILITADA;
+  const telefonesTesteOriginal =
+    process.env.AUTOMACAO_GM_WHATSAPP_TELEFONES_TESTE;
   const gravacaoJoelOriginal = process.env.APIJOELPIRES_GRAVACAO_HOMOLOGADA;
   const segredo = 'segredo_ficticio_fluxo_gm_1234567890';
   const marcador = `${process.pid}-${String(Date.now()).slice(-8)}`;
@@ -583,6 +585,35 @@ async function executar() {
       Number(automacaoDesabilitada.pedidos)
     ], ['HUMANO', 'FILA', 0]);
 
+    const telefoneForaHomologacao = `5569${String(Date.now()).slice(-9)}`;
+    const [clienteForaHomologacao] = await connection.query(
+      `INSERT INTO clientes
+         (nome, telefone, telefone_normalizado, cadastro_status, ativo,
+          tipo_cobranca, credito_status)
+       VALUES (?, ?, ?, 'COMPLETO', 1, 'ANTECIPADO', 'LIBERADO')`,
+      [`CLIENTE FORA HOMOLOGACAO ${marcador}`,
+        telefoneForaHomologacao, telefoneForaHomologacao]
+    );
+    process.env.AUTOMACAO_GM_WHATSAPP_TELEFONES_TESTE = clienteTelefone;
+    resposta = await webhook(api.url, segredo, {
+      telefone: telefoneForaHomologacao,
+      mensagemId: `wamid.mock.fora.homologacao.${marcador}`,
+      texto: `Preciso da senha GM para 9BGOUT1A0${String(Date.now()).slice(-8)}`
+    });
+    delete process.env.AUTOMACAO_GM_WHATSAPP_TELEFONES_TESTE;
+    assert.strictEqual(resposta.status, 200);
+    const [[foraHomologacao]] = await connection.query(
+      `SELECT a.modo, a.status,
+              (SELECT COUNT(*) FROM pedidos_senha p WHERE p.cliente_id=?) AS pedidos
+         FROM atendimentos a WHERE a.telefone_normalizado=?
+         ORDER BY a.id DESC LIMIT 1`,
+      [clienteForaHomologacao.insertId, telefoneForaHomologacao]
+    );
+    assert.deepStrictEqual([
+      foraHomologacao.modo, foraHomologacao.status,
+      Number(foraHomologacao.pedidos)
+    ], ['HUMANO', 'FILA', 0]);
+
     const telefoneMidia = `5568${String(Date.now()).slice(-9)}`;
     await connection.query(
       `INSERT INTO clientes
@@ -942,6 +973,11 @@ async function executar() {
       delete process.env.AUTOMACAO_GM_WHATSAPP_HABILITADA;
     } else {
       process.env.AUTOMACAO_GM_WHATSAPP_HABILITADA = automacaoOriginal;
+    }
+    if (telefonesTesteOriginal === undefined) {
+      delete process.env.AUTOMACAO_GM_WHATSAPP_TELEFONES_TESTE;
+    } else {
+      process.env.AUTOMACAO_GM_WHATSAPP_TELEFONES_TESTE = telefonesTesteOriginal;
     }
     if (gravacaoJoelOriginal === undefined) {
       delete process.env.APIJOELPIRES_GRAVACAO_HOMOLOGADA;

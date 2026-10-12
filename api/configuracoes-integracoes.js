@@ -25,6 +25,7 @@ const CHAVES = {
   idiomaModeloEntrega: ['WHATSAPP_MODELO_ENTREGA_RESULTADO_IDIOMA'],
   outboxHabilitada: ['COMUNICACOES_OUTBOX_HABILITADO'],
   automacaoGmWhatsappHabilitada: ['AUTOMACAO_GM_WHATSAPP_HABILITADA'],
+  automacaoGmTelefonesTeste: ['AUTOMACAO_GM_WHATSAPP_TELEFONES_TESTE'],
   whatsappMediaDir: ['WHATSAPP_MEDIA_DIR'],
   whatsappMediaMaxBytes: ['WHATSAPP_MEDIA_MAX_BYTES'],
   joelPiresChave: ['CHAVE_API_JOELPIRES'],
@@ -58,7 +59,8 @@ const CHAVES = {
 const SOMENTE_AMBIENTE = new Set([
   'whatsappProvedor', 'sendpulseClientId', 'sendpulseClientSecret',
   'sendpulseBotId', 'sendpulseWebhookSecret', 'grupoFornecedorMarcioId',
-  'grupoFornecedorEmersonId', 'sicoobClientId', 'sicoobCertPath',
+  'grupoFornecedorEmersonId', 'automacaoGmTelefonesTeste',
+  'sicoobClientId', 'sicoobCertPath',
   'sicoobKeyPath', 'sicoobCertPassword', 'sicoobCaPath',
   'sicoobWebhookCaPath', 'sicoobChavePix'
 ]);
@@ -104,6 +106,12 @@ function verdadeiro(valor) {
   );
 }
 
+function normalizarTelefonesTeste(valor) {
+  return [...new Set(String(valor || '').split(/[;,\s]+/)
+    .map(item => item.replace(/\D/g, ''))
+    .filter(item => /^\d{10,15}$/.test(item)))];
+}
+
 function tokenWebhookSendPulseValido(valor) {
   return /^[A-Za-z0-9_-]{32,128}$/.test(String(valor || ''));
 }
@@ -135,6 +143,7 @@ function resumirIntegracoes(config) {
   const whatsappModelos = Boolean(config.modeloFornecedor && config.modeloEntrega);
   const whatsappHabilitado = verdadeiro(config.outboxHabilitada);
   const automacaoGmHabilitada = verdadeiro(config.automacaoGmWhatsappHabilitada);
+  const telefonesTeste = normalizarTelefonesTeste(config.automacaoGmTelefonesTeste);
   const sicoobCobrancaHabilitada = verdadeiro(config.sicoobCobrancaHabilitada);
   const sicoobConsultaHabilitada = verdadeiro(config.sicoobConsultaHabilitada);
   const sicoobWebhookHabilitado = verdadeiro(config.sicoobWebhookHabilitado);
@@ -157,7 +166,8 @@ function resumirIntegracoes(config) {
         webhook: whatsappWebhook,
         modelos: whatsappModelos,
         outbox: whatsappHabilitado,
-        automacao_gm: automacaoGmHabilitada
+        automacao_gm: automacaoGmHabilitada,
+        telefones_teste: telefonesTeste.length
       }
     },
     {
@@ -347,6 +357,42 @@ function diagnosticarProntidaoFluxoGm(config, prontidaoWhatsapp, prontidaoSicoob
   };
 }
 
+function diagnosticarProntidaoPrimeiroCenarioGm(
+  config,
+  prontidaoWhatsapp,
+  prontidaoSicoob
+) {
+  const bloqueiosExclusivosDeFornecedor = new Set([
+    'MODELO_GRUPO_FORNECEDOR_NAO_HOMOLOGADO',
+    'FORNECEDOR_GM_NAO_CADASTRADO',
+    'GRUPOS_FORNECEDORES_GM_NAO_CONFIGURADOS',
+    'GRUPOS_FORNECEDORES_META_NAO_HOMOLOGADOS'
+  ]);
+  const bloqueiosWhatsapp = (prontidaoWhatsapp?.bloqueios || [])
+    .filter(codigo => !bloqueiosExclusivosDeFornecedor.has(codigo));
+  const leituraJoelPires = Boolean(config.joelPiresChave && config.joelPiresUsuario);
+  const contatoTesteConfigurado = Number(prontidaoWhatsapp?.telefones_teste || 0) > 0;
+  const bloqueios = [
+    ...bloqueiosWhatsapp.map(codigo => `WHATSAPP:${codigo}`),
+    ...(prontidaoSicoob?.bloqueios || []).map(codigo => `SICOOB:${codigo}`)
+  ];
+  if (!contatoTesteConfigurado) {
+    bloqueios.push('WHATSAPP:CONTATO_TESTE_NAO_CONFIGURADO');
+  }
+  if (!leituraJoelPires) bloqueios.push('JOELPIRES:CREDENCIAIS_INCOMPLETAS');
+
+  return {
+    pronto_para_teste: bloqueios.length === 0,
+    componentes: {
+      whatsapp: bloqueiosWhatsapp.length === 0 && contatoTesteConfigurado,
+      contato_teste: contatoTesteConfigurado,
+      sicoob: Boolean(prontidaoSicoob?.pronto_para_teste),
+      joel_pires_leitura: leituraJoelPires
+    },
+    bloqueios
+  };
+}
+
 function destinatarioGrupoValido(valor) {
   return /^[A-Za-z0-9:_-]{20,200}$/.test(String(valor || '').trim());
 }
@@ -444,6 +490,7 @@ async function diagnosticarProntidaoWhatsapp(pool, config) {
     pronto_para_homologar: bloqueios.length === 0,
     worker_habilitado: resumo.componentes.outbox,
     automacao_habilitada: resumo.componentes.automacao_gm,
+    telefones_teste: resumo.componentes.telefones_teste,
     bloqueios,
     modelos: {
       consulta_fornecedor: {
@@ -492,6 +539,7 @@ async function obterConfiguracaoWhatsapp(pool) {
     idiomaModeloEntrega: config.idiomaModeloEntrega || 'pt_BR',
     outboxHabilitada: verdadeiro(config.outboxHabilitada),
     automacaoGmHabilitada: verdadeiro(config.automacaoGmWhatsappHabilitada),
+    telefonesTeste: normalizarTelefonesTeste(config.automacaoGmTelefonesTeste),
     mediaDir: config.whatsappMediaDir,
     mediaMaxBytes: Number(config.whatsappMediaMaxBytes) || null
   };
@@ -543,6 +591,7 @@ module.exports = {
   carregarConfiguracoesIntegracoes,
   diagnosticarProntidaoSicoob,
   diagnosticarProntidaoFluxoGm,
+  diagnosticarProntidaoPrimeiroCenarioGm,
   diagnosticarProntidaoWhatsapp,
   obterConfiguracaoBling,
   obterConfiguracaoWhatsapp,
