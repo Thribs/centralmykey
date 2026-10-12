@@ -318,6 +318,22 @@ async function sincronizarAtendimentoAposPagamento(pool, pedidoId) {
       return { processado: false, motivo: 'PAGAMENTO_JA_SINCRONIZADO' };
     }
     if (pedido.status === 'EM_CONSULTA') {
+      const [[comunicacaoFornecedor]] = await connection.query(
+        `SELECT status, erro_codigo
+           FROM comunicacoes_outbox
+          WHERE pedido_id=? AND finalidade='CONSULTA_FORNECEDOR'
+          ORDER BY id DESC LIMIT 1`,
+        [pedido.id]
+      );
+      if (!comunicacaoFornecedor || comunicacaoFornecedor.status === 'FALHOU') {
+        const codigo = comunicacaoFornecedor?.erro_codigo ||
+          'CONSULTA_FORNECEDOR_NAO_AGENDADA';
+        await encaminharHumanoConnection(connection, atendimentoId, codigo,
+          'Pagamento confirmado, mas o grupo do fornecedor não está homologado');
+        await connection.commit();
+        return { processado: true, pedido_id: Number(pedidoId),
+          status: pedido.status, humano: true, erro_codigo: codigo };
+      }
       await connection.query(
         `UPDATE atendimentos SET status='AGUARDANDO_FORNECEDOR',
           assunto='Senha GM · aguardando fornecedor' WHERE id=?`, [atendimentoId]

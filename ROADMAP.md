@@ -163,7 +163,7 @@ Os testes integrados criaram registros somente dentro das transações e executa
 ## Próximos 10 marcos em ordem de dependência
 
 1. **CONCLUÍDO — publicar migrações, backup e rollback**, sem ativar transportes externos.
-2. **Homologar os dois modelos WhatsApp e destinatários controlados**, realizar envio de consulta e entrega e registrar os comprovantes retornados pela Meta.
+2. **Homologar o modelo de entrega na SendPulse e o modelo de grupo na Meta**, realizar envio de consulta e entrega e registrar os comprovantes retornados pelos provedores.
 3. **Homologar o retorno estruturado com Márcio e Emerson**, comprovando associação, deduplicação e validação humana com mensagens controladas.
 4. **Ligar alertas críticos a um canal externo e definir SLO**, cobrindo parada de worker, fila envelhecida, API indisponível e falha de integração.
 5. **Homologar Sicoob com mTLS**, cobrança e eventos reais controlados antes de expor qualquer webhook público.
@@ -246,7 +246,7 @@ commit `188c864` em 21/09/2026, sem merge ou nova tag:
 - Clientes, Fornecedores, Financeiro e Pedidos agora ocultam cada ação conforme `criar`, `editar` ou `aprovar`; o E2E com JWT real comprova leitura dos módulos, ausência dos controles e HTTP 403 nas quatro rotas de escrita forçadas, sempre dentro da transação revertida;
 - pedidos GM com indisponibilidade agora aparecem em indicador e filtro próprios sem mudar o estado persistido `ABERTO`; o histórico de pagamento passou a anteceder o processamento tanto no fluxo manual quanto no automático, preservando `API_JOELPIRES_INDISPONIVEL` como último evento elegível ao worker; o E2E prova o caminho desde o pagamento HTTP 503 até a fila e a conclusão posterior;
 - a administração completa do Banco de Senhas agora deriva de `BANCO_SENHAS.aprovar`, removendo a antiga exceção por IDs fixos; o navegador prova gestão autorizada, desistência e confirmação do bloqueio, auditoria, bloqueio visual e HTTP 403 para visualizador, com rollback; regras de fornecedor e substituição da matriz de permissões também passaram a exigir confirmação;
-- Administração → Integrações agora apresenta a prontidão operacional do WhatsApp GM sem retornar telefones, nomes configurados ou credenciais: transporte, webhook, aprovação/ativação dos dois modelos, quantidade de destinatários GM válidos e estados críticos da outbox são verificados pela API; o teste isolado usa respostas fictícias e o Playwright comprova a rota e a interface em transação com rollback;
+- Administração → Integrações apresenta a prontidão operacional do WhatsApp GM sem retornar grupos, nomes configurados ou credenciais: transporte, webhook, aprovação dos modelos em seus respectivos provedores, quantidade de grupos GM válidos e estados críticos da outbox são verificados pela API; o teste isolado usa respostas fictícias e o Playwright comprova a rota e a interface em transação com rollback;
 - o diagnóstico de prontidão foi publicado no commit `928213f` após backup integral verificado, suíte completa da API, 31 cenários Playwright, lint, build, validação idempotente das migrações, systemd ativo e health/readiness HTTP 200; o worker permaneceu desabilitado e a leitura pós-publicação confirmou fila vazia e bloqueios de transporte, modelos e destinatários GM;
 - criar, editar e bloquear registros do Banco de Senhas agora formam operações transacionais e auditadas; a trilha guarda apenas metadados e indicadores de presença, sem os códigos automotivos; um novo teste HTTP no `npm test` cobre permissão, duplicidade, ciclo completo, três eventos de auditoria, minimização e rollback, enquanto o navegador também cadastra pela rota real;
 - a publicação interna possui plano e executor reversível: valida suítes, prepara artefatos, cria backup integral, aplica dez migrações e restaura API, web e banco em falha; a validação descartável cria onze tabelas esperadas, incluindo a matriz de autoridade, e comprova reaplicação idempotente;
@@ -304,7 +304,7 @@ commit `188c864` em 21/09/2026, sem merge ou nova tag:
 - o teste automatizado restaura artefatos, rejeita corrupção e realiza dump/restauração integral numa instância MySQL descartável; o timer está habilitado e a primeira execução real terminou com sucesso, criando um pacote verificado de quatro artefatos;
 - autenticação e autorização agora possuem teste funcional com login real, JWT válido/adulterado, cinco ações de permissão, senha provisória e bloqueio imediato;
 - o teste de acesso usa usuário fictício com rollback e tabelas temporárias para módulos e permissões, sem alterar a matriz real do ambiente;
-- a ativação continua bloqueada até homologar os dois modelos da Meta e confirmar contatos válidos de fornecedores e clientes.
+- a ativação continua bloqueada até homologar a entrega na SendPulse, o modelo de grupo na Meta e confirmar os grupos fornecedores e os telefones dos clientes.
 
 Esses itens continuam **PARCIAIS** até as migrações serem validadas para publicação, os modelos serem homologados, o fluxo ser publicado com backup e um envio controlado ser comprovado sem dados reais. O fechamento de fornecedores também depende da aprovação da política operacional de período e pagamento; ele registra pagamentos realizados, mas não movimenta a conta bancária.
 
@@ -353,3 +353,16 @@ O painel agora agrega WhatsApp, Sicoob, leitura e gravação Joel Pires numa
 prontidão única do cenário GM. A gravação externa possui trava própria,
 desligada por padrão; sem homologação ela não executa o POST, preserva o
 resultado do fornecedor e transfere o atendimento para humano.
+
+## Correção — grupos Márcio e Emerson e webhook SendPulse (30/09/2026)
+
+Esta correção substitui as referências anteriores a Márcio e Emerson como
+telefones ou contatos individuais.
+
+| Requisito | Situação | Evidência | Teste | Lacuna e próximo passo | Risco |
+|---|---|---|---|---|---|
+| Recebimento SendPulse | COMPROVADO EM TESTE | A SendPulse não fornece token nem assinatura para o webhook global; `SEGREDO_WEBHOOK_SENDPULSE` é gerado pela Central e validado em tempo constante na URL | Testes de fluxo e falha de entrega usam segredo fictício e não dependem da SendPulse | Cadastrar a URL protegida no painel SendPulse | Sem segredo próprio, uma URL descoberta poderia receber eventos falsos |
+| Identidade de Márcio e Emerson | COMPROVADO EM TESTE | `api/agendar-consulta-fornecedor.js` resolve os dois por `group_id` de ambiente e grava `GRUPO_META` na fila | Teste funcional agenda um grupo fictício, envia uma vez e reverte tudo | Obter os dois `group_id` reais somente depois da homologação Meta | Tratar grupo como telefone enviaria ao destino errado |
+| Envio aos grupos | BLOQUEADO EXTERNAMENTE | `api/rotas-whatsapp.js` usa `recipient_type: group` somente quando a homologação estiver ativa; SendPulse continua atendendo clientes | Transporte Meta é simulado e o corpo com `group_id` é verificado | Confirmar conta OBA, compatibilidade dos grupos, limite de oito participantes, credenciais Meta e modelo específico | Grupos atuais do aplicativo WhatsApp ou de conexão multissolução podem ser incompatíveis com a Groups API |
+| Retorno do grupo | COMPROVADO EM TESTE | O webhook Meta vincula a resposta pelo `group_id`, protocolo e consulta previamente enviada | Teste aceita participante do grupo correto, rejeita grupo diferente e prova idempotência com rollback | Ensaiar em grupo controlado criado pela Groups API | Validar apenas o telefone do participante permitiria resposta fora do grupo contratado |
+| Contingência enquanto grupos não estão homologados | COMPROVADO EM TESTE | Consulta sem grupo válido falha fechada e, apó pagamento, transfere o atendimento para `HUMANO/FILA` | Fluxo funcional comprova a transferência sem envio externo | Manter as duas chaves de homologação falsas até o ensaio externo | Habilitação prematura pode deixar pedido pago aguardando um grupo que não recebeu a consulta |

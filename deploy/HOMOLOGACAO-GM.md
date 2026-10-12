@@ -8,11 +8,10 @@ enviados por conversa nem registrados no Git.
 
 | Origem | O que precisa ser fornecido ou executado | O que isso libera |
 |---|---|---|
-| SendPulse | Instalar `SENDPULSE_CLIENT_ID`, `SENDPULSE_CLIENT_SECRET`, `SENDPULSE_WHATSAPP_BOT_ID` e um `SENDPULSE_WEBHOOK_TOKEN` privado no `.env` publicado | Autenticação do transporte e recepção do webhook |
-| Operação GM | Instalar `WHATSAPP_FORNECEDOR_MARCIO` e `WHATSAPP_FORNECEDOR_EMERSON`, em formato internacional somente com dígitos | Envio e validação do retorno de cada fornecedor |
-| Painel SendPulse | Criar e enviar para aprovação os dois modelos descritos abaixo no bot operacional | Sincronização dos modelos e envio fora da janela livre de 24 horas |
-| DNS de `aiepires.com.br` | Criar o registro A de `pix-central.aiepires.com.br` apontando para este VPS | Emissão do certificado público pelo Certbot |
-| Sicoob | Fornecer Client ID, segredo, chave Pix, certificado cliente, chave privada e cadeias de CA; depois cadastrar `https://pix-central.aiepires.com.br/webhooks/sicoob` | Cobrança Pix em homologação e confirmação por webhook mTLS |
+| SendPulse | Instalar `SENDPULSE_CLIENT_ID`, `SENDPULSE_CLIENT_SECRET` e `SENDPULSE_WHATSAPP_BOT_ID`; a Central gera `SEGREDO_WEBHOOK_SENDPULSE` | Autenticação do transporte de clientes e recepção protegida do webhook |
+| Grupos dos fornecedores | Confirmar elegibilidade OBA na Meta, obter os `group_id` compatíveis de Márcio e Emerson e homologar envio/retorno pela Groups API | Consulta automática aos grupos; sem isso o atendimento segue para humano |
+| Painel SendPulse | Criar e enviar para aprovação o modelo de entrega ao cliente descrito abaixo | Envio ao cliente fora da janela livre de 24 horas |
+| Sicoob | Usar Client ID, chave Pix, certificado cliente `.cer`, chave privada e senha do certificado já instalados; confirmar no portal o contrato de autenticação do webhook no endereço existente | Cobrança Pix em homologação e confirmação segura do pagamento |
 | API Joel Pires | Autorizar o `ID_USUARIO_API_JOELPIRES` já configurado a gravar no staging e informar um registro fictício removível ou um meio de limpeza | Ensaio seguro de POST, releitura e liberação da entrega de resultado do fornecedor |
 
 Depois que cada dependência estiver disponível no VPS ou no serviço
@@ -29,33 +28,78 @@ WHATSAPP_PROVEDOR=SENDPULSE
 SENDPULSE_CLIENT_ID=
 SENDPULSE_CLIENT_SECRET=
 SENDPULSE_WHATSAPP_BOT_ID=
-SENDPULSE_WEBHOOK_TOKEN=
-WHATSAPP_FORNECEDOR_MARCIO=
-WHATSAPP_FORNECEDOR_EMERSON=
+SEGREDO_WEBHOOK_SENDPULSE=
 ```
 
-Os dois telefones devem estar no formato internacional, somente com dígitos.
 Na SendPulse, configurar o webhook global como:
 
 ```text
-https://api-central.aiepires.com.br/webhooks/sendpulse/whatsapp/VALOR_DO_SENDPULSE_WEBHOOK_TOKEN
+https://api-central.aiepires.com.br/webhooks/sendpulse/whatsapp/SEGREDO_GERADO_PELA_CENTRAL
 ```
 
 Habilitar os eventos **Incoming message**, **Outbound messages** e **Message
 delivery failed**. O Nginx deve aplicar a configuração de
 `nginx-sendpulse-webhook.conf.example` para não gravar o token do caminho no
-log de acesso.
+log de acesso. Esse segredo é gerado pela Central MyKey porque a SendPulse não
+documenta assinatura ou token próprio para webhooks globais.
 
-Os modelos definidos por `WHATSAPP_MODELO_CONSULTA_FORNECEDOR` e
-`WHATSAPP_MODELO_ENTREGA_RESULTADO` devem estar aprovados e ativos no bot
-WhatsApp indicado por `SENDPULSE_WHATSAPP_BOT_ID`. A especificação atual da API
-SendPulse permite listar os modelos, mas não publica uma operação para enviar
-um novo modelo à aprovação. A criação deve ser feita no painel SendPulse. Em
-seguida, usar **Sincronizar SendPulse** na administração da Central para
-confirmar o status real; aprovação digitada somente no banco não libera o
-fluxo.
+## Grupos Márcio e Emerson
 
-Modelos sugeridos, ambos na categoria Utilidade e idioma `pt_BR`:
+Márcio e Emerson são grupos de WhatsApp, não destinatários individuais. A API
+pública da SendPulse documenta somente envio para contatos por `contact_id` ou
+telefone. Ela não comprova envio para grupos.
+
+A Groups API oficial da Meta usa `group_id`, exige conta comercial oficial
+(OBA), aceita no máximo oito participantes e opera com grupos criados pela
+própria API. Portanto, os grupos atuais não devem ser presumidos compatíveis.
+Depois da confirmação no Meta Developers, configurar somente no ambiente:
+
+```dotenv
+WHATSAPP_GRUPO_FORNECEDOR_MARCIO_ID=
+WHATSAPP_GRUPO_FORNECEDOR_EMERSON_ID=
+WHATSAPP_GRUPOS_FORNECEDORES_HOMOLOGADOS=false
+WHATSAPP_MODELO_GRUPO_FORNECEDOR_HOMOLOGADO=false
+```
+
+Enquanto as duas chaves de homologação estiverem falsas, o sistema não envia
+ao grupo e encaminha o atendimento para uma pessoa.
+
+Referências oficiais consultadas em 30/09/2026:
+
+- SendPulse, webhooks globais: `https://sendpulse.com/integrations/api/chatbot/webhooks`;
+- SendPulse, contrato da API WhatsApp: `https://api.sendpulse.com/.well-known/openapi/whatsapp.yaml`;
+- Meta, Groups API: `https://developers.facebook.com/docs/whatsapp/cloud-api/groups/`;
+- Meta, mensagens em grupos: `https://developers.facebook.com/documentation/business-messaging/whatsapp/groups/groups-messaging`.
+
+O modelo de entrega ao cliente deve estar aprovado e ativo no bot WhatsApp
+indicado por `SENDPULSE_WHATSAPP_BOT_ID`. A especificação atual da API SendPulse
+permite listar modelos, mas não publica uma operação para criar e enviá-los à
+aprovação. No painel, entrar em **Chatbots > MyKey Soluções LTDA > Modelos >
+Adicionar modelo** e preencher:
+
+```text
+Nome: centralmykey_entrega_gm_cliente
+Anexo: nenhum
+Texto:
+Central MyKey informa: o pedido {{pedido}} foi concluído.
+Código mecânico: {{codigo_mecanico}}
+Código do imobilizador: {{codigo_imobilizador}}
+Código do rádio: {{codigo_radio}}
+Código do alarme: {{codigo_alarme}}
+Guarde estas informações com segurança.
+Assinatura: MyKey Soluções
+Idioma: Português (Brasil)
+Categoria: Utilidade
+```
+
+O modelo foi aprovado como Utilidade depois da análise solicitada à Meta. Em
+12/10/2026, a sincronização da SendPulse confirmou `APPROVED`, o cadastro local
+foi ativado e a ordem das cinco variáveis foi validada no código e no teste
+funcional. O modelo não possui PIN.
+
+O modelo de consulta ao fornecedor não pertence à SendPulse, pois Márcio e
+Emerson são grupos. Ele somente será criado no WhatsApp Manager da Meta depois
+da confirmação de elegibilidade para a Groups API. O texto previsto é:
 
 ```text
 centralmykey_consulta_gm_fornecedor
@@ -66,13 +110,6 @@ Modelo: {{4}}
 Ano: {{5}}
 Responda iniciando com MYKEY {{1}} e informe os códigos encontrados.
 
-centralmykey_entrega_gm_cliente
-Central MyKey | Pedido {{1}}
-Código mecânico: {{2}}
-Imobilizador: {{3}}
-Rádio: {{4}}
-Alarme: {{5}}
-PIN: {{6}}
 ```
 
 Depois do cadastro local, definir os nomes no `.env`:
@@ -91,25 +128,30 @@ Instalar no `.env` os identificadores e caminhos abaixo:
 
 ```dotenv
 SICOOB_CLIENT_ID=
-SICOOB_CLIENT_SECRET=
-SICOOB_CERT_PATH=
-SICOOB_KEY_PATH=
-SICOOB_CA_PATH=
-SICOOB_WEBHOOK_CA_PATH=
+SICOOB_CERT_PATH=/root/centralmykey-secrets/sicoob/certificado.cer
+SICOOB_KEY_PATH=/root/centralmykey-secrets/sicoob/chave_privada.pem
+SICOOB_CERTIFICADO_SENHA=
 SICOOB_CHAVE_PIX=
-SICOOB_AMBIENTE=homologacao
-SICOOB_WEBHOOK_URL=https://pix-central.aiepires.com.br/webhooks/sicoob
+SICOOB_AMBIENTE=producao
+SICOOB_WEBHOOK_URL=https://api-central.aiepires.com.br/webhooks/sicoob
 ```
 
-`SICOOB_CERT_PATH` e `SICOOB_KEY_PATH` autenticam a Central nas chamadas ao
-banco. `SICOOB_WEBHOOK_CA_PATH` contém a cadeia de CA fornecida pelo Sicoob e
-permite ao Nginx autenticar o banco nas chamadas recebidas. O certificado do
-Certbot para `pix-central.aiepires.com.br` autentica o servidor público e não
-substitui essa CA.
+O arquivo `.cer` instalado é um certificado X.509 válido e está em codificação
+aceita pelo OpenSSL; ele não precisa ser renomeado para `.pem`. A chave privada
+instalada corresponde a esse certificado e é aberta com
+`SICOOB_CERTIFICADO_SENHA`. O `client_secret` não faz parte da configuração
+adotada. `SICOOB_CA_PATH` também não é necessário enquanto o servidor do Sicoob
+usar uma autoridade certificadora reconhecida pelo sistema operacional.
 
-Antes de habilitar cobranças: criar o registro DNS do subdomínio para este VPS,
-emitir o certificado com Certbot, aplicar
-`nginx-sicoob-mtls.conf.example`, cadastrar a URL no Sicoob e então definir:
+Não será criado outro DNS. Antes de habilitar cobranças, é necessário confirmar
+no portal Sicoob como a origem do webhook atual é autenticada e homologar a URL
+existente. Até essa confirmação, a recepção de pagamentos permanece bloqueada.
+
+O endpoint antigo de homologação foi retirado pelo Sicoob. A autenticação
+mTLS no endpoint vigente foi validada sem criar cobrança. O webhook bancário
+continua apontando para o n8n e não deve ser alterado antes da homologação da
+rota da Central. O valor `producao` acima identifica a API real; as chaves de
+habilitação abaixo continuam sendo a barreira operacional.
 
 ```dotenv
 SICOOB_WEBHOOK_MTLS_CONFIGURADO=true

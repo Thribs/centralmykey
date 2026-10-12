@@ -19,16 +19,19 @@ const {
 
 const CHAVES_TESTE = [
   'WHATSAPP_PROVEDOR', 'SENDPULSE_CLIENT_ID', 'SENDPULSE_CLIENT_SECRET',
-  'SENDPULSE_WHATSAPP_BOT_ID', 'SENDPULSE_WEBHOOK_TOKEN',
-  'WHATSAPP_FORNECEDOR_MARCIO', 'WHATSAPP_FORNECEDOR_EMERSON',
+  'SENDPULSE_WHATSAPP_BOT_ID', 'SEGREDO_WEBHOOK_SENDPULSE',
+  'WHATSAPP_GRUPO_FORNECEDOR_MARCIO_ID',
+  'WHATSAPP_GRUPO_FORNECEDOR_EMERSON_ID',
+  'WHATSAPP_GRUPOS_FORNECEDORES_HOMOLOGADOS',
+  'WHATSAPP_MODELO_GRUPO_FORNECEDOR_HOMOLOGADO',
   'WHATSAPP_ACCESS_TOKEN', 'WHATSAPP_PHONE_NUMBER_ID', 'WHATSAPP_API_VERSION',
   'META_VERIFY_TOKEN', 'META_APP_SECRET',
   'WHATSAPP_MODELO_CONSULTA_FORNECEDOR',
   'WHATSAPP_MODELO_ENTREGA_RESULTADO', 'COMUNICACOES_OUTBOX_HABILITADO',
   'AUTOMACAO_GM_WHATSAPP_HABILITADA',
   'APIJOELPIRES_GRAVACAO_HOMOLOGADA',
-  'SICOOB_CLIENT_ID', 'SICOOB_CLIENT_SECRET', 'SICOOB_CERT_PATH',
-  'SICOOB_KEY_PATH', 'SICOOB_CA_PATH', 'SICOOB_WEBHOOK_CA_PATH',
+  'SICOOB_CLIENT_ID', 'SICOOB_CERT_PATH', 'SICOOB_KEY_PATH',
+  'SICOOB_CERTIFICADO_SENHA', 'SICOOB_CA_PATH', 'SICOOB_WEBHOOK_CA_PATH',
   'SICOOB_CHAVE_PIX', 'SICOOB_AMBIENTE',
   'SICOOB_COBRANCA_HABILITADA', 'SICOOB_WEBHOOK_HABILITADO',
   'SICOOB_WEBHOOK_MTLS_CONFIGURADO',
@@ -80,8 +83,10 @@ async function executar() {
     WHATSAPP_MODELO_ENTREGA_RESULTADO: 'entrega_teste',
     COMUNICACOES_OUTBOX_HABILITADO: 'true',
     AUTOMACAO_GM_WHATSAPP_HABILITADA: 'true',
-    WHATSAPP_FORNECEDOR_MARCIO: '5511999999999',
-    WHATSAPP_FORNECEDOR_EMERSON: '5511888888888',
+    WHATSAPP_GRUPO_FORNECEDOR_MARCIO_ID: 'grupo_meta_marcio_1234567890',
+    WHATSAPP_GRUPO_FORNECEDOR_EMERSON_ID: 'grupo_meta_emerson_1234567890',
+    WHATSAPP_GRUPOS_FORNECEDORES_HOMOLOGADOS: 'true',
+    WHATSAPP_MODELO_GRUPO_FORNECEDOR_HOMOLOGADO: 'true',
     CHAVE_API_JOELPIRES: 'chave-joel-ficticia',
     ID_USUARIO_API_JOELPIRES: 'usuario-joel-ficticio',
     APIJOELPIRES_GRAVACAO_HOMOLOGADA: 'true',
@@ -92,7 +97,8 @@ async function executar() {
   try {
     for (const chave of [
       'CHAVE_API_JOELPIRES', 'JWT_SECRET', 'WBUY_SENHA',
-      'WHATSAPP_ACCESS_TOKEN', 'SICOOB_KEY_PATH', 'BLING_TOKEN_ENCRYPTION_KEY'
+      'WHATSAPP_ACCESS_TOKEN', 'SICOOB_KEY_PATH', 'SICOOB_CERTIFICADO_SENHA',
+      'BLING_TOKEN_ENCRYPTION_KEY'
     ]) {
       assert.strictEqual(chaveSensivel(chave), true, `${chave} deve ser sensível`);
       const mascarada = mascararConfiguracao({ chave, valor: 'nao-expor' });
@@ -106,8 +112,10 @@ async function executar() {
     );
     for (const chave of CHAVES_TESTE) delete process.env[chave];
     process.env.WHATSAPP_API_VERSION = 'v98.0';
-    process.env.WHATSAPP_FORNECEDOR_MARCIO = '5511999999999';
-    process.env.WHATSAPP_FORNECEDOR_EMERSON = '5511888888888';
+    process.env.WHATSAPP_GRUPO_FORNECEDOR_MARCIO_ID =
+      'grupo_meta_marcio_1234567890';
+    process.env.WHATSAPP_GRUPO_FORNECEDOR_EMERSON_ID =
+      'grupo_meta_emerson_1234567890';
     const pool = poolFalso(valores);
     const carregada = await carregarConfiguracoesIntegracoes(pool);
     assert.strictEqual(carregada.whatsappApiVersion, 'v98.0',
@@ -159,7 +167,8 @@ async function executar() {
     const prontidao = await diagnosticarProntidaoWhatsapp(poolProntidao, carregada);
     assert.strictEqual(prontidao.pronto_para_homologar, true);
     assert.deepStrictEqual(prontidao.bloqueios, []);
-    assert.strictEqual(prontidao.fornecedores_gm.destinatarios_validos, 2);
+    assert.strictEqual(prontidao.fornecedores_gm.grupos_configurados, 2);
+    assert.strictEqual(prontidao.fornecedores_gm.grupos_meta_homologados, true);
     assert.strictEqual(prontidao.fila.falhas, 1);
     assert.ok(!JSON.stringify(prontidao).includes('99999'),
       'O diagnóstico não deve expor telefones');
@@ -172,11 +181,11 @@ async function executar() {
         sendpulseClientId: 'id-ficticio',
         sendpulseClientSecret: 'segredo-ficticio',
         sendpulseBotId: 'bot-ficticio',
-        sendpulseWebhookToken: 'token_ficticio_12345678901234567890'
+        sendpulseWebhookSecret: 'segredo_ficticio_123456789012345678'
       }
     );
-    assert.ok(prontidaoSendPulseSemConfirmacao.bloqueios.includes(
-      'MODELO_CONSULTA_FORNECEDOR_NAO_HOMOLOGADO'));
+    assert.ok(!prontidaoSendPulseSemConfirmacao.bloqueios.includes(
+      'MODELO_GRUPO_FORNECEDOR_NAO_HOMOLOGADO'));
     assert.ok(prontidaoSendPulseSemConfirmacao.bloqueios.includes(
       'MODELO_ENTREGA_CLIENTE_NAO_HOMOLOGADO'));
 
@@ -192,13 +201,14 @@ async function executar() {
         throw new Error('Consulta inesperada no diagnóstico bloqueado');
       }
     }, { ...carregada, whatsappAccessToken: '', modeloEntrega: '',
-      fornecedorMarcioWhatsapp: '', fornecedorEmersonWhatsapp: '' });
+      grupoFornecedorMarcioId: '', grupoFornecedorEmersonId: '',
+      gruposFornecedoresHomologados: '' });
     assert.strictEqual(prontidaoBloqueada.pronto_para_homologar, false);
     assert.ok(prontidaoBloqueada.bloqueios.includes('TRANSPORTE_WHATSAPP_INCOMPLETO'));
     assert.ok(prontidaoBloqueada.bloqueios.includes(
       'MODELO_ENTREGA_CLIENTE_NAO_HOMOLOGADO'));
     assert.ok(prontidaoBloqueada.bloqueios.includes(
-      'FORNECEDORES_GM_SEM_DESTINATARIO_VALIDO'));
+      'GRUPOS_FORNECEDORES_GM_NAO_CONFIGURADOS'));
     assert.ok(prontidaoBloqueada.bloqueios.includes('FILA_WHATSAPP_REQUER_REVISAO'));
 
     const prontidaoSemWorker = await diagnosticarProntidaoWhatsapp(
@@ -212,11 +222,12 @@ async function executar() {
 
     const configuracaoSicoobCompleta = {
       SICOOB_CLIENT_ID: 'id-ficticio',
-      SICOOB_CLIENT_SECRET: 'segredo-ficticio',
       SICOOB_CERT_PATH: '/certificado/ficticio',
       SICOOB_KEY_PATH: '/chave/ficticia',
+      SICOOB_CERTIFICADO_SENHA: 'senha-ficticia',
       SICOOB_WEBHOOK_CA_PATH: '/ca-webhook/ficticia',
       SICOOB_CHAVE_PIX: 'pix-ficticia',
+      SICOOB_AMBIENTE: 'producao',
       SICOOB_COBRANCA_HABILITADA: 'true',
       SICOOB_WEBHOOK_HABILITADO: 'true',
       SICOOB_WEBHOOK_MTLS_CONFIGURADO: 'true',
@@ -237,6 +248,10 @@ async function executar() {
     );
     assert.strictEqual(sicoobHabilitado.habilitado, true);
     assert.strictEqual(sicoobHabilitado.webhookHabilitado, true);
+    assert.strictEqual(sicoobHabilitado.tokenUrl,
+      'https://auth.sicoob.com.br/auth/realms/cooperado/protocol/openid-connect/token');
+    assert.strictEqual(sicoobHabilitado.apiUrl,
+      'https://api.sicoob.com.br/pix/api/v2');
     const sicoobSemCredencial = await obterConfiguracaoSicoob(poolFalso({
       SICOOB_COBRANCA_HABILITADA: 'true',
       SICOOB_WEBHOOK_HABILITADO: 'true'
@@ -267,10 +282,12 @@ async function executar() {
     assert.ok(fluxoGmBloqueado.bloqueios.includes(
       'JOELPIRES:GRAVACAO_NAO_HOMOLOGADA'));
 
+    const requisicoesMeta = [];
     global.fetch = async (url, opcoes) => {
       assert.match(String(url), /^https:\/\/graph\.facebook\.com\/v98\.0\//);
       assert.strictEqual(opcoes.headers.Authorization,
         `Bearer ${valores.WHATSAPP_ACCESS_TOKEN}`);
+      requisicoesMeta.push(JSON.parse(opcoes.body));
       return {
         ok: true,
         status: 200,
@@ -279,11 +296,22 @@ async function executar() {
     };
     const api = await servidorWhatsapp(pool);
     servidor = api.servidor;
+    const envioGrupo = await api.app.locals.enviarModeloWhatsapp({
+      tipoDestinatario: 'GRUPO_META',
+      grupoId: 'grupo_meta_marcio_1234567890',
+      nome: 'consulta_grupo_fornecedor',
+      idioma: 'pt_BR',
+      parametros: ['PROTOCOLO-1']
+    });
+    assert.strictEqual(envioGrupo.grupo_id, 'grupo_meta_marcio_1234567890');
+    assert.strictEqual(requisicoesMeta[0].recipient_type, 'group');
+    assert.strictEqual(requisicoesMeta[0].to, 'grupo_meta_marcio_1234567890');
     const envio = await api.app.locals.enviarMensagemWhatsapp({
       telefone: '5511999999999',
       texto: 'Mensagem fictícia'
     });
     assert.strictEqual(envio.mensagem_externa_id, 'wamid.mock.config');
+    assert.strictEqual(requisicoesMeta[1].recipient_type, 'individual');
     global.fetch = fetchOriginal;
 
     let resposta = await fetch(

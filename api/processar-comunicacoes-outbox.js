@@ -235,7 +235,13 @@ async function processarComunicacao(connection, itemId, enviarModelo, opcoes = {
     }
 
     const envio = await enviarModelo({
-      telefone: item.destinatario,
+      telefone: payload.tipo_destinatario === 'GRUPO_META'
+        ? undefined
+        : item.destinatario,
+      grupoId: payload.tipo_destinatario === 'GRUPO_META'
+        ? item.destinatario
+        : undefined,
+      tipoDestinatario: payload.tipo_destinatario || 'INDIVIDUAL',
       nome: nomeModelo,
       idioma: idiomaModelo,
       parametros: Array.isArray(payload.parametros)

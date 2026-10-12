@@ -54,12 +54,16 @@ function respostaHttp(status, corpo) {
 async function executar() {
   const connection = await mysql.createConnection(configBanco);
   const fetchOriginal = global.fetch;
+  const grupoMarcioOriginal =
+    process.env.WHATSAPP_GRUPO_FORNECEDOR_MARCIO_ID;
   const sufixo = String(Date.now()).slice(-8);
   const protocolo = `TESTE-ENVIO-GM-${process.pid}-${sufixo}`;
+  const grupoMarcio = `grupo_meta_marcio_${process.pid}_${sufixo}`;
   let pedidoId;
   let erro;
 
   try {
+    process.env.WHATSAPP_GRUPO_FORNECEDOR_MARCIO_ID = grupoMarcio;
     await connection.beginTransaction();
     await criarTabelaOutboxTemporaria(connection);
     await criarTabelasNotificacoesTemporarias(connection);
@@ -79,7 +83,7 @@ async function executar() {
       `INSERT INTO fornecedores
          (nome, whatsapp, tipo, horario_inicio, horario_fim, ativo)
        VALUES (?, '5511999999999', 'PESSOA', '00:00:00', '23:59:59', 1)`,
-      [`TESTE AUTOMATIZADO ${process.pid}-${sufixo}`]
+      [`MÁRCIO TESTE AUTOMATIZADO ${process.pid}-${sufixo}`]
     );
     await connection.query(
       `INSERT INTO fornecedor_servicos
@@ -127,7 +131,11 @@ async function executar() {
     );
     assert.ok(comunicacao, 'Consulta ao fornecedor deve entrar na outbox');
     assert.strictEqual(comunicacao.status, 'PENDENTE');
-    assert.match(comunicacao.destinatario, /^\d{10,15}$/);
+    assert.strictEqual(comunicacao.destinatario, grupoMarcio);
+    const payloadComunicacao = typeof comunicacao.payload === 'string'
+      ? JSON.parse(comunicacao.payload)
+      : comunicacao.payload;
+    assert.strictEqual(payloadComunicacao.tipo_destinatario, 'GRUPO_META');
 
     const [[fornecedor]] = await connection.query(
       `SELECT id AS fornecedor_id, nome AS fornecedor, whatsapp, telefone
@@ -172,7 +180,9 @@ async function executar() {
     );
     assert.strictEqual(envio.status, 'ENVIADA');
     assert.strictEqual(chamadas.length, 1);
-    assert.strictEqual(chamadas[0].telefone, comunicacao.destinatario);
+    assert.strictEqual(chamadas[0].telefone, undefined);
+    assert.strictEqual(chamadas[0].grupoId, comunicacao.destinatario);
+    assert.strictEqual(chamadas[0].tipoDestinatario, 'GRUPO_META');
     assert.strictEqual(chamadas[0].parametros[0], protocolo);
 
     const repeticaoEnvio = await processarComunicacao(
@@ -324,13 +334,18 @@ async function executar() {
     erro = falha;
   } finally {
     global.fetch = fetchOriginal;
+    if (grupoMarcioOriginal === undefined) {
+      delete process.env.WHATSAPP_GRUPO_FORNECEDOR_MARCIO_ID;
+    } else {
+      process.env.WHATSAPP_GRUPO_FORNECEDOR_MARCIO_ID = grupoMarcioOriginal;
+    }
     try {
       await connection.rollback();
       const [[residuos]] = await connection.query(
         `SELECT
            (SELECT COUNT(*) FROM pedidos_senha WHERE protocolo = ?) AS pedidos,
            (SELECT COUNT(*) FROM fornecedores WHERE nome LIKE ?) AS fornecedores`,
-        [protocolo, `TESTE AUTOMATIZADO ${process.pid}-${sufixo}%`]
+        [protocolo, `MÁRCIO TESTE AUTOMATIZADO ${process.pid}-${sufixo}%`]
       );
       assert.deepStrictEqual(
         Object.values(residuos).map(Number),

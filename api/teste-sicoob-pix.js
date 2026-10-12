@@ -6,6 +6,7 @@ const dotenv = require('dotenv');
 const mysql = require('mysql2/promise');
 const express = require('express');
 const { interpretarWebhook } = require('./sicoob-pix');
+const { validarUrlSicoob } = require('./cliente-sicoob-pix');
 const { criarTabelaOutboxTemporaria } = require('./teste-suporte-outbox');
 
 dotenv.config({ path: process.env.CENTRALMYKEY_ENV_PATH || path.join(__dirname, '.env'), quiet: true });
@@ -91,6 +92,15 @@ async function executar() {
   try {
     assert.throws(() => interpretarWebhook('{'), e => e.codigo === 'JSON_INVALIDO');
     assert.throws(() => interpretarWebhook('{"pix":[]}'), e => e.codigo === 'PIX_AUSENTE');
+    assert.strictEqual(validarUrlSicoob(
+      'https://auth.sicoob.com.br/auth/realms/cooperado/protocol/openid-connect/token'
+    ).hostname, 'auth.sicoob.com.br');
+    assert.strictEqual(validarUrlSicoob(
+      'https://api.sicoob.com.br/pix/api/v2/cob/teste'
+    ).hostname, 'api.sicoob.com.br');
+    assert.throws(() => validarUrlSicoob(
+      'https://api-homol.sicoob.com.br/cooperado/pix/token'
+    ), e => e.codigo === 'SICOOB_DESTINO_NAO_PERMITIDO');
     await connection.beginTransaction();
     await criarTabelasTemporarias(connection);
     const [[servico]] = await connection.query(
@@ -113,10 +123,10 @@ async function executar() {
     api = await iniciarApi(connection, {
       configuracaoSicoob: {
         habilitado: true, webhookHabilitado: true,
-        clientId: 'cliente-teste', clientSecret: 'segredo-teste',
+        clientId: 'cliente-teste', certPassword: 'senha-ficticia',
         certPath: '/certificado/ficticio', keyPath: '/chave/ficticia', chavePix: 'pix@teste.invalid',
-        tokenUrl: 'https://api-homol.sicoob.com.br/cooperado/pix/token',
-        apiUrl: 'https://api-homol.sicoob.com.br/cooperado/pix/api/v2', scope: 'cob.write'
+        tokenUrl: 'https://auth.sicoob.com.br/auth/realms/cooperado/protocol/openid-connect/token',
+        apiUrl: 'https://api.sicoob.com.br/pix/api/v2', scope: 'cob.write'
       },
       transporteSicoob: async requisicao => {
         chamadasSicoob.push(requisicao);
@@ -149,6 +159,7 @@ async function executar() {
     assert.strictEqual(cobranca.txid, txid);
     assert.strictEqual(chamadasSicoob.length, 2);
     assert.ok(chamadasSicoob[0].body.includes('grant_type=client_credentials'));
+    assert.ok(!chamadasSicoob[0].body.includes('client_secret'));
     assert.strictEqual(JSON.parse(chamadasSicoob[1].body).valor.original, valor.toFixed(2));
     const respostaCobrancaRepetida = await fetch(
       `${api.url}/api/pedidos/${pedidoId}/pagamentos/sicoob`, {

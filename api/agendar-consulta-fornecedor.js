@@ -15,10 +15,36 @@ function removerAcentos(valor) {
 }
 
 function destinatarioFornecedor(fornecedor) {
+  return obterDestinoFornecedor(fornecedor).id;
+}
+
+function grupoValido(valor) {
+  return /^[A-Za-z0-9:_-]{20,200}$/.test(String(valor || '').trim());
+}
+
+function obterDestinoFornecedor(fornecedor) {
   const nome = removerAcentos(fornecedor?.fornecedor || fornecedor?.nome);
-  if (nome.includes('MARCIO')) return somenteNumeros(process.env.WHATSAPP_FORNECEDOR_MARCIO);
-  if (nome.includes('EMERSON')) return somenteNumeros(process.env.WHATSAPP_FORNECEDOR_EMERSON);
-  return somenteNumeros(fornecedor?.whatsapp || fornecedor?.telefone);
+  if (nome.includes('MARCIO')) {
+    return {
+      tipo: 'GRUPO_META',
+      id: String(process.env.WHATSAPP_GRUPO_FORNECEDOR_MARCIO_ID || '').trim()
+    };
+  }
+  if (nome.includes('EMERSON')) {
+    return {
+      tipo: 'GRUPO_META',
+      id: String(process.env.WHATSAPP_GRUPO_FORNECEDOR_EMERSON_ID || '').trim()
+    };
+  }
+  return {
+    tipo: 'INDIVIDUAL',
+    id: somenteNumeros(fornecedor?.whatsapp || fornecedor?.telefone)
+  };
+}
+
+function destinoValido(destino) {
+  if (destino.tipo === 'GRUPO_META') return grupoValido(destino.id);
+  return destino.id.length >= 10 && destino.id.length <= 15;
 }
 
 async function agendarConsultaFornecedor(connection, {
@@ -28,7 +54,8 @@ async function agendarConsultaFornecedor(connection, {
 }) {
   const pedidoId = Number(pedido?.id);
   const fornecedorId = Number(fornecedor?.fornecedor_id || fornecedor?.id);
-  const destinatario = destinatarioFornecedor(fornecedor);
+  const destino = obterDestinoFornecedor(fornecedor);
+  const destinatario = destino.id;
 
   if (!Number.isInteger(pedidoId) || pedidoId <= 0) {
     throw new Error('Pedido inválido para comunicação com fornecedor');
@@ -38,17 +65,19 @@ async function agendarConsultaFornecedor(connection, {
     throw new Error('Fornecedor inválido para comunicação');
   }
 
-  const destinatarioValido =
-    destinatario.length >= 10 && destinatario.length <= 15;
+  const destinatarioValido = destinoValido(destino);
   const statusInicial = destinatarioValido ? 'PENDENTE' : 'FALHOU';
   const erroInicial = destinatarioValido
     ? null
-    : 'FORNECEDOR_SEM_WHATSAPP';
+    : destino.tipo === 'GRUPO_META'
+      ? 'FORNECEDOR_SEM_GRUPO_WHATSAPP'
+      : 'FORNECEDOR_SEM_WHATSAPP';
 
   const chaveIdempotencia =
     `CONSULTA_FORNECEDOR:${pedidoId}:${fornecedorId}`;
   const payload = {
     tipo: 'MODELO_WHATSAPP',
+    tipo_destinatario: destino.tipo,
     parametros: [
       textoParametro(pedido.protocolo),
       textoParametro(pedido.chassi),
@@ -89,7 +118,9 @@ async function agendarConsultaFornecedor(connection, {
           : 'CONSULTA_FORNECEDOR_ENVIO_FALHOU',
         statusInicial === 'PENDENTE'
           ? 'Consulta preparada para envio ao fornecedor'
-          : 'Consulta não enviada: fornecedor sem WhatsApp válido',
+          : destino.tipo === 'GRUPO_META'
+            ? 'Consulta não enviada: grupo do fornecedor não homologado'
+            : 'Consulta não enviada: fornecedor sem WhatsApp válido',
         JSON.stringify({
           comunicacao_id: resultado.insertId,
           fornecedor_id: fornecedorId,
@@ -162,20 +193,26 @@ async function reagendarConsultaFornecedor(connection, {
     throw erro;
   }
 
-  const destinatario = destinatarioFornecedor(comunicacao);
-  if (destinatario.length < 10 || destinatario.length > 15) {
-    const erro = new Error('Fornecedor continua sem WhatsApp válido');
-    erro.codigo = 'FORNECEDOR_SEM_WHATSAPP';
+  const destino = obterDestinoFornecedor(comunicacao);
+  const destinatario = destino.id;
+  if (!destinoValido(destino)) {
+    const erro = new Error(destino.tipo === 'GRUPO_META'
+      ? 'Grupo WhatsApp do fornecedor ainda não homologado'
+      : 'Fornecedor continua sem WhatsApp válido');
+    erro.codigo = destino.tipo === 'GRUPO_META'
+      ? 'FORNECEDOR_SEM_GRUPO_WHATSAPP'
+      : 'FORNECEDOR_SEM_WHATSAPP';
     throw erro;
   }
 
   await connection.query(
     `UPDATE comunicacoes_outbox
-        SET destinatario = ?, status = 'PENDENTE',
+        SET destinatario = ?, payload = JSON_SET(payload,
+              '$.tipo_destinatario', ?), status = 'PENDENTE',
             processar_apos = NOW(), mensagem_externa_id = NULL,
             erro_codigo = NULL, erro_detalhe = NULL, enviado_em = NULL
       WHERE id = ?`,
-    [destinatario, comunicacao.id]
+    [destinatario, destino.tipo, comunicacao.id]
   );
 
   await connection.query(
@@ -205,6 +242,7 @@ async function reagendarConsultaFornecedor(connection, {
 module.exports = {
   agendarConsultaFornecedor,
   destinatarioFornecedor,
+  obterDestinoFornecedor,
   reagendarConsultaFornecedor,
   somenteNumeros
 };

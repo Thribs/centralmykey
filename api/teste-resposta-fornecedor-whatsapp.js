@@ -62,7 +62,9 @@ async function fecharServidor(servidor) {
   });
 }
 
-async function enviarMensagem(url, segredo, { telefone, mensagemId, texto }) {
+async function enviarMensagem(url, segredo, {
+  telefone, grupoId, mensagemId, texto
+}) {
   const corpo = JSON.stringify({
     object: 'whatsapp_business_account',
     entry: [{
@@ -71,6 +73,7 @@ async function enviarMensagem(url, segredo, { telefone, mensagemId, texto }) {
           contacts: [{ wa_id: telefone, profile: { name: 'Fornecedor teste' } }],
           messages: [{
             from: telefone,
+            group_id: grupoId,
             id: mensagemId,
             timestamp: String(Math.floor(Date.now() / 1000)),
             type: 'text',
@@ -97,11 +100,13 @@ async function enviarMensagem(url, segredo, { telefone, mensagemId, texto }) {
 async function executar() {
   const connection = await mysql.createConnection(configBanco);
   const segredoOriginal = process.env.META_APP_SECRET;
-  const marcioOriginal = process.env.WHATSAPP_FORNECEDOR_MARCIO;
+  const grupoMarcioOriginal =
+    process.env.WHATSAPP_GRUPO_FORNECEDOR_MARCIO_ID;
   const segredo = 'segredo-ficticio-retorno-fornecedor';
   const marcador = `${process.pid}-${String(Date.now()).slice(-8)}`;
   const protocolo = `WFR${process.pid}${String(Date.now()).slice(-7)}`.toUpperCase();
   const fornecedorTelefone = `5511${String(Date.now()).slice(-9)}`;
+  const grupoFornecedor = `grupo_meta_marcio_${marcador.replace(/-/g, '')}`;
   const mensagemId = `wamid.mock.retorno.${marcador}`;
   const chassi = `9BGWF11A0${String(Date.now()).slice(-8)}`;
   let servidor;
@@ -123,7 +128,7 @@ async function executar() {
     );
 
     process.env.META_APP_SECRET = segredo;
-    process.env.WHATSAPP_FORNECEDOR_MARCIO = fornecedorTelefone;
+    process.env.WHATSAPP_GRUPO_FORNECEDOR_MARCIO_ID = grupoFornecedor;
     await connection.beginTransaction();
     await criarTabelaOutboxTemporaria(connection);
 
@@ -165,12 +170,13 @@ async function executar() {
          (chave_idempotencia, canal, finalidade, pedido_id, fornecedor_id,
           destinatario, payload, status, tentativas, mensagem_externa_id, enviado_em)
        VALUES (?, 'WHATSAPP', 'CONSULTA_FORNECEDOR', ?, ?, ?,
-               JSON_OBJECT(), 'ENVIADA', 1, ?, NOW())`,
+               JSON_OBJECT('tipo_destinatario', 'GRUPO_META'),
+               'ENVIADA', 1, ?, NOW())`,
       [
         `CONSULTA_FORNECEDOR:${pedido.insertId}:${fornecedor.insertId}`,
         pedido.insertId,
         fornecedor.insertId,
-        fornecedorTelefone,
+        grupoFornecedor,
         `wamid.mock.consulta.${marcador}`
       ]
     );
@@ -188,6 +194,7 @@ async function executar() {
 
     let resposta = await enviarMensagem(api.url, segredo, {
       telefone: `5521${String(Date.now()).slice(-9)}`,
+      grupoId: `grupo_meta_invalido_${marcador.replace(/-/g, '')}`,
       mensagemId: `${mensagemId}.remetente-invalido`,
       texto
     });
@@ -206,12 +213,14 @@ async function executar() {
 
     resposta = await enviarMensagem(api.url, segredo, {
       telefone: fornecedorTelefone,
+      grupoId: grupoFornecedor,
       mensagemId,
       texto
     });
     assert.strictEqual(resposta.status, 200);
     resposta = await enviarMensagem(api.url, segredo, {
       telefone: fornecedorTelefone,
+      grupoId: grupoFornecedor,
       mensagemId,
       texto: `${texto}\n`
     });
@@ -270,8 +279,11 @@ async function executar() {
   } finally {
     if (segredoOriginal === undefined) delete process.env.META_APP_SECRET;
     else process.env.META_APP_SECRET = segredoOriginal;
-    if (marcioOriginal === undefined) delete process.env.WHATSAPP_FORNECEDOR_MARCIO;
-    else process.env.WHATSAPP_FORNECEDOR_MARCIO = marcioOriginal;
+    if (grupoMarcioOriginal === undefined) {
+      delete process.env.WHATSAPP_GRUPO_FORNECEDOR_MARCIO_ID;
+    } else {
+      process.env.WHATSAPP_GRUPO_FORNECEDOR_MARCIO_ID = grupoMarcioOriginal;
+    }
     try {
       await fecharServidor(servidor);
       await connection.rollback();

@@ -7,9 +7,13 @@ const CHAVES = {
   sendpulseClientId: ['SENDPULSE_CLIENT_ID'],
   sendpulseClientSecret: ['SENDPULSE_CLIENT_SECRET'],
   sendpulseBotId: ['SENDPULSE_WHATSAPP_BOT_ID', 'SENDPULSE_BOT_ID'],
-  sendpulseWebhookToken: ['SENDPULSE_WEBHOOK_TOKEN'],
-  fornecedorMarcioWhatsapp: ['WHATSAPP_FORNECEDOR_MARCIO'],
-  fornecedorEmersonWhatsapp: ['WHATSAPP_FORNECEDOR_EMERSON'],
+  sendpulseWebhookSecret: ['SEGREDO_WEBHOOK_SENDPULSE'],
+  grupoFornecedorMarcioId: ['WHATSAPP_GRUPO_FORNECEDOR_MARCIO_ID'],
+  grupoFornecedorEmersonId: ['WHATSAPP_GRUPO_FORNECEDOR_EMERSON_ID'],
+  gruposFornecedoresHomologados: ['WHATSAPP_GRUPOS_FORNECEDORES_HOMOLOGADOS'],
+  modeloGrupoFornecedorHomologado: [
+    'WHATSAPP_MODELO_GRUPO_FORNECEDOR_HOMOLOGADO'
+  ],
   whatsappAccessToken: ['WHATSAPP_ACCESS_TOKEN', 'META_ACCESS_TOKEN'],
   whatsappPhoneNumberId: ['WHATSAPP_PHONE_NUMBER_ID', 'META_PHONE_NUMBER_ID'],
   whatsappApiVersion: ['WHATSAPP_API_VERSION'],
@@ -27,9 +31,9 @@ const CHAVES = {
   joelPiresUsuario: ['ID_USUARIO_API_JOELPIRES'],
   joelPiresGravacaoHomologada: ['APIJOELPIRES_GRAVACAO_HOMOLOGADA'],
   sicoobClientId: ['SICOOB_CLIENT_ID'],
-  sicoobClientSecret: ['SICOOB_CLIENT_SECRET'],
   sicoobCertPath: ['SICOOB_CERT_PATH'],
   sicoobKeyPath: ['SICOOB_KEY_PATH'],
+  sicoobCertPassword: ['SICOOB_CERTIFICADO_SENHA'],
   sicoobCaPath: ['SICOOB_CA_PATH'],
   sicoobWebhookCaPath: ['SICOOB_WEBHOOK_CA_PATH'],
   sicoobChavePix: ['SICOOB_CHAVE_PIX'],
@@ -52,9 +56,9 @@ const CHAVES = {
 
 const SOMENTE_AMBIENTE = new Set([
   'whatsappProvedor', 'sendpulseClientId', 'sendpulseClientSecret',
-  'sendpulseBotId', 'sendpulseWebhookToken', 'fornecedorMarcioWhatsapp',
-  'fornecedorEmersonWhatsapp', 'sicoobClientId', 'sicoobClientSecret',
-  'sicoobCertPath', 'sicoobKeyPath', 'sicoobCaPath',
+  'sendpulseBotId', 'sendpulseWebhookSecret', 'grupoFornecedorMarcioId',
+  'grupoFornecedorEmersonId', 'sicoobClientId', 'sicoobCertPath',
+  'sicoobKeyPath', 'sicoobCertPassword', 'sicoobCaPath',
   'sicoobWebhookCaPath', 'sicoobChavePix'
 ]);
 
@@ -124,7 +128,7 @@ function resumirIntegracoes(config) {
     : Boolean(config.whatsappAccessToken && config.whatsappPhoneNumberId &&
       config.whatsappApiVersion && /^v\d+\.\d+$/.test(config.whatsappApiVersion));
   const whatsappWebhook = usandoSendPulse
-    ? Boolean(tokenWebhookSendPulseValido(config.sendpulseWebhookToken) &&
+    ? Boolean(tokenWebhookSendPulseValido(config.sendpulseWebhookSecret) &&
       config.sendpulseBotId)
     : Boolean(config.metaVerifyToken && config.metaAppSecret);
   const whatsappModelos = Boolean(config.modeloFornecedor && config.modeloEntrega);
@@ -163,8 +167,9 @@ function resumirIntegracoes(config) {
       nome: 'Sicoob',
       ...estadoConector({
         implementado: true,
-        requisitos: [Boolean(config.sicoobClientId), Boolean(config.sicoobClientSecret),
+        requisitos: [Boolean(config.sicoobClientId),
           Boolean(config.sicoobCertPath), Boolean(config.sicoobKeyPath),
+          Boolean(config.sicoobCertPassword),
           Boolean(config.sicoobChavePix), Boolean(config.sicoobWebhookCaPath),
           verdadeiro(config.sicoobWebhookMtlsConfigurado),
           verdadeiro(config.sicoobWebhookCadastrado)],
@@ -249,9 +254,12 @@ function diagnosticarProntidaoSicoob(config, opcoes = {}) {
   const legivel = opcoes.arquivoLegivel || arquivoLegivel;
   const ambiente = String(config.sicoobAmbiente || 'homologacao')
     .trim().toLowerCase();
-  const ambienteValido = ['homologacao', 'producao'].includes(ambiente);
+  // O endpoint antigo de homologacao foi retirado. O sandbox atual e um mock
+  // com token proprio e nao homologa liquidacao; por isso ele nao habilita o
+  // conector transacional da Central.
+  const ambienteValido = ambiente === 'producao';
   const credenciais = Boolean(
-    config.sicoobClientId && config.sicoobClientSecret && config.sicoobChavePix
+    config.sicoobClientId && config.sicoobCertPassword && config.sicoobChavePix
   );
   const certificadoLegivel = legivel(config.sicoobCertPath);
   const chaveLegivel = legivel(config.sicoobKeyPath);
@@ -264,7 +272,11 @@ function diagnosticarProntidaoSicoob(config, opcoes = {}) {
   const webhookHabilitado = verdadeiro(config.sicoobWebhookHabilitado);
   const bloqueios = [];
 
-  if (!ambienteValido) bloqueios.push('AMBIENTE_SICOOB_INVALIDO');
+  if (!ambienteValido) bloqueios.push(
+    ambiente === 'homologacao'
+      ? 'HOMOLOGACAO_SICOOB_SEM_ENDPOINT_TRANSACIONAL'
+      : 'AMBIENTE_SICOOB_INVALIDO'
+  );
   if (!credenciais) bloqueios.push('CREDENCIAIS_SICOOB_INCOMPLETAS');
   if (!certificadoLegivel) bloqueios.push('CERTIFICADO_SICOOB_INACESSIVEL');
   if (!chaveLegivel) bloqueios.push('CHAVE_PRIVADA_SICOOB_INACESSIVEL');
@@ -316,9 +328,8 @@ function diagnosticarProntidaoFluxoGm(config, prontidaoWhatsapp, prontidaoSicoob
   };
 }
 
-function destinatarioWhatsappValido(valor) {
-  const digitos = String(valor || '').replace(/\D/g, '');
-  return digitos.length >= 10 && digitos.length <= 15;
+function destinatarioGrupoValido(valor) {
+  return /^[A-Za-z0-9:_-]{20,200}$/.test(String(valor || '').trim());
 }
 
 async function diagnosticarProntidaoWhatsapp(pool, config) {
@@ -366,18 +377,31 @@ async function diagnosticarProntidaoWhatsapp(pool, config) {
   const fornecedores = resultadoFornecedores[0];
   const fila = resultadoFila[0][0] || {};
   const exigirConfirmacaoSendPulse = resumo.componentes.provedor === 'SENDPULSE';
-  const modeloOperacional = (nome, idioma) => Boolean(nome) && modelos.some(item =>
+  const modeloOperacional = (
+    nome,
+    idioma,
+    confirmarSendPulse = exigirConfirmacaoSendPulse
+  ) => Boolean(nome) && modelos.some(item =>
     item.nome === nome && item.idioma === idioma &&
     item.status === 'APROVADO' && Number(item.ativo) === 1 &&
-    (!exigirConfirmacaoSendPulse || Number(item.confirmado_sendpulse) === 1)
+    (!confirmarSendPulse || Number(item.confirmado_sendpulse) === 1)
   );
-  const fornecedorAprovado = modeloOperacional(modeloFornecedor, idiomaFornecedor);
+  const fornecedorAprovado = modeloOperacional(
+    modeloFornecedor,
+    idiomaFornecedor,
+    false
+  ) && verdadeiro(config.modeloGrupoFornecedorHomologado);
   const entregaAprovada = modeloOperacional(modeloEntrega, idiomaEntrega);
-  const numerosAmbiente = [
-    config.fornecedorMarcioWhatsapp,
-    config.fornecedorEmersonWhatsapp
+  const gruposAmbiente = [
+    config.grupoFornecedorMarcioId,
+    config.grupoFornecedorEmersonId
   ];
-  const fornecedoresValidos = numerosAmbiente.filter(destinatarioWhatsappValido).length;
+  const gruposValidos = gruposAmbiente.filter(destinatarioGrupoValido).length;
+  const gruposHomologados = verdadeiro(config.gruposFornecedoresHomologados);
+  const metaGruposConfigurada = Boolean(
+    config.whatsappAccessToken && config.whatsappPhoneNumberId &&
+    /^v\d+\.\d+$/.test(config.whatsappApiVersion || '')
+  );
   const filaSegura = Number(fila.processando || 0) === 0 &&
     Number(fila.incertas || 0) === 0;
   const bloqueios = [];
@@ -386,11 +410,14 @@ async function diagnosticarProntidaoWhatsapp(pool, config) {
   if (!resumo.componentes.webhook) bloqueios.push('WEBHOOK_WHATSAPP_INCOMPLETO');
   if (!resumo.componentes.outbox) bloqueios.push('OUTBOX_WHATSAPP_DESABILITADA');
   if (!resumo.componentes.automacao_gm) bloqueios.push('AUTOMACAO_GM_DESABILITADA');
-  if (!fornecedorAprovado) bloqueios.push('MODELO_CONSULTA_FORNECEDOR_NAO_HOMOLOGADO');
+  if (!fornecedorAprovado) bloqueios.push('MODELO_GRUPO_FORNECEDOR_NAO_HOMOLOGADO');
   if (!entregaAprovada) bloqueios.push('MODELO_ENTREGA_CLIENTE_NAO_HOMOLOGADO');
   if (!fornecedores.length) bloqueios.push('FORNECEDOR_GM_NAO_CADASTRADO');
-  else if (fornecedoresValidos !== 2) {
-    bloqueios.push('FORNECEDORES_GM_SEM_DESTINATARIO_VALIDO');
+  if (gruposValidos !== 2) {
+    bloqueios.push('GRUPOS_FORNECEDORES_GM_NAO_CONFIGURADOS');
+  }
+  if (!metaGruposConfigurada || !gruposHomologados) {
+    bloqueios.push('GRUPOS_FORNECEDORES_META_NAO_HOMOLOGADOS');
   }
   if (!filaSegura) bloqueios.push('FILA_WHATSAPP_REQUER_REVISAO');
 
@@ -409,8 +436,9 @@ async function diagnosticarProntidaoWhatsapp(pool, config) {
     },
     fornecedores_gm: {
       total: fornecedores.length,
-      destinatarios_validos: fornecedoresValidos,
-      destinatarios_invalidos: 2 - fornecedoresValidos
+      grupos_configurados: gruposValidos,
+      grupos_esperados: 2,
+      grupos_meta_homologados: gruposHomologados && metaGruposConfigurada
     },
     fila: {
       pendentes: Number(fila.pendentes || 0),
@@ -428,7 +456,12 @@ async function obterConfiguracaoWhatsapp(pool) {
     sendpulseClientId: config.sendpulseClientId,
     sendpulseClientSecret: config.sendpulseClientSecret,
     sendpulseBotId: config.sendpulseBotId,
-    sendpulseWebhookToken: config.sendpulseWebhookToken,
+    sendpulseWebhookSecret: config.sendpulseWebhookSecret,
+    grupoFornecedorMarcioId: config.grupoFornecedorMarcioId,
+    grupoFornecedorEmersonId: config.grupoFornecedorEmersonId,
+    gruposFornecedoresHomologados: verdadeiro(
+      config.gruposFornecedoresHomologados
+    ),
     accessToken: config.whatsappAccessToken,
     phoneNumberId: config.whatsappPhoneNumberId,
     apiVersion: config.whatsappApiVersion,
@@ -447,22 +480,18 @@ async function obterConfiguracaoWhatsapp(pool) {
 
 async function obterConfiguracaoSicoob(pool, opcoes = {}) {
   const config = await carregarConfiguracoesIntegracoes(pool);
-  const producao = String(config.sicoobAmbiente).toLowerCase() === 'producao';
   const prontidao = diagnosticarProntidaoSicoob(config, opcoes);
   return {
-    clientId: config.sicoobClientId, clientSecret: config.sicoobClientSecret,
+    clientId: config.sicoobClientId,
     certPath: config.sicoobCertPath, keyPath: config.sicoobKeyPath,
+    certPassword: config.sicoobCertPassword,
     caPath: config.sicoobCaPath, chavePix: config.sicoobChavePix,
     webhookHabilitado: prontidao.componentes.webhook_habilitado &&
       prontidao.componentes.proxy_mtls && prontidao.componentes.ca_webhook_legivel,
     // A criação só pode ser ativada junto com o webhook autenticado por mTLS.
     habilitado: prontidao.pronto_para_teste,
-    tokenUrl: producao
-      ? 'https://apis.sisbr.com.br/cooperado/pix/token'
-      : 'https://api-homol.sicoob.com.br/cooperado/pix/token',
-    apiUrl: producao
-      ? 'https://apis.sisbr.com.br/cooperado/pix/api/v2'
-      : 'https://api-homol.sicoob.com.br/cooperado/pix/api/v2',
+    tokenUrl: 'https://auth.sicoob.com.br/auth/realms/cooperado/protocol/openid-connect/token',
+    apiUrl: 'https://api.sicoob.com.br/pix/api/v2',
     scope: 'cob.write cob.read pix.read'
   };
 }

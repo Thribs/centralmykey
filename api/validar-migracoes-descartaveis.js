@@ -20,7 +20,8 @@ const MIGRACOES = [
   '20260921_identidade_cache_joelpires.sql',
   '20260922_autoridades_integracoes.sql',
   '20260922_status_integracoes.sql',
-  '20260922_oauth_bling.sql'
+  '20260922_oauth_bling.sql',
+  '20260930_grupos_fornecedores_whatsapp.sql'
 ];
 
 const TABELAS_ESPERADAS = [
@@ -265,6 +266,18 @@ async function executarValidacao() {
     `);
     if (indiceCache !== 'cache_fonte,cache_api_senha_id\t0') {
       throw new Error(`Índice único do cache divergente: ${indiceCache || 'ausente'}`);
+    }
+    const tamanhoDestinatario = await executarConsulta(socket, banco, `
+      SELECT character_maximum_length
+        FROM information_schema.columns
+       WHERE table_schema = DATABASE()
+         AND table_name = 'comunicacoes_outbox'
+         AND column_name = 'destinatario'
+    `);
+    if (tamanhoDestinatario !== '255') {
+      throw new Error(
+        `Tamanho do destinatário divergente: ${tamanhoDestinatario || 'ausente'}`
+      );
     }
     const cacheUnico = await executarConsulta(socket, banco, `
       INSERT INTO banco_senhas

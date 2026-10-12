@@ -22,6 +22,17 @@ para o commit efetivamente publicado. Não criar branches por tarefa.
 ## Segurança e configuração
 
 - Nunca exibir, registrar, copiar para documentação ou versionar valores de `.env`, chaves, senhas ou tokens.
+- Toda rota interna `/api` deve exigir autenticação e, quando aplicável,
+  permissão por módulo. Exceções públicas devem ser explícitas: login,
+  health mínimo, callbacks OAuth com `state` e webhooks com autenticação própria.
+- Senhas de usuários devem usar hash lento e não reversível; nunca cifragem
+  reversível ou texto puro. O login deve limitar tentativas por conta e origem.
+- Executar `npm audit` na API e no frontend antes de publicar e corrigir
+  vulnerabilidades conhecidas compatíveis com a versão.
+- Dados pessoais e backups exigem proteção em repouso. Permissão de arquivo é
+  uma camada de acesso, não substitui criptografia contra cópia do disco.
+- Não armazenar tokens de sessão em novos fluxos sem avaliar XSS, cookies
+  `HttpOnly`, CSRF, revogação e expiração.
 - O ambiente atual da API Joel Pires é staging (`teste` na configuração existente).
 - `ID_USUARIO_API_JOELPIRES` deve vir exclusivamente do `.env`.
 - O dispositivo da integração é `centralmykey`.
@@ -53,12 +64,21 @@ Sicoob. Somente a confirmação idempotente do pagamento pode iniciar a consulta
 operacional e acionar o fornecedor. Cliente com faturamento semanal deve ser
 encaminhado ao atendimento humano para preservar sua política comercial.
 
-O transporte WhatsApp atual é a SendPulse. As credenciais da conta, o ID do
-bot, o token privado do webhook e os números de Márcio e Emerson devem existir
-somente em variáveis de ambiente. O aplicativo publicado no Meta Developers é
+O transporte WhatsApp atual dos clientes é a SendPulse. As credenciais da
+conta, o ID do bot e o segredo privado gerado pela Central para a URL do webhook
+devem existir somente em variáveis de ambiente. Márcio e Emerson são grupos,
+não pessoas; seus `group_id` da Meta devem existir somente em variáveis de
+ambiente e nunca podem ser substituídos por telefones individuais. O aplicativo publicado no Meta Developers é
 a infraestrutura vinculada à SendPulse; a Central não deve depender do número
 de teste da Meta para operar pelo provedor atual. Modelos devem ser aprovados no
 canal WhatsApp conectado à SendPulse antes de habilitar a automação.
+
+A API pública da SendPulse documenta envio para contatos, não para grupos. A
+consulta a Márcio e Emerson deve usar a Groups API oficial da Meta somente
+depois de confirmar elegibilidade OBA, criar ou identificar grupos compatíveis,
+homologar os modelos próprios para grupos e validar envio e retorno por
+`group_id`. Até lá, qualquer pedido que precise de fornecedor deve seguir para
+atendimento humano.
 
 A automação GM do WhatsApp deve permanecer desabilitada por padrão. Somente
 definir `AUTOMACAO_GM_WHATSAPP_HABILITADA=true` depois que WhatsApp, modelos,

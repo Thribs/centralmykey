@@ -111,7 +111,7 @@ async function executar() {
   const segredoOriginal = process.env.META_APP_SECRET;
   const provedorOriginal = process.env.WHATSAPP_PROVEDOR;
   const botOriginal = process.env.SENDPULSE_WHATSAPP_BOT_ID;
-  const tokenOriginal = process.env.SENDPULSE_WEBHOOK_TOKEN;
+  const tokenOriginal = process.env.SEGREDO_WEBHOOK_SENDPULSE;
   const segredoTeste = 'segredo-ficticio-webhook';
   const marcador = `${process.pid}-${String(Date.now()).slice(-8)}`;
   const protocolo = `TW${process.pid}${String(Date.now()).slice(-6)}`;
@@ -252,7 +252,7 @@ async function executar() {
     );
     process.env.WHATSAPP_PROVEDOR = 'SENDPULSE';
     process.env.SENDPULSE_WHATSAPP_BOT_ID = botSendPulse;
-    process.env.SENDPULSE_WEBHOOK_TOKEN = tokenSendPulse;
+    process.env.SEGREDO_WEBHOOK_SENDPULSE = tokenSendPulse;
 
     resposta = await enviarFalhaSendPulse(
       api.url, tokenSendPulse, botSendPulse, telefoneSendPulse,
@@ -304,8 +304,8 @@ async function executar() {
     else process.env.WHATSAPP_PROVEDOR = provedorOriginal;
     if (botOriginal === undefined) delete process.env.SENDPULSE_WHATSAPP_BOT_ID;
     else process.env.SENDPULSE_WHATSAPP_BOT_ID = botOriginal;
-    if (tokenOriginal === undefined) delete process.env.SENDPULSE_WEBHOOK_TOKEN;
-    else process.env.SENDPULSE_WEBHOOK_TOKEN = tokenOriginal;
+    if (tokenOriginal === undefined) delete process.env.SEGREDO_WEBHOOK_SENDPULSE;
+    else process.env.SEGREDO_WEBHOOK_SENDPULSE = tokenOriginal;
     try {
       await fecharServidor(servidor);
       await connection.rollback();

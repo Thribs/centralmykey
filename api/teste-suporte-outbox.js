@@ -10,7 +10,7 @@ async function criarTabelaOutboxTemporaria(connection) {
        pedido_id BIGINT NOT NULL,
        resultado_id BIGINT NULL,
        fornecedor_id BIGINT NULL,
-       destinatario VARCHAR(25) NULL,
+       destinatario VARCHAR(255) NULL,
        payload JSON NOT NULL,
        status ENUM('PENDENTE','PROCESSANDO','ENVIADA','ENTREGUE','LIDA',
                    'FALHOU','INCERTA','CANCELADA')

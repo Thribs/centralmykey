@@ -14,6 +14,10 @@ const {
   processarComunicacoesOutbox
 } = require('./processar-comunicacoes-outbox');
 const { finalizarResultadoGmAutomatico } = require('./finalizar-resultado-gm-automatico');
+const {
+  registrarEstado,
+  sincronizarAtendimentoAposPagamento
+} = require('./automacao-gm-whatsapp');
 
 dotenv.config({
   path: process.env.CENTRALMYKEY_ENV_PATH || path.join(__dirname, '.env'),
@@ -74,7 +78,7 @@ async function iniciarApi(connection, sicoob) {
   require('./rotas-integracoes')(app, pool, {
     configuracaoSicoob: {
       habilitado: true, webhookHabilitado: true,
-      clientId: 'cliente-ficticio', clientSecret: 'segredo-ficticio',
+      clientId: 'cliente-ficticio', certPassword: 'senha-ficticia',
       certPath: '/certificado/ficticio', keyPath: '/chave/ficticia',
       chavePix: 'pix@teste.invalid',
       tokenUrl: 'https://sicoob.mock/token', apiUrl: 'https://sicoob.mock/pix',
@@ -155,7 +159,7 @@ async function enviarMensagemIaPendente(connection, atendimentoId, referencia) {
 async function executar() {
   const connection = await mysql.createConnection(configBanco);
   const fetchOriginal = global.fetch;
-  const segredoOriginal = process.env.SENDPULSE_WEBHOOK_TOKEN;
+  const segredoOriginal = process.env.SEGREDO_WEBHOOK_SENDPULSE;
   const provedorOriginal = process.env.WHATSAPP_PROVEDOR;
   const botOriginal = process.env.SENDPULSE_WHATSAPP_BOT_ID;
   const automacaoOriginal = process.env.AUTOMACAO_GM_WHATSAPP_HABILITADA;
@@ -175,7 +179,7 @@ async function executar() {
 
   try {
     process.env.WHATSAPP_PROVEDOR = 'SENDPULSE';
-    process.env.SENDPULSE_WEBHOOK_TOKEN = segredo;
+    process.env.SEGREDO_WEBHOOK_SENDPULSE = segredo;
     process.env.SENDPULSE_WHATSAPP_BOT_ID = 'bot-sendpulse-ficticio';
     process.env.AUTOMACAO_GM_WHATSAPP_HABILITADA = 'true';
     process.env.APIJOELPIRES_GRAVACAO_HOMOLOGADA = 'true';
@@ -803,6 +807,61 @@ async function executar() {
       estadoWorkerInterrompido.erro_codigo
     ], ['HUMANO', 'FILA', 'INCERTA', 'PROCESSAMENTO_INTERROMPIDO']);
 
+    const protocoloGrupoPendente =
+      `GRP${process.pid}${String(Date.now()).slice(-6)}`;
+    const [atendimentoGrupoPendente] = await connection.query(
+      `INSERT INTO atendimentos
+         (protocolo, cliente_id, telefone, telefone_normalizado, canal, modo,
+          status, prioridade, assunto, ultima_mensagem_em)
+       VALUES (?, ?, ?, ?, 'WHATSAPP', 'ELETRONICO', 'AGUARDANDO_PAGAMENTO',
+               'NORMAL', 'Senha GM', NOW())`,
+      [`ATD-${protocoloGrupoPendente}`, cliente.insertId,
+        clienteTelefone, clienteTelefone]
+    );
+    const [pedidoGrupoPendente] = await connection.query(
+      `INSERT INTO pedidos_senha
+         (protocolo, cliente_id, servico_id, chassi, marca, status,
+          valor_venda, custo, moeda, fornecedor_id, origem_id)
+       VALUES (?, ?, ?, ?, 'GM', 'EM_CONSULTA', 50, 22, 'BRL', ?, 2)`,
+      [protocoloGrupoPendente, cliente.insertId, servico.id,
+        `9BGGRUPA0${String(Date.now()).slice(-8)}`, fornecedor.insertId]
+    );
+    await connection.query(
+      `INSERT INTO pedido_historico
+         (pedido_id, tipo, descricao, dados)
+       VALUES (?, 'ORIGEM_ATENDIMENTO_WHATSAPP_AUTOMATICO', 'Teste', ?)`,
+      [pedidoGrupoPendente.insertId,
+        JSON.stringify({ atendimento_id: atendimentoGrupoPendente.insertId })]
+    );
+    await registrarEstado(connection, atendimentoGrupoPendente.insertId, {
+      etapa: 'AGUARDANDO_PAGAMENTO',
+      pedido_id: pedidoGrupoPendente.insertId
+    });
+    await connection.query(
+      `INSERT INTO comunicacoes_outbox
+         (chave_idempotencia, canal, finalidade, pedido_id, fornecedor_id,
+          destinatario, payload, status, erro_codigo)
+       VALUES (?, 'WHATSAPP', 'CONSULTA_FORNECEDOR', ?, ?, NULL,
+               JSON_OBJECT('tipo_destinatario', 'GRUPO_META'), 'FALHOU',
+               'FORNECEDOR_SEM_GRUPO_WHATSAPP')`,
+      [`GRUPO_PENDENTE:${pedidoGrupoPendente.insertId}`,
+        pedidoGrupoPendente.insertId, fornecedor.insertId]
+    );
+    const transicaoGrupoPendente = await sincronizarAtendimentoAposPagamento(
+      poolTransacional(connection), pedidoGrupoPendente.insertId
+    );
+    assert.strictEqual(transicaoGrupoPendente.humano, true);
+    assert.strictEqual(transicaoGrupoPendente.erro_codigo,
+      'FORNECEDOR_SEM_GRUPO_WHATSAPP');
+    const [[estadoGrupoPendente]] = await connection.query(
+      'SELECT modo, status FROM atendimentos WHERE id=?',
+      [atendimentoGrupoPendente.insertId]
+    );
+    assert.deepStrictEqual(
+      [estadoGrupoPendente.modo, estadoGrupoPendente.status],
+      ['HUMANO', 'FILA']
+    );
+
     const protocoloFalhaJoel = `FAIL${process.pid}${String(Date.now()).slice(-6)}`;
     const [atendimentoFalhaJoel] = await connection.query(
       `INSERT INTO atendimentos
@@ -873,8 +932,8 @@ async function executar() {
     erro = falha;
   } finally {
     global.fetch = fetchOriginal;
-    if (segredoOriginal === undefined) delete process.env.SENDPULSE_WEBHOOK_TOKEN;
-    else process.env.SENDPULSE_WEBHOOK_TOKEN = segredoOriginal;
+    if (segredoOriginal === undefined) delete process.env.SEGREDO_WEBHOOK_SENDPULSE;
+    else process.env.SEGREDO_WEBHOOK_SENDPULSE = segredoOriginal;
     if (provedorOriginal === undefined) delete process.env.WHATSAPP_PROVEDOR;
     else process.env.WHATSAPP_PROVEDOR = provedorOriginal;
     if (botOriginal === undefined) delete process.env.SENDPULSE_WHATSAPP_BOT_ID;

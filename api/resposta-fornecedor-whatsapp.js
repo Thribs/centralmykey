@@ -3,7 +3,7 @@
 const {
   registrarResultadoFornecedor
 } = require('./resultado-fornecedor');
-const { destinatarioFornecedor } = require('./agendar-consulta-fornecedor');
+const { obterDestinoFornecedor } = require('./agendar-consulta-fornecedor');
 
 function semAcentos(valor) {
   return String(valor || '')
@@ -71,6 +71,7 @@ function interpretarRespostaFornecedor(texto) {
 
 async function processarRespostaFornecedorWhatsapp(connection, {
   telefone,
+  grupoId = null,
   texto,
   mensagemExternaId
 }) {
@@ -84,8 +85,11 @@ async function processarRespostaFornecedorWhatsapp(connection, {
   }
 
   const numero = String(telefone || '').replace(/\D/g, '');
+  const grupo = String(grupoId || '').trim();
   const referencia = String(mensagemExternaId || '').trim().slice(0, 150);
-  if (numero.length < 10 || numero.length > 15 || !referencia) {
+  const remetenteIndividualValido = numero.length >= 10 && numero.length <= 15;
+  const grupoValido = /^[A-Za-z0-9:_-]{20,200}$/.test(grupo);
+  if ((!remetenteIndividualValido && !grupoValido) || !referencia) {
     return { processada: false, reconhecida: true, erro: 'REMETENTE_INVALIDO' };
   }
 
@@ -107,13 +111,15 @@ async function processarRespostaFornecedorWhatsapp(connection, {
       LIMIT 1`,
     [interpretada.protocolo]
   );
-  const destinatarioEsperado = pedidos[0]
-    ? destinatarioFornecedor(pedidos[0])
-    : '';
-  const remetenteValido = destinatarioEsperado && (
-    destinatarioEsperado === numero ||
-    destinatarioEsperado.slice(-11) === numero.slice(-11)
-  );
+  const destinoEsperado = pedidos[0]
+    ? obterDestinoFornecedor(pedidos[0])
+    : { tipo: '', id: '' };
+  const remetenteValido = destinoEsperado.tipo === 'GRUPO_META'
+    ? Boolean(grupoValido && grupo === destinoEsperado.id)
+    : Boolean(destinoEsperado.id && remetenteIndividualValido && (
+      destinoEsperado.id === numero ||
+      destinoEsperado.id.slice(-11) === numero.slice(-11)
+    ));
   if (!pedidos.length || !remetenteValido) {
     return { processada: false, reconhecida: true, erro: 'VINCULO_NAO_ENCONTRADO' };
   }

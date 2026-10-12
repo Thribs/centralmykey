@@ -36,13 +36,25 @@ por um webhook autenticado.
 Mesmo com o Sicoob pronto, o atendimento automático permanece protegido pela
 chave independente `AUTOMACAO_GM_WHATSAPP_HABILITADA`, desabilitada por padrão.
 
-O painel também exige `SICOOB_WEBHOOK_CA_PATH`, apontando para a CA usada pelo
-Nginx para validar o certificado cliente apresentado pelo Sicoob, e
-`SICOOB_WEBHOOK_MTLS_CONFIGURADO=true`, que somente deve ser definido depois de
-instalar e validar o host exclusivo do modelo em
-`deploy/nginx-sicoob-mtls.conf.example`. O diagnóstico informa apenas presença,
-legibilidade e bloqueios; nunca devolve caminhos, credenciais ou certificados.
-`SICOOB_WEBHOOK_URL` deve conter a URL HTTPS homologada e
+O certificado cliente instalado está dividido em `certificado.cer` e
+`chave_privada.pem`. A extensão `.cer` não impede o uso: o arquivo contém um
+certificado X.509 válido. A chave privada é aberta com
+`SICOOB_CERTIFICADO_SENHA`. Não é exigido `client_secret` pelo contrato adotado.
+O diagnóstico informa apenas presença, legibilidade e bloqueios; nunca devolve
+caminhos, credenciais ou certificados.
+
+Em 6 de outubro de 2026, a autenticação mTLS foi verificada sem criar
+cobrança: o endpoint atual `auth.sicoob.com.br` devolveu um token válido por
+300 segundos. O endpoint antigo `api-homol.sicoob.com.br/cooperado/pix/token`
+responde 404 e foi removido do cliente. A API Pix vigente fica em
+`api.sicoob.com.br/pix/api/v2`.
+
+O sandbox atual do portal é um simulador com token próprio; ele não confirma
+liquidação bancária. Por segurança, `SICOOB_AMBIENTE=homologacao` bloqueia a
+criação externa. Um teste financeiro controlado somente poderá ocorrer com
+`SICOOB_AMBIENTE=producao`, depois da preparação do webhook e mantendo as
+chaves de ativação desligadas até o momento do ensaio.
+`SICOOB_WEBHOOK_URL` deve conter a URL HTTPS homologada no domínio existente e
 `SICOOB_WEBHOOK_CADASTRADO=true` somente pode ser definido depois de consultar
 o cadastro no Sicoob e confirmar a mesma URL. O receptor aceita tanto o caminho
 configurado quanto a variante com o sufixo `/pix` prevista no contrato Pix.
@@ -58,7 +70,7 @@ nova chamada idempotente.
 
 ## Barreira para ativação
 
-O manual oficial do Sicoob define OAuth2 com credenciais do cliente e mTLS para
+O manual oficial do Sicoob define OAuth2 com identificação do cliente e mTLS para
 a API Pix, além de mTLS no envio do webhook ao recebedor. O Nginx atualmente
 publicado encaminha HTTPS para a API, mas não exige nem valida certificado de
 cliente. A branch registra a rota interna desabilitada e fornece
@@ -69,15 +81,22 @@ Antes da ativação serão necessários:
 
 1. credenciais e certificados do ambiente de homologação;
 2. homologação do cliente OAuth2/mTLS que cria cobranças;
-3. validação de certificado de cliente no Nginx apenas no endpoint Sicoob;
-4. encaminhamento à aplicação somente após validação positiva no proxy;
+3. confirmar no portal atual do Sicoob o mecanismo de autenticação da chamada
+   de webhook antes de alterar o Nginx;
+4. encaminhar à aplicação somente depois da validação positiva da origem;
 5. cadastro e consulta do webhook para a chave Pix no Sicoob;
 6. teste de homologação de cobrança, pagamento, reentrega e evento inválido;
 7. habilitar as duas chaves somente depois dos testes de homologação;
 8. backup e plano de rollback antes da publicação.
 
-O Nginx ativo em 26/09/2026 ainda não possui o host mTLS nem o cabeçalho
-`X-Client-Cert-Verify`; portanto, a confirmação real continua corretamente
+A consulta somente de leitura realizada em 6 de outubro de 2026 encontrou um
+webhook já cadastrado para a chave Pix, ainda apontando para o fluxo legado do
+n8n. Esse cadastro deve ser preservado até a rota da Central estar pronta e a
+troca poder ser testada com rollback.
+
+Não será criado o subdomínio `pix-central`. A URL prevista é
+`https://api-central.aiepires.com.br/webhooks/sicoob`. Como a autenticação da
+origem nesse domínio ainda não foi homologada, a confirmação real continua
 bloqueada mesmo que as demais chaves sejam preenchidas.
 
 Nenhum segredo deve ser gravado em documentação, logs, payload administrativo

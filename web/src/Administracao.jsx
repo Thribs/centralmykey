@@ -913,14 +913,17 @@ export function Integracoes({ permissoes: permissoesSessao = [] }) {
               : 'Homologação bloqueada'}</h2>
           </div>
           <strong>{prontidaoWhatsapp.worker_habilitado
-            ? 'Worker habilitado' : 'Worker desabilitado'}</strong>
+            ? 'Envios automáticos habilitados'
+            : 'Envios automáticos desabilitados'}</strong>
         </header>
         <div className="whatsapp-readiness-metrics">
           <span>Automação GM <strong>{prontidaoWhatsapp.automacao_habilitada
             ? 'Habilitada' : 'Desabilitada'}</strong></span>
-          <span>Fornecedores GM <strong>{Number(
-            prontidaoWhatsapp.fornecedores_gm?.destinatarios_validos || 0
-          )}/{Number(prontidaoWhatsapp.fornecedores_gm?.total || 0)}</strong></span>
+          <span>Grupos GM <strong>{Number(
+            prontidaoWhatsapp.fornecedores_gm?.grupos_configurados || 0
+          )}/{Number(
+            prontidaoWhatsapp.fornecedores_gm?.grupos_esperados || 2
+          )}</strong></span>
           <span>Fila pendente <strong>{Number(
             prontidaoWhatsapp.fila?.pendentes || 0
           )}</strong></span>
@@ -934,16 +937,20 @@ export function Integracoes({ permissoes: permissoesSessao = [] }) {
         {prontidaoWhatsapp.bloqueios?.length > 0 && <ul>
           {prontidaoWhatsapp.bloqueios.map(codigo => <li key={codigo}>{({
             TRANSPORTE_WHATSAPP_INCOMPLETO: 'Credenciais de transporte incompletas',
-            WEBHOOK_WHATSAPP_INCOMPLETO: 'Autenticação do webhook incompleta',
-            OUTBOX_WHATSAPP_DESABILITADA: 'Worker de envio da outbox está desabilitado',
+            WEBHOOK_WHATSAPP_INCOMPLETO:
+              'Proteção do recebimento SendPulse incompleta',
+            OUTBOX_WHATSAPP_DESABILITADA:
+              'Processador de envios automáticos está desabilitado',
             AUTOMACAO_GM_DESABILITADA: 'Automação GM permanece desabilitada',
-            MODELO_CONSULTA_FORNECEDOR_NAO_HOMOLOGADO:
-              'Modelo de consulta ao fornecedor não está aprovado e ativo',
+            MODELO_GRUPO_FORNECEDOR_NAO_HOMOLOGADO:
+              'Modelo de consulta aos grupos não foi homologado na Meta',
             MODELO_ENTREGA_CLIENTE_NAO_HOMOLOGADO:
               'Modelo de entrega ao cliente não está aprovado e ativo',
             FORNECEDOR_GM_NAO_CADASTRADO: 'Nenhum fornecedor GM ativo cadastrado',
-            FORNECEDORES_GM_SEM_DESTINATARIO_VALIDO:
-              'Há fornecedor GM sem destinatário válido',
+            GRUPOS_FORNECEDORES_GM_NAO_CONFIGURADOS:
+              'Os identificadores dos grupos Márcio e Emerson estão pendentes',
+            GRUPOS_FORNECEDORES_META_NAO_HOMOLOGADOS:
+              'A Groups API da Meta ainda não foi homologada para os fornecedores',
             FILA_WHATSAPP_REQUER_REVISAO:
               'A fila contém envio em processamento ou com estado incerto'
           })[codigo] || codigo}</li>)}
@@ -977,7 +984,10 @@ export function Integracoes({ permissoes: permissoesSessao = [] }) {
         {prontidaoSicoob.bloqueios?.length > 0 && <ul>
           {prontidaoSicoob.bloqueios.map(codigo => <li key={codigo}>{({
             AMBIENTE_SICOOB_INVALIDO: 'Ambiente Sicoob inválido',
-            CREDENCIAIS_SICOOB_INCOMPLETAS: 'Client ID, segredo ou chave Pix ausente',
+            HOMOLOGACAO_SICOOB_SEM_ENDPOINT_TRANSACIONAL:
+              'Homologação antiga do Sicoob indisponível; produção permanece bloqueada',
+            CREDENCIAIS_SICOOB_INCOMPLETAS:
+              'Client ID, senha do certificado ou chave Pix ausente',
             CERTIFICADO_SICOOB_INACESSIVEL: 'Certificado cliente ausente ou ilegível',
             CHAVE_PRIVADA_SICOOB_INACESSIVEL: 'Chave privada ausente ou ilegível',
             CA_SICOOB_INACESSIVEL: 'CA da conexão de saída está ilegível',

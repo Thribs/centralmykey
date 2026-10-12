@@ -198,6 +198,7 @@ module.exports = function (app, pool) {
               conexao,
               {
                 telefone,
+                grupoId: mensagem.group_id || null,
                 texto: conteudo,
                 mensagemExternaId
               }
@@ -432,12 +433,15 @@ module.exports = function (app, pool) {
 
   app.locals.enviarModeloWhatsapp = async ({
     telefone,
+    grupoId,
+    tipoDestinatario = 'INDIVIDUAL',
     nome,
     idioma,
     parametros = []
   }) => {
     const configuracao = await obterConfiguracaoWhatsapp(pool);
-    if (configuracao.provedor === 'SENDPULSE') {
+    const envioGrupo = tipoDestinatario === 'GRUPO_META';
+    if (!envioGrupo && configuracao.provedor === 'SENDPULSE') {
       return enviarModeloSendPulse(configuracao, {
         telefone, nome, idioma, parametros
       });
@@ -460,12 +464,24 @@ module.exports = function (app, pool) {
       throw erro;
     }
 
-    const destino = String(telefone || '').replace(/\D/g, '');
+    if (envioGrupo && !configuracao.gruposFornecedoresHomologados) {
+      const erro = new Error(
+        'Envio aos grupos de fornecedores ainda não foi homologado na Meta'
+      );
+      erro.codigo = 'GRUPOS_FORNECEDORES_META_NAO_HOMOLOGADOS';
+      throw erro;
+    }
+
+    const destino = envioGrupo
+      ? String(grupoId || '').trim()
+      : String(telefone || '').replace(/\D/g, '');
     const nomeModelo = String(nome || '').trim();
     const idiomaModelo = String(idioma || '').trim();
 
     if (
-      !destino ||
+      !(envioGrupo
+        ? /^[A-Za-z0-9:_-]{20,200}$/.test(destino)
+        : destino.length >= 10 && destino.length <= 15) ||
       !/^[a-z0-9_]+$/.test(nomeModelo) ||
       !/^[a-zA-Z]{2,3}(?:_[a-zA-Z]{2})?$/.test(idiomaModelo) ||
       !Array.isArray(parametros) ||
@@ -521,7 +537,7 @@ module.exports = function (app, pool) {
           },
           body: JSON.stringify({
             messaging_product: 'whatsapp',
-            recipient_type: 'individual',
+            recipient_type: envioGrupo ? 'group' : 'individual',
             to: destino,
             type: 'template',
             template: modelo
@@ -545,7 +561,8 @@ module.exports = function (app, pool) {
 
       return {
         mensagem_externa_id: dados.messages[0].id,
-        contato: dados.contacts?.[0]?.wa_id || destino
+        contato: dados.contacts?.[0]?.wa_id || destino,
+        grupo_id: envioGrupo ? destino : null
       };
     } finally {
       clearTimeout(tempoLimite);
@@ -785,8 +802,8 @@ module.exports = function (app, pool) {
   });
 
   // A SendPulse não documenta assinatura criptográfica para webhooks globais.
-  // O token aleatório no caminho autentica a origem sem aparecer no payload.
-  app.post('/webhooks/sendpulse/whatsapp/:token', async (req, res) => {
+  // A Central gera o próprio segredo e o inclui na URL cadastrada na SendPulse.
+  app.post('/webhooks/sendpulse/whatsapp/:segredo', async (req, res) => {
     let configuracao;
     try {
       configuracao = await obterConfiguracaoWhatsapp(pool);
@@ -795,11 +812,11 @@ module.exports = function (app, pool) {
       return res.sendStatus(503);
     }
     if (configuracao.provedor !== 'SENDPULSE' ||
-        !/^[A-Za-z0-9_-]{32,128}$/.test(configuracao.sendpulseWebhookToken || '')) {
+        !/^[A-Za-z0-9_-]{32,128}$/.test(configuracao.sendpulseWebhookSecret || '')) {
       return res.sendStatus(404);
     }
-    const recebido = Buffer.from(String(req.params.token || ''));
-    const esperado = Buffer.from(String(configuracao.sendpulseWebhookToken));
+    const recebido = Buffer.from(String(req.params.segredo || ''));
+    const esperado = Buffer.from(String(configuracao.sendpulseWebhookSecret));
     if (recebido.length !== esperado.length ||
         !crypto.timingSafeEqual(recebido, esperado)) {
       return res.sendStatus(401);

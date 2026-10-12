@@ -1478,7 +1478,7 @@ test('integrações administram modelos e mapeamentos sem chamar serviços exter
   const prontidaoWhatsapp = page.locator('.whatsapp-readiness', {
     hasText: 'PRONTIDÃO WHATSAPP GM'
   });
-  await expect(prontidaoWhatsapp).toContainText('Worker desabilitado');
+  await expect(prontidaoWhatsapp).toContainText('Envios automáticos desabilitados');
   await expect(prontidaoWhatsapp).toContainText('Automação GM');
   await expect(prontidaoWhatsapp).not.toContainText(/\d{10,15}/);
   const prontidaoSicoob = page.locator('.whatsapp-readiness', {
