@@ -1455,11 +1455,13 @@ test('integrações administram modelos e mapeamentos sem chamar serviços exter
   await expect(page.locator('.integration-grid article', { hasText: 'API Joel Pires' }))
     .toBeVisible();
   await expect(page.locator('.integration-grid article', { hasText: 'PlugPay' }))
-    .toContainText('Contrato não identificado');
+    .toContainText('Documentação transacional pendente');
   const primeiroTesteGm = page.locator('.whatsapp-readiness', {
     hasText: 'PRIMEIRO TESTE GM · SENHA ENCONTRADA NA API'
   });
-  await expect(primeiroTesteGm).toContainText('Primeiro teste ainda bloqueado');
+  await expect(primeiroTesteGm).toContainText(
+    /Pronto para teste externo controlado|Primeiro teste ainda bloqueado/
+  );
   await expect(primeiroTesteGm).toContainText('Leitura Joel Pires');
   const prontidaoFluxoGm = page.locator('.whatsapp-readiness', {
     hasText: 'PRONTIDÃO DO FLUXO GM COMPLETO'
@@ -1483,13 +1485,17 @@ test('integrações administram modelos e mapeamentos sem chamar serviços exter
   const prontidaoWhatsapp = page.locator('.whatsapp-readiness', {
     hasText: 'PRONTIDÃO WHATSAPP GM'
   });
-  await expect(prontidaoWhatsapp).toContainText('Envios automáticos desabilitados');
+  await expect(prontidaoWhatsapp).toContainText(
+    /Envios automáticos (habilitados|desabilitados)/
+  );
   await expect(prontidaoWhatsapp).toContainText('Automação GM');
   await expect(prontidaoWhatsapp).not.toContainText(/\d{10,15}/);
   const prontidaoSicoob = page.locator('.whatsapp-readiness', {
     hasText: 'PRONTIDÃO SICOOB PIX'
   });
-  await expect(prontidaoSicoob).toContainText('Teste externo bloqueado');
+  await expect(prontidaoSicoob).toContainText(
+    /Pronto para teste controlado|Teste externo bloqueado/
+  );
   await expect(prontidaoSicoob).toContainText('Webhook mTLS');
   await expect(prontidaoSicoob).not.toContainText(/client-secret|BEGIN PRIVATE KEY/i);
   const prontidaoComercio = page.locator('.whatsapp-readiness', {

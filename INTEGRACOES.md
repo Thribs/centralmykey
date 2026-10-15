@@ -98,13 +98,20 @@ guarda um snapshot idempotente; nenhum cliente, pedido, pagamento ou lançamento
 
 ## PlugPay
 
-O nome do produto ainda não identifica inequivocamente o provedor contratado.
-A base financeira aceita eventos normalizados `PLUGPAY`, mas nenhum endpoint
-externo será aberto antes de confirmar o fornecedor e seu contrato de assinatura.
-Uma variável legada `PLUGPAY_TOKEN` ou `PLUGPAY_API_KEY`, isoladamente, não muda
-esse estado: o painel informa `CONTRATO_NAO_IDENTIFICADO` e o conector permanece
-desabilitado. Existem produtos públicos distintos com nomes semelhantes, então
-uma credencial sem domínio e contrato não identifica uma API com segurança.
+O manual interno recebido identifica o provedor contratado como PlugPay da SVM
+Group e documenta o credenciamento administrativo de parceiro,
+estabelecimento, usuário externo, taxas e banco recebedor. O painel possui
+ambientes separados de sandbox e produção; o banco recebedor existe somente em
+produção. As credenciais mostradas no manual são material sensível e não devem
+ser copiadas para o repositório.
+
+Esse manual não é o contrato de consumo da API. Ele não informa a URL base
+transacional, cabeçalhos de autenticação, endpoints ou payloads de cobrança,
+consulta, cancelamento e estorno, nem contrato, assinatura e repetição de
+webhook. A base financeira aceita eventos normalizados `PLUGPAY`, mas o conector
+permanece desabilitado com status `DOCUMENTACAO_TRANSACIONAL_PENDENTE` até a
+PlugPay fornecer essa especificação. `PLUGPAY_TOKEN` e `PLUGPAY_API_KEY`
+continuam tratados apenas como nomes legados e não habilitam integração.
 
 ## Eventos financeiros externos
 

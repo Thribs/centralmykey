@@ -198,14 +198,16 @@ function resumirIntegracoes(config) {
     },
     {
       codigo: 'PLUGPAY',
-      nome: 'PlugPay',
+      nome: 'PlugPay · SVM Group',
       implementado: false,
       configurado: false,
       habilitado: false,
-      status: 'CONTRATO_NAO_IDENTIFICADO',
+      status: 'DOCUMENTACAO_TRANSACIONAL_PENDENTE',
       componentes: {
-        identidade_provedor: false,
-        contrato_assinatura: false,
+        identidade_provedor: true,
+        credenciamento_documentado: true,
+        ambiente_sandbox: true,
+        contrato_transacional: false,
         conector: false
       }
     },

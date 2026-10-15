@@ -853,6 +853,7 @@ export function Integracoes({ permissoes: permissoesSessao = [] }) {
                 PARCIAL: 'Configuração parcial',
                 CREDENCIAIS_SEM_CONECTOR: 'Credenciais · conector pendente',
                 CONTRATO_NAO_IDENTIFICADO: 'Contrato não identificado',
+                DOCUMENTACAO_TRANSACIONAL_PENDENTE: 'Documentação transacional pendente',
                 PENDENTE: 'Pendente'
               }[item.status] || 'Pendente'}
             </i>

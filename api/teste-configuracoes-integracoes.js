@@ -145,9 +145,13 @@ async function executar() {
     assert.strictEqual(itemSicoob.habilitado, false);
     assert.strictEqual(itemSicoob.componentes.cobranca_habilitada, false);
     assert.strictEqual(itemSicoob.componentes.webhook_publico_mtls, false);
-    assert.strictEqual(itemPlugPay.status, 'CONTRATO_NAO_IDENTIFICADO');
+    assert.strictEqual(itemPlugPay.status, 'DOCUMENTACAO_TRANSACIONAL_PENDENTE');
     assert.strictEqual(itemPlugPay.configurado, false);
-    assert.strictEqual(itemPlugPay.componentes.identidade_provedor, false);
+    assert.strictEqual(itemPlugPay.componentes.identidade_provedor, true);
+    assert.strictEqual(itemPlugPay.componentes.credenciamento_documentado, true);
+    assert.strictEqual(itemPlugPay.componentes.ambiente_sandbox, true);
+    assert.strictEqual(itemPlugPay.componentes.contrato_transacional, false);
+    assert.strictEqual(itemPlugPay.componentes.conector, false);
     assert.strictEqual(itemWbuy.status, 'CREDENCIAIS_SEM_CONECTOR');
     assert.strictEqual(itemWbuy.componentes.credencial_legada, true);
     assert.strictEqual(itemBling.status, 'PENDENTE');
