@@ -1,5 +1,10 @@
 # Integrações externas
 
+Os estados abaixo descrevem configuração técnica. Eles não autorizam chamar uma
+integração de operacional. A prova operacional exige homologação ponta a ponta e
+execução real persistida; a Central MyKey só estará pronta quando houver clientes
+usando o fluxo completo.
+
 A tela de integrações distingue credenciais cadastradas de conectores realmente
 implementados. Os estados exibidos são:
 
@@ -25,6 +30,10 @@ fornecedores e clientes. O worker só envia quando
 `COMUNICACOES_OUTBOX_HABILITADO` está ativo. A ativação em ambiente real exige
 modelos aprovados, contatos revisados e homologação controlada conforme
 `ATIVAR-COMUNICACOES-FORNECEDORES.md`.
+
+Em 20/10/2026, a autenticação de leitura da conta SendPulse e a presença do modelo
+foram verificadas, mas não havia mensagem real registrada no fluxo. Portanto,
+WhatsApp continua parcial e não operacional.
 
 ## API Joel Pires
 
@@ -96,6 +105,9 @@ conexão. A leitura usa `GET /pedidos/vendas/{id}`, renova o JWT se necessário 
 guarda um snapshot idempotente; nenhum cliente, pedido, pagamento ou lançamento
 é criado, e dados pessoais do payload não retornam à interface.
 
+Em 20/10/2026, não havia `client_id`, segredo, callback ou OAuth habilitado no
+ambiente. Não existe integração Bling operacional.
+
 ## PlugPay
 
 O manual interno recebido identifica o provedor contratado como PlugPay da SVM
@@ -118,6 +130,9 @@ As credenciais existem somente no ambiente: `PLUGPAY_CLIENT_ID`,
 `PLUGPAY_PASSWORD` e `PLUGPAY_DOCUMENT_MERCHANT`. Cobrança e consulta exigem
 habilitação separada. O webhook permanece desabilitado porque o guia manda
 validar um token/header configurado, mas não informa o nome exato desse header.
+
+Em 20/10/2026, essas credenciais e habilitações não estavam configuradas. Os testes
+do conector usam mocks; não houve cobrança nem consulta homologada no sandbox.
 Até esse contrato ser confirmado, a consulta periódica é o canal de confirmação.
 O fluxo GM usa `PAGAMENTO_PIX_PROVEDOR=SICOOB` por padrão e pode ser direcionado
 para `PLUGPAY` no ambiente de teste sem alterar o código ou o ambiente público.

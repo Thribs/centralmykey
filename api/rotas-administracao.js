@@ -2,6 +2,7 @@ const {
   carregarConfiguracoesIntegracoes,
   diagnosticarProntidaoFluxoGm,
   diagnosticarProntidaoPrimeiroCenarioGm,
+  auditarUsoRealPrimeiroCenarioGm,
   diagnosticarProntidaoSicoob,
   diagnosticarProntidaoWhatsapp,
   resumirIntegracoes
@@ -576,6 +577,13 @@ module.exports = function(app, pool) {
         const prontidaoPrimeiroCenarioGm = diagnosticarProntidaoPrimeiroCenarioGm(
           configuracoes, prontidaoWhatsapp, prontidaoSicoob
         );
+        const usoRealPrimeiroCenarioGm = await auditarUsoRealPrimeiroCenarioGm(
+          pool, configuracoes
+        );
+        prontidaoPrimeiroCenarioGm.evidencia_operacional = usoRealPrimeiroCenarioGm;
+        prontidaoPrimeiroCenarioGm.operacional =
+          prontidaoPrimeiroCenarioGm.configuracao_pronta_para_ensaio &&
+          usoRealPrimeiroCenarioGm.em_uso_por_clientes;
 
         const [modelos] = await pool.query(`
           SELECT

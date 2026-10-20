@@ -5,6 +5,7 @@ const crypto = require('crypto');
 const express = require('express');
 const {
   carregarConfiguracoesIntegracoes,
+  auditarUsoRealPrimeiroCenarioGm,
   diagnosticarProntidaoFluxoGm,
   diagnosticarProntidaoPrimeiroCenarioGm,
   diagnosticarProntidaoSicoob,
@@ -360,6 +361,31 @@ async function executar() {
     assert.strictEqual(primeiroCenarioSemContato.pronto_para_teste, false);
     assert.ok(primeiroCenarioSemContato.bloqueios.includes(
       'WHATSAPP:CONTATO_TESTE_NAO_CONFIGURADO'));
+
+    const usoNaoComprovado = await auditarUsoRealPrimeiroCenarioGm({
+      query: async () => [[{ fluxos_concluidos: 0, clientes_distintos: 0 }]]
+    });
+    assert.deepStrictEqual(usoNaoComprovado, {
+      homologacao_ponta_a_ponta: false,
+      em_uso_por_clientes: false,
+      fluxos_concluidos: 0,
+      clientes_distintos: 0
+    });
+    const usoComprovado = await auditarUsoRealPrimeiroCenarioGm({
+      query: async sql => {
+        assert.match(sql, /ORIGEM_ATENDIMENTO_WHATSAPP_AUTOMATICO/);
+        assert.match(sql, /JOIN pagamentos/);
+        assert.match(sql, /pr\.status = 'CONFIRMADO'/);
+        assert.match(sql, /'ENTREGUE', 'LIDA'/);
+        return [[{ fluxos_concluidos: 3, clientes_distintos: 2 }]];
+      }
+    }, { automacaoGmTelefonesTeste: '5535999999999' });
+    assert.deepStrictEqual(usoComprovado, {
+      homologacao_ponta_a_ponta: true,
+      em_uso_por_clientes: true,
+      fluxos_concluidos: 3,
+      clientes_distintos: 2
+    });
 
     const requisicoesMeta = [];
     global.fetch = async (url, opcoes) => {

@@ -863,9 +863,11 @@ export function Integracoes({ permissoes: permissoesSessao = [] }) {
 
       {prontidaoPrimeiroCenarioGm && <div className="admin-panel whatsapp-readiness">
         <header><div><span>PRIMEIRO TESTE GM · SENHA ENCONTRADA NA API</span>
-          <h2>{prontidaoPrimeiroCenarioGm.pronto_para_teste
-            ? 'Pronto para teste externo controlado'
-            : 'Primeiro teste ainda bloqueado'}</h2></div>
+          <h2>{prontidaoPrimeiroCenarioGm.operacional
+            ? 'Em uso por clientes'
+            : prontidaoPrimeiroCenarioGm.configuracao_pronta_para_ensaio
+              ? 'Configuração apta para ensaio controlado'
+              : 'Configuração do ensaio ainda bloqueada'}</h2></div>
           <strong>{Number(prontidaoPrimeiroCenarioGm.bloqueios?.length || 0)} bloqueio(s)</strong>
         </header>
         <div className="whatsapp-readiness-metrics">
@@ -877,6 +879,12 @@ export function Integracoes({ permissoes: permissoesSessao = [] }) {
           <span>Leitura Joel Pires <strong>{
             prontidaoPrimeiroCenarioGm.componentes?.joel_pires_leitura
               ? 'Configurada' : 'Pendente'}</strong></span>
+          <span>Homologação ponta a ponta <strong>{
+            prontidaoPrimeiroCenarioGm.evidencia_operacional?.homologacao_ponta_a_ponta
+              ? 'Comprovada' : 'Não comprovada'}</strong></span>
+          <span>Clientes com fluxo concluído <strong>{Number(
+            prontidaoPrimeiroCenarioGm.evidencia_operacional?.clientes_distintos || 0
+          )}</strong></span>
         </div>
         {prontidaoPrimeiroCenarioGm.bloqueios?.length > 0 && <ul>
           {prontidaoPrimeiroCenarioGm.bloqueios.map(codigo =>
@@ -887,7 +895,7 @@ export function Integracoes({ permissoes: permissoesSessao = [] }) {
       {prontidaoFluxoGm && <div className="admin-panel whatsapp-readiness">
         <header><div><span>PRONTIDÃO DO FLUXO GM COMPLETO</span>
           <h2>{prontidaoFluxoGm.pronto_para_teste
-            ? 'Cenário pronto para teste externo controlado'
+            ? 'Configuração apta para ensaio controlado'
             : 'Cenário externo ainda bloqueado'}</h2></div>
           <strong>{Number(prontidaoFluxoGm.bloqueios?.length || 0)} bloqueio(s)</strong>
         </header>
@@ -937,7 +945,7 @@ export function Integracoes({ permissoes: permissoesSessao = [] }) {
           <div>
             <span>PRONTIDÃO WHATSAPP GM</span>
             <h2>{prontidaoWhatsapp.pronto_para_homologar
-              ? 'Pronto para homologação controlada'
+              ? 'Configuração apta para homologação controlada'
               : 'Homologação bloqueada'}</h2>
           </div>
           <strong>{prontidaoWhatsapp.worker_habilitado
@@ -993,7 +1001,7 @@ export function Integracoes({ permissoes: permissoesSessao = [] }) {
           <div>
             <span>PRONTIDÃO SICOOB PIX</span>
             <h2>{prontidaoSicoob.pronto_para_teste
-              ? 'Pronto para teste controlado'
+              ? 'Configuração técnica completa para ensaio'
               : 'Teste externo bloqueado'}</h2>
           </div>
           <strong>Ambiente {prontidaoSicoob.ambiente || 'INVALIDO'}</strong>

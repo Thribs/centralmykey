@@ -399,6 +399,7 @@ function diagnosticarProntidaoPrimeiroCenarioGm(
 
   return {
     pronto_para_teste: bloqueios.length === 0,
+    configuracao_pronta_para_ensaio: bloqueios.length === 0,
     componentes: {
       whatsapp: bloqueiosWhatsapp.length === 0 && contatoTesteConfigurado,
       contato_teste: contatoTesteConfigurado,
@@ -406,6 +407,60 @@ function diagnosticarProntidaoPrimeiroCenarioGm(
       joel_pires_leitura: leituraJoelPires
     },
     bloqueios
+  };
+}
+
+async function auditarUsoRealPrimeiroCenarioGm(pool, config = {}) {
+  const telefonesTeste = normalizarTelefonesTeste(config.automacaoGmTelefonesTeste);
+  const marcadores = telefonesTeste.map(() => '?').join(', ');
+  const clienteForaDaHomologacao = telefonesTeste.length === 0
+    ? '1 = 1'
+    : `(COALESCE(c.telefone_normalizado, '') NOT IN (${marcadores})
+       AND NOT EXISTS (
+         SELECT 1 FROM cliente_telefones ct
+          WHERE ct.cliente_id = c.id
+            AND ct.telefone_normalizado IN (${marcadores})
+       ))`;
+  const [[linha = {}]] = await pool.query(`
+    SELECT COUNT(*) AS fluxos_concluidos,
+           COUNT(DISTINCT CASE WHEN ${clienteForaDaHomologacao}
+             THEN p.cliente_id END) AS clientes_distintos
+      FROM pedidos_senha p
+      JOIN clientes c ON c.id = p.cliente_id
+     WHERE p.status = 'CONCLUIDO'
+       AND EXISTS (
+         SELECT 1
+           FROM pedido_historico ph
+          WHERE ph.pedido_id = p.id
+            AND ph.tipo = 'ORIGEM_ATENDIMENTO_WHATSAPP_AUTOMATICO'
+       )
+       AND EXISTS (
+         SELECT 1
+           FROM lancamentos_financeiros lf
+           JOIN pagamentos pg ON pg.lancamento_id = lf.id
+          WHERE lf.pedido_senha_id = p.id
+       )
+       AND EXISTS (
+         SELECT 1
+           FROM pedido_resultados pr
+          WHERE pr.pedido_id = p.id
+            AND pr.status = 'CONFIRMADO'
+       )
+       AND EXISTS (
+         SELECT 1
+           FROM comunicacoes_outbox co
+          WHERE co.pedido_id = p.id
+            AND co.finalidade = 'ENTREGA_CLIENTE'
+            AND co.status IN ('ENTREGUE', 'LIDA')
+       )
+  `, [...telefonesTeste, ...telefonesTeste]);
+  const fluxosConcluidos = Number(linha.fluxos_concluidos || 0);
+  const clientesDistintos = Number(linha.clientes_distintos || 0);
+  return {
+    homologacao_ponta_a_ponta: fluxosConcluidos > 0,
+    em_uso_por_clientes: clientesDistintos > 0,
+    fluxos_concluidos: fluxosConcluidos,
+    clientes_distintos: clientesDistintos
   };
 }
 
@@ -633,6 +688,7 @@ module.exports = {
   diagnosticarProntidaoSicoob,
   diagnosticarProntidaoFluxoGm,
   diagnosticarProntidaoPrimeiroCenarioGm,
+  auditarUsoRealPrimeiroCenarioGm,
   diagnosticarProntidaoWhatsapp,
   obterConfiguracaoBling,
   obterConfiguracaoPlugPay,

@@ -2,6 +2,23 @@
 
 Auditoria da versão `v0.5.0` (`dfdb7c9`), realizada em 18/09/2026. Este documento avalia o produto completo; a versão `v0.5.0` comprova somente o tratamento dos destinos do fluxo GM depois do pagamento e o reprocessamento automático após indisponibilidade da API Joel Pires.
 
+## Critério de produto operacional — correção de 20/10/2026
+
+A Central MyKey somente pode ser declarada pronta quando clientes reais estiverem
+usando o fluxo completo. Configuração presente, testes com mocks, build aprovado e
+serviço ativo comprovam a base técnica, mas não comprovam homologação externa nem
+uso do produto. O painel administrativo separa agora configuração apta para ensaio,
+homologação ponta a ponta e clientes distintos com fluxo concluído. Esta última
+prova exige pedido GM automático pago, resultado confirmado e entrega WhatsApp
+entregue ou lida. Contatos autorizados para homologação são excluídos da contagem
+de clientes em uso.
+
+No estado verificado em 20/10/2026, o programa **não está pronto**: não há fluxo
+WhatsApp real concluído por cliente, o Bling não possui aplicativo conectado nem
+efeitos comerciais, e o PlugPay não possui credenciais configuradas ou homologação
+no sandbox. O código e os testes desses conectores permanecem classificados como
+parciais até existir prova externa persistida.
+
 ## Critério de classificação
 
 - **COMPROVADO:** implementação percorrida de ponta a ponta, com rota, persistência, interface e teste funcional quando esses elementos se aplicam.
