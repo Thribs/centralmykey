@@ -184,6 +184,9 @@ async function executar() {
     process.env.SEGREDO_WEBHOOK_SENDPULSE = segredo;
     process.env.SENDPULSE_WHATSAPP_BOT_ID = 'bot-sendpulse-ficticio';
     process.env.AUTOMACAO_GM_WHATSAPP_HABILITADA = 'true';
+    // O teste cobre vários contatos fictícios; não herda a lista controlada
+    // do ambiente publicado. A restrição é exercitada explicitamente abaixo.
+    delete process.env.AUTOMACAO_GM_WHATSAPP_TELEFONES_TESTE;
     process.env.APIJOELPIRES_GRAVACAO_HOMOLOGADA = 'true';
     await connection.beginTransaction();
     await criarTabelaOutboxTemporaria(connection);

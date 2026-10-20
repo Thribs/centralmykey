@@ -45,7 +45,14 @@ const CHAVES = {
   sicoobWebhookMtlsConfigurado: ['SICOOB_WEBHOOK_MTLS_CONFIGURADO'],
   sicoobWebhookUrl: ['SICOOB_WEBHOOK_URL'],
   sicoobWebhookCadastrado: ['SICOOB_WEBHOOK_CADASTRADO'],
-  plugPayToken: ['PLUGPAY_TOKEN', 'PLUGPAY_API_KEY'],
+  pagamentoPixProvedor: ['PAGAMENTO_PIX_PROVEDOR'],
+  plugPayClientId: ['PLUGPAY_CLIENT_ID'],
+  plugPayPassword: ['PLUGPAY_PASSWORD'],
+  plugPayDocumentMerchant: ['PLUGPAY_DOCUMENT_MERCHANT'],
+  plugPayAmbiente: ['PLUGPAY_AMBIENTE'],
+  plugPayCobrancaHabilitada: ['PLUGPAY_COBRANCA_HABILITADA'],
+  plugPayConsultaHabilitada: ['PLUGPAY_CONSULTA_HABILITADA'],
+  plugPayWebhookHabilitado: ['PLUGPAY_WEBHOOK_HABILITADO'],
   wbuyUsuario: ['WBUY_USUARIO', 'WBUY_USERNAME'],
   wbuySenha: ['WBUY_SENHA', 'WBUY_PASSWORD'],
   wbuyLojaUrl: ['WBUY_LOJA_URL'],
@@ -62,7 +69,8 @@ const SOMENTE_AMBIENTE = new Set([
   'grupoFornecedorEmersonId', 'automacaoGmTelefonesTeste',
   'sicoobClientId', 'sicoobCertPath',
   'sicoobKeyPath', 'sicoobCertPassword', 'sicoobCaPath',
-  'sicoobWebhookCaPath', 'sicoobChavePix'
+  'sicoobWebhookCaPath', 'sicoobChavePix', 'plugPayClientId',
+  'plugPayPassword', 'plugPayDocumentMerchant'
 ]);
 
 function primeiroValor(mapa, aliases) {
@@ -151,6 +159,10 @@ function resumirIntegracoes(config) {
     Boolean(config.sicoobWebhookCaPath) &&
     verdadeiro(config.sicoobWebhookMtlsConfigurado) &&
     verdadeiro(config.sicoobWebhookCadastrado);
+  const plugPayCobranca = verdadeiro(config.plugPayCobrancaHabilitada);
+  const plugPayConsulta = verdadeiro(config.plugPayConsultaHabilitada);
+  const plugPayCredenciais = Boolean(config.plugPayClientId &&
+    config.plugPayPassword && config.plugPayDocumentMerchant);
   return [
     {
       codigo: 'WHATSAPP',
@@ -199,16 +211,18 @@ function resumirIntegracoes(config) {
     {
       codigo: 'PLUGPAY',
       nome: 'PlugPay · SVM Group',
-      implementado: false,
-      configurado: false,
-      habilitado: false,
-      status: 'DOCUMENTACAO_TRANSACIONAL_PENDENTE',
+      ...estadoConector({ implementado: true,
+        requisitos: [plugPayCredenciais, plugPayConsulta],
+        habilitado: plugPayCobranca && plugPayConsulta }),
       componentes: {
         identidade_provedor: true,
         credenciamento_documentado: true,
         ambiente_sandbox: true,
-        contrato_transacional: false,
-        conector: false
+        contrato_transacional: true,
+        conector: true,
+        cobranca_habilitada: plugPayCobranca,
+        consulta_habilitada: plugPayConsulta,
+        webhook: false
       }
     },
     {
@@ -568,6 +582,31 @@ async function obterConfiguracaoSicoob(pool, opcoes = {}) {
   };
 }
 
+async function obterConfiguracaoPlugPay(pool) {
+  const config = await carregarConfiguracoesIntegracoes(pool);
+  const ambiente = String(config.plugPayAmbiente || 'sandbox').toLowerCase();
+  const credenciais = Boolean(config.plugPayClientId && config.plugPayPassword &&
+    config.plugPayDocumentMerchant);
+  const cobrancaHabilitada = verdadeiro(config.plugPayCobrancaHabilitada);
+  const consultaHabilitada = verdadeiro(config.plugPayConsultaHabilitada);
+  return {
+    clientId: config.plugPayClientId, password: config.plugPayPassword,
+    documentMerchant: config.plugPayDocumentMerchant, ambiente,
+    apiUrl: ambiente === 'producao' ? 'https://api.plugpayapi.com' :
+      'https://apisandbox.plugpayapi.com',
+    cobrancaHabilitada: credenciais && cobrancaHabilitada && consultaHabilitada,
+    consultaHabilitada: credenciais && consultaHabilitada,
+    webhookHabilitado: false,
+    habilitado: credenciais && cobrancaHabilitada && consultaHabilitada
+  };
+}
+
+async function obterProvedorPagamentoPix(pool) {
+  const config = await carregarConfiguracoesIntegracoes(pool);
+  const provedor = String(config.pagamentoPixProvedor || 'SICOOB').toUpperCase();
+  return ['SICOOB', 'PLUGPAY'].includes(provedor) ? provedor : 'SICOOB';
+}
+
 async function obterConfiguracaoBling(pool) {
   const config = await carregarConfiguracoesIntegracoes(pool);
   return {
@@ -596,6 +635,8 @@ module.exports = {
   diagnosticarProntidaoPrimeiroCenarioGm,
   diagnosticarProntidaoWhatsapp,
   obterConfiguracaoBling,
+  obterConfiguracaoPlugPay,
+  obterProvedorPagamentoPix,
   obterConfiguracaoWhatsapp,
   obterConfiguracaoSicoob,
   obterConfiguracaoWBuy,

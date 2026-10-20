@@ -105,13 +105,22 @@ ambientes separados de sandbox e produção; o banco recebedor existe somente em
 produção. As credenciais mostradas no manual são material sensível e não devem
 ser copiadas para o repositório.
 
-Esse manual não é o contrato de consumo da API. Ele não informa a URL base
-transacional, cabeçalhos de autenticação, endpoints ou payloads de cobrança,
-consulta, cancelamento e estorno, nem contrato, assinatura e repetição de
-webhook. A base financeira aceita eventos normalizados `PLUGPAY`, mas o conector
-permanece desabilitado com status `DOCUMENTACAO_TRANSACIONAL_PENDENTE` até a
-PlugPay fornecer essa especificação. `PLUGPAY_TOKEN` e `PLUGPAY_API_KEY`
-continuam tratados apenas como nomes legados e não habilitam integração.
+O guia transacional v2.3, de 14/10/2026, define sandbox em
+`https://apisandbox.plugpayapi.com`, produção em `https://api.plugpayapi.com`,
+autenticação em `POST /v1/partners/auth/token`, criação Pix em
+`POST /v1/partners/transactionPix/create` e consulta em
+`GET /v1/partners/transactionPix/status/{referenciaInterna}`. A Central possui
+conector para criar e consultar Pix, valida referência, valor e moeda, e aplica
+a confirmação pela base financeira idempotente. Timeout de criação fica como
+estado incerto e bloqueia uma segunda cobrança automática.
+
+As credenciais existem somente no ambiente: `PLUGPAY_CLIENT_ID`,
+`PLUGPAY_PASSWORD` e `PLUGPAY_DOCUMENT_MERCHANT`. Cobrança e consulta exigem
+habilitação separada. O webhook permanece desabilitado porque o guia manda
+validar um token/header configurado, mas não informa o nome exato desse header.
+Até esse contrato ser confirmado, a consulta periódica é o canal de confirmação.
+O fluxo GM usa `PAGAMENTO_PIX_PROVEDOR=SICOOB` por padrão e pode ser direcionado
+para `PLUGPAY` no ambiente de teste sem alterar o código ou o ambiente público.
 
 ## Eventos financeiros externos
 

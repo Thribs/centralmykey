@@ -39,6 +39,10 @@ const CHAVES_TESTE = [
   'SICOOB_WEBHOOK_HABILITADO',
   'SICOOB_WEBHOOK_MTLS_CONFIGURADO',
   'SICOOB_WEBHOOK_URL', 'SICOOB_WEBHOOK_CADASTRADO',
+  'PAGAMENTO_PIX_PROVEDOR',
+  'PLUGPAY_CLIENT_ID', 'PLUGPAY_PASSWORD', 'PLUGPAY_DOCUMENT_MERCHANT',
+  'PLUGPAY_AMBIENTE', 'PLUGPAY_COBRANCA_HABILITADA',
+  'PLUGPAY_CONSULTA_HABILITADA', 'PLUGPAY_WEBHOOK_HABILITADO',
   'WBUY_USUARIO', 'WBUY_USERNAME', 'WBUY_SENHA', 'WBUY_PASSWORD',
   'WBUY_LOJA_URL', 'WBUY_TOKEN', 'WBUY_API_KEY',
   'BLING_CLIENT_ID', 'BLING_CLIENT_SECRET', 'BLING_REDIRECT_URI',
@@ -145,13 +149,14 @@ async function executar() {
     assert.strictEqual(itemSicoob.habilitado, false);
     assert.strictEqual(itemSicoob.componentes.cobranca_habilitada, false);
     assert.strictEqual(itemSicoob.componentes.webhook_publico_mtls, false);
-    assert.strictEqual(itemPlugPay.status, 'DOCUMENTACAO_TRANSACIONAL_PENDENTE');
+    assert.strictEqual(itemPlugPay.status, 'PENDENTE');
     assert.strictEqual(itemPlugPay.configurado, false);
     assert.strictEqual(itemPlugPay.componentes.identidade_provedor, true);
     assert.strictEqual(itemPlugPay.componentes.credenciamento_documentado, true);
     assert.strictEqual(itemPlugPay.componentes.ambiente_sandbox, true);
-    assert.strictEqual(itemPlugPay.componentes.contrato_transacional, false);
-    assert.strictEqual(itemPlugPay.componentes.conector, false);
+    assert.strictEqual(itemPlugPay.componentes.contrato_transacional, true);
+    assert.strictEqual(itemPlugPay.componentes.conector, true);
+    assert.strictEqual(itemPlugPay.componentes.webhook, false);
     assert.strictEqual(itemWbuy.status, 'CREDENCIAIS_SEM_CONECTOR');
     assert.strictEqual(itemWbuy.componentes.credencial_legada, true);
     assert.strictEqual(itemBling.status, 'PENDENTE');

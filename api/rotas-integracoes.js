@@ -2,6 +2,8 @@
 
 const {
   obterConfiguracaoSicoob,
+  obterConfiguracaoPlugPay,
+  obterProvedorPagamentoPix,
   obterConfiguracaoBling,
   obterConfiguracaoWBuy
 } = require('./configuracoes-integracoes');
@@ -9,6 +11,7 @@ const {
   criarCobrancaPedidoSicoob,
   processarWebhookSicoob
 } = require('./sicoob-pix');
+const { criarCobrancaPedidoPlugPay } = require('./plugpay-pix');
 const { receberEventoBling } = require('./webhook-bling');
 const { analisarSnapshotBling, sincronizarPedidoBling } = require('./bling-pedidos');
 const { analisarSnapshotWBuy, sincronizarPedidoWBuy } = require('./wbuy-pedidos');
@@ -57,6 +60,24 @@ module.exports = function registrarRotasIntegracoes(app, pool, opcoes = {}) {
       usuarioId,
       ip
     });
+  };
+
+  app.locals.criarCobrancaPlugPayInterna = async ({ pedidoId, usuarioId = null }) => {
+    const config = opcoes.configuracaoPlugPay || await obterConfiguracaoPlugPay(pool);
+    if (!config.habilitado) {
+      const erro = new Error('Cobrança PlugPay não está habilitada');
+      erro.codigo = 'PLUGPAY_NAO_HABILITADO'; erro.status = 503; throw erro;
+    }
+    return criarCobrancaPedidoPlugPay(pool, Number(pedidoId), config, {
+      transporte: opcoes.transportePlugPay, usuarioId
+    });
+  };
+
+  app.locals.criarCobrancaPixInterna = async dados => {
+    const provedor = await obterProvedorPagamentoPix(pool);
+    return provedor === 'PLUGPAY'
+      ? app.locals.criarCobrancaPlugPayInterna(dados)
+      : app.locals.criarCobrancaSicoobInterna(dados);
   };
 
   app.get('/api/integracoes/bling/oauth/status', autenticarToken,
@@ -273,6 +294,31 @@ module.exports = function registrarRotasIntegracoes(app, pool, opcoes = {}) {
         return res.status(status).json({ ok: false,
           error: status >= 500 ? 'Integração Sicoob indisponível' : error.message,
           codigo: error.codigo || 'ERRO_SICOOB' });
+      }
+    });
+
+  app.get('/api/pagamentos/plugpay/status', autenticarToken,
+    exigirPermissao('FINANCEIRO', 'visualizar'), async (req, res) => {
+      const config = opcoes.configuracaoPlugPay || await obterConfiguracaoPlugPay(pool);
+      return res.json({ ok: true, disponivel: Boolean(config.habilitado),
+        codigo: config.habilitado ? 'PRONTO' : 'CONFIGURACAO_PENDENTE' });
+    });
+
+  app.post('/api/pedidos/:id/pagamentos/plugpay', autenticarToken,
+    exigirPermissao('FINANCEIRO', 'editar'), async (req, res) => {
+      const pedidoId = Number(req.params.id);
+      if (!Number.isInteger(pedidoId) || pedidoId <= 0) {
+        return res.status(400).json({ ok: false, error: 'Pedido inválido' });
+      }
+      try {
+        return res.status(201).json(await app.locals.criarCobrancaPlugPayInterna({
+          pedidoId, usuarioId: req.usuario?.id || null
+        }));
+      } catch (error) {
+        const status = Number(error.status) || 500;
+        return res.status(status).json({ ok: false,
+          error: status >= 500 ? 'Integração PlugPay indisponível' : error.message,
+          codigo: error.codigo || 'ERRO_PLUGPAY' });
       }
     });
 

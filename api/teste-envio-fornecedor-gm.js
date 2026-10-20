@@ -57,7 +57,7 @@ async function executar() {
   const grupoMarcioOriginal =
     process.env.WHATSAPP_GRUPO_FORNECEDOR_MARCIO_ID;
   const sufixo = String(Date.now()).slice(-8);
-  const protocolo = `TESTE-ENVIO-GM-${process.pid}-${sufixo}`;
+  const protocolo = `TESTE-ENVIO-GM-${process.pid}-${sufixo}`.slice(0, 30);
   const grupoMarcio = `grupo_meta_marcio_${process.pid}_${sufixo}`;
   let pedidoId;
   let erro;

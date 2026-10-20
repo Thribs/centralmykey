@@ -133,7 +133,7 @@ async function executar() {
   const contexto = {
     apiSenhaId: 980000000 + (process.pid % 100000),
     chassi: `9BGPM11A0${sufixo}`,
-    protocolo: `TESTE-PAG-IDEM-${process.pid}-${sufixo}`,
+    protocolo: `TESTE-PAG-IDEM-${process.pid}-${sufixo}`.slice(0, 30),
     referencia: `REF-IDEM-${process.pid}-${sufixo}`
   };
   let pedidoId = null;

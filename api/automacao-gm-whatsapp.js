@@ -252,13 +252,15 @@ async function salvarDadosFiscais(connection, atendimento, estado, dados) {
 }
 
 async function gerarCobrancaPix(pool, app, atendimentoId, pedidoId) {
-  if (typeof app.locals.criarCobrancaSicoobInterna !== 'function') {
-    await encaminharHumano(pool, atendimentoId, 'SICOOB_NAO_CONFIGURADO',
+  const criarCobranca = app.locals.criarCobrancaPixInterna ||
+    app.locals.criarCobrancaSicoobInterna;
+  if (typeof criarCobranca !== 'function') {
+    await encaminharHumano(pool, atendimentoId, 'PIX_NAO_CONFIGURADO',
       'Rotina de cobrança Pix indisponível');
     return { automatizado: false, humano: true };
   }
   try {
-    const cobranca = await app.locals.criarCobrancaSicoobInterna({
+    const cobranca = await criarCobranca({
       pedidoId,
       solicitacaoPagador: `Central MyKey - pedido ${pedidoId}`
     });

@@ -17,6 +17,7 @@ const {
 } = require('./processar-mensagens-atendimento');
 const {
   obterConfiguracaoSicoob,
+  obterConfiguracaoPlugPay,
   obterConfiguracaoWhatsapp
 } = require('./configuracoes-integracoes');
 const {
@@ -31,6 +32,9 @@ const {
 const {
   reconciliarPagamentosSicoob
 } = require('./reconciliar-pagamentos-sicoob');
+const {
+  reconciliarPagamentosPlugPay
+} = require('./reconciliar-pagamentos-plugpay');
 const {
   registrarContextoRequisicao,
   registrarTratamentoFinal
@@ -375,6 +379,24 @@ async function executarReconciliacaoSicoob() {
   }
 }
 
+let reconciliacaoPlugPayEmAndamento = false;
+async function executarReconciliacaoPlugPay() {
+  if (reconciliacaoPlugPayEmAndamento) return;
+  reconciliacaoPlugPayEmAndamento = true;
+  try {
+    const resultado = await reconciliarPagamentosPlugPay(
+      pool, await obterConfiguracaoPlugPay(pool));
+    if (resultado.executado && resultado.pagas > 0) {
+      console.log('Pagamentos PlugPay confirmados por consulta:', resultado.pagas);
+    }
+    if (resultado.executado && resultado.falhas > 0) {
+      console.warn('Consultas PlugPay não concluídas neste ciclo:', resultado.falhas);
+    }
+  } catch (error) {
+    console.error('Erro ao reconciliar cobranças PlugPay:', error.message);
+  } finally { reconciliacaoPlugPayEmAndamento = false; }
+}
+
 require('./rotas-openai')(app, pool);
 registrarTratamentoFinal(app);
 
@@ -479,4 +501,14 @@ app.listen(port, '127.0.0.1', () => {
   );
 
   intervaloReconciliacaoSicoob.unref();
+
+  executarReconciliacaoPlugPay();
+  const intervaloReconciliacaoPlugPay = setInterval(
+    executarReconciliacaoPlugPay,
+    inteiroConfiguradoIntervalo(
+      process.env.PLUGPAY_RECONCILIACAO_INTERVALO_MS,
+      5 * 60 * 1000
+    )
+  );
+  intervaloReconciliacaoPlugPay.unref();
 });
