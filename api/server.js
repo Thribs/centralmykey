@@ -507,7 +507,7 @@ app.listen(port, '127.0.0.1', () => {
     executarReconciliacaoPlugPay,
     inteiroConfiguradoIntervalo(
       process.env.PLUGPAY_RECONCILIACAO_INTERVALO_MS,
-      5 * 60 * 1000
+      60 * 1000
     )
   );
   intervaloReconciliacaoPlugPay.unref();

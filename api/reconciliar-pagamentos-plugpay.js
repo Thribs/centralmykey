@@ -8,6 +8,16 @@ const NOME_BLOQUEIO = 'central_mykey_pagamentos_plugpay';
 
 function centavos(valor) { return Math.round(Number(valor) * 100); }
 
+function classificarStatusPlugPay(status) {
+  const codigo = Number(status);
+  if (codigo === 1) return 'APROVADO';
+  if (codigo === 5) return 'PENDENTE';
+  if (codigo === 3) return 'REJEITADO';
+  if (codigo === 6) return 'CANCELADO';
+  if (codigo === 9) return 'REVERSADO';
+  return 'DESCONHECIDO';
+}
+
 async function reconciliarPagamentosPlugPay(pool, config, opcoes = {}) {
   if (!config?.consultaHabilitada) return { executado: false, motivo: 'DESABILITADA' };
   const consultar = opcoes.consultarPix || consultarPix;
@@ -27,11 +37,25 @@ async function reconciliarPagamentosPlugPay(pool, config, opcoes = {}) {
         WHERE r.provedor='PLUGPAY' AND r.entidade='PEDIDO' AND r.status='REGISTRADA'
           AND p.status='AGUARDANDO_PAGAMENTO' ORDER BY r.id LIMIT ?`,
       [Math.min(Math.max(Number(opcoes.limite) || 50, 1), 200)]);
-    let pagas = 0; let pendentes = 0; let falhas = 0;
+    let pagas = 0; let pendentes = 0; let encerradas = 0;
+    let reversadas = 0; let falhas = 0;
     for (const ref of referencias) {
       try {
         const remoto = await consultar(config, ref.referencia, opcoes.transporte);
-        if (Number(remoto.status) !== 1) { pendentes += 1; continue; }
+        const classificacao = classificarStatusPlugPay(remoto.status);
+        if (classificacao === 'PENDENTE') { pendentes += 1; continue; }
+        if (['REJEITADO', 'CANCELADO', 'REVERSADO'].includes(classificacao)) {
+          await pool.query(
+            `UPDATE integracao_referencias_pagamento
+                SET status='CANCELADA', erro_codigo=?, erro_detalhe=?
+              WHERE id=? AND status='REGISTRADA'`,
+            [`PLUGPAY_${classificacao}`,
+              `Cobrança PlugPay encerrada com status ${Number(remoto.status)}`, ref.id]);
+          if (classificacao === 'REVERSADO') reversadas += 1;
+          else encerradas += 1;
+          continue;
+        }
+        if (classificacao !== 'APROVADO') { falhas += 1; continue; }
         const valor = remoto.valueBRL ?? remoto.value;
         const moeda = String(remoto.currency || 'BRL').toUpperCase();
         if (!Number.isFinite(Number(valor)) || centavos(valor) !== centavos(ref.valor) ||
@@ -52,11 +76,13 @@ async function reconciliarPagamentosPlugPay(pool, config, opcoes = {}) {
         pagas += 1;
       } catch { falhas += 1; }
     }
-    return { executado: true, analisadas: referencias.length, pagas, pendentes, falhas };
+    return { executado: true, analisadas: referencias.length, pagas, pendentes,
+      encerradas, reversadas, falhas };
   } finally {
     if (bloqueio) await conexao.query('SELECT RELEASE_LOCK(?)', [NOME_BLOQUEIO]).catch(() => {});
     conexao.release();
   }
 }
 
-module.exports = { NOME_BLOQUEIO, reconciliarPagamentosPlugPay };
+module.exports = { NOME_BLOQUEIO, classificarStatusPlugPay,
+  reconciliarPagamentosPlugPay };

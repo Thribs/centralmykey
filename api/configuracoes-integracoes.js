@@ -53,6 +53,9 @@ const CHAVES = {
   plugPayCobrancaHabilitada: ['PLUGPAY_COBRANCA_HABILITADA'],
   plugPayConsultaHabilitada: ['PLUGPAY_CONSULTA_HABILITADA'],
   plugPayWebhookHabilitado: ['PLUGPAY_WEBHOOK_HABILITADO'],
+  plugPayWebhookToken: ['PLUGPAY_WEBHOOK_TOKEN'],
+  plugPayWebhookUrl: ['PLUGPAY_WEBHOOK_URL'],
+  plugPayWebhookCadastrado: ['PLUGPAY_WEBHOOK_CADASTRADO'],
   wbuyUsuario: ['WBUY_USUARIO', 'WBUY_USERNAME'],
   wbuySenha: ['WBUY_SENHA', 'WBUY_PASSWORD'],
   wbuyLojaUrl: ['WBUY_LOJA_URL'],
@@ -70,7 +73,7 @@ const SOMENTE_AMBIENTE = new Set([
   'sicoobClientId', 'sicoobCertPath',
   'sicoobKeyPath', 'sicoobCertPassword', 'sicoobCaPath',
   'sicoobWebhookCaPath', 'sicoobChavePix', 'plugPayClientId',
-  'plugPayPassword', 'plugPayDocumentMerchant'
+  'plugPayPassword', 'plugPayDocumentMerchant', 'plugPayWebhookToken'
 ]);
 
 function primeiroValor(mapa, aliases) {
@@ -161,6 +164,10 @@ function resumirIntegracoes(config) {
     verdadeiro(config.sicoobWebhookCadastrado);
   const plugPayCobranca = verdadeiro(config.plugPayCobrancaHabilitada);
   const plugPayConsulta = verdadeiro(config.plugPayConsultaHabilitada);
+  const plugPayWebhook = verdadeiro(config.plugPayWebhookHabilitado) &&
+    verdadeiro(config.plugPayWebhookCadastrado) &&
+    Boolean(config.plugPayWebhookToken) &&
+    /^https:\/\//.test(String(config.plugPayWebhookUrl || ''));
   const plugPayCredenciais = Boolean(config.plugPayClientId &&
     config.plugPayPassword && config.plugPayDocumentMerchant);
   return [
@@ -212,8 +219,8 @@ function resumirIntegracoes(config) {
       codigo: 'PLUGPAY',
       nome: 'PlugPay · SVM Group',
       ...estadoConector({ implementado: true,
-        requisitos: [plugPayCredenciais, plugPayConsulta],
-        habilitado: plugPayCobranca && plugPayConsulta }),
+        requisitos: [plugPayCredenciais, plugPayConsulta || plugPayWebhook],
+        habilitado: plugPayCobranca && (plugPayConsulta || plugPayWebhook) }),
       componentes: {
         identidade_provedor: true,
         credenciamento_documentado: true,
@@ -222,7 +229,7 @@ function resumirIntegracoes(config) {
         conector: true,
         cobranca_habilitada: plugPayCobranca,
         consulta_habilitada: plugPayConsulta,
-        webhook: false
+        webhook: plugPayWebhook
       }
     },
     {
@@ -644,15 +651,23 @@ async function obterConfiguracaoPlugPay(pool) {
     config.plugPayDocumentMerchant);
   const cobrancaHabilitada = verdadeiro(config.plugPayCobrancaHabilitada);
   const consultaHabilitada = verdadeiro(config.plugPayConsultaHabilitada);
+  const webhookHabilitado = verdadeiro(config.plugPayWebhookHabilitado) &&
+    verdadeiro(config.plugPayWebhookCadastrado) &&
+    Boolean(config.plugPayWebhookToken) &&
+    /^https:\/\//.test(String(config.plugPayWebhookUrl || ''));
   return {
     clientId: config.plugPayClientId, password: config.plugPayPassword,
     documentMerchant: config.plugPayDocumentMerchant, ambiente,
     apiUrl: ambiente === 'producao' ? 'https://api.plugpayapi.com' :
       'https://apisandbox.plugpayapi.com',
-    cobrancaHabilitada: credenciais && cobrancaHabilitada && consultaHabilitada,
+    cobrancaHabilitada: credenciais && cobrancaHabilitada &&
+      (consultaHabilitada || webhookHabilitado),
     consultaHabilitada: credenciais && consultaHabilitada,
-    webhookHabilitado: false,
-    habilitado: credenciais && cobrancaHabilitada && consultaHabilitada
+    webhookHabilitado: credenciais && webhookHabilitado,
+    webhookToken: config.plugPayWebhookToken,
+    webhookUrl: config.plugPayWebhookUrl,
+    habilitado: credenciais && cobrancaHabilitada &&
+      (consultaHabilitada || webhookHabilitado)
   };
 }
 

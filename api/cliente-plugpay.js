@@ -4,6 +4,10 @@ const BASES = Object.freeze({
   sandbox: 'https://apisandbox.plugpayapi.com',
   producao: 'https://api.plugpayapi.com'
 });
+const CACHE_TOKENS = new Map();
+const MARGEM_RENOVACAO_MS = 60 * 1000;
+const VALIDADE_TOKEN_PADRAO_MS = 55 * 60 * 1000;
+const VALIDADE_REFRESH_MS = 24 * 60 * 60 * 1000;
 
 function falha(mensagem, codigo, status = 502) {
   const erro = new Error(mensagem);
@@ -59,16 +63,68 @@ async function requisitar(config, caminho, opcoes = {}, transporte = fetch) {
   }
 }
 
+function expiracaoJwt(token, agora = Date.now()) {
+  try {
+    const partes = String(token).split('.');
+    if (partes.length !== 3) return agora + VALIDADE_TOKEN_PADRAO_MS;
+    const payload = JSON.parse(Buffer.from(partes[1], 'base64url').toString('utf8'));
+    const expiraEm = Number(payload.exp) * 1000;
+    return Number.isFinite(expiraEm) ? expiraEm : agora + VALIDADE_TOKEN_PADRAO_MS;
+  } catch {
+    return agora + VALIDADE_TOKEN_PADRAO_MS;
+  }
+}
+
+function chaveCache(config) {
+  return `${basePermitida(config)}:${String(config.clientId || '')}`;
+}
+
+function guardarTokens(chave, corpo, anterior = null) {
+  const agora = Date.now();
+  const token = String(corpo.token || '').trim();
+  if (!token) throw falha('Token PlugPay ausente', 'PLUGPAY_RESPOSTA_INVALIDA');
+  const refreshRecebido = String(corpo.refresh_token || '').trim();
+  const refreshToken = refreshRecebido || anterior?.refreshToken || '';
+  const refreshExpiraEm = refreshRecebido
+    ? agora + VALIDADE_REFRESH_MS
+    : Number(anterior?.refreshExpiraEm || 0);
+  const tokens = {
+    token,
+    tokenExpiraEm: expiracaoJwt(token, agora),
+    refreshToken,
+    refreshExpiraEm
+  };
+  if (tokens.tokenExpiraEm <= agora) {
+    throw falha('Token PlugPay recebido expirado', 'PLUGPAY_RESPOSTA_INVALIDA');
+  }
+  CACHE_TOKENS.set(chave, tokens);
+  return tokens;
+}
+
 async function autenticar(config, transporte) {
   if (!config?.clientId || !config?.password) {
     throw falha('Credenciais PlugPay incompletas', 'PLUGPAY_CREDENCIAIS_INCOMPLETAS', 503);
   }
+  const chave = chaveCache(config);
+  const agora = Date.now();
+  const existente = CACHE_TOKENS.get(chave);
+  if (existente && existente.tokenExpiraEm > agora + MARGEM_RENOVACAO_MS) {
+    return existente.token;
+  }
+  if (existente?.refreshToken && existente.refreshExpiraEm > agora) {
+    try {
+      const renovado = await requisitar(config, '/v1/partners/auth/refresh', {
+        method: 'POST', body: { refresh_token: existente.refreshToken }
+      }, transporte);
+      return guardarTokens(chave, renovado, existente).token;
+    } catch {
+      CACHE_TOKENS.delete(chave);
+    }
+  }
   const corpo = await requisitar(config, '/v1/partners/auth/token', {
     method: 'POST', body: { client_id: config.clientId, password: config.password }
   }, transporte);
-  const token = String(corpo.token || '').trim();
-  if (!token) throw falha('Token PlugPay ausente', 'PLUGPAY_RESPOSTA_INVALIDA');
-  return token;
+  return guardarTokens(chave, corpo).token;
 }
 
 async function criarPix(config, dados, transporte) {
@@ -95,9 +151,37 @@ async function consultarPix(config, referencia, transporte) {
     throw falha('Referência PlugPay inválida', 'PLUGPAY_REFERENCIA_INVALIDA', 400);
   }
   const token = await autenticar(config, transporte);
-  return requisitar(config,
-    `/v1/partners/transactionPix/status/${encodeURIComponent(referencia)}`,
-    { token }, transporte);
+  const referenciaCodificada = encodeURIComponent(referencia);
+  let corpo;
+  try {
+    corpo = await requisitar(config,
+      `/v1/partners/transactionPix/qrcode/${referenciaCodificada}`,
+      { token }, transporte);
+  } catch (error) {
+    if (error.httpExterno !== 404) throw error;
+    corpo = await requisitar(config,
+      `/v1/partners/transactionPix/status/${referenciaCodificada}`,
+      { token }, transporte);
+  }
+  const transacao = corpo?.transaction || corpo;
+  const status = Number(transacao?.Status ?? transacao?.status ?? corpo?.status);
+  if (!Number.isInteger(status)) {
+    throw falha('Status PlugPay ausente', 'PLUGPAY_RESPOSTA_INVALIDA');
+  }
+  return {
+    status,
+    IdTransacao: transacao?.IdTransacao ?? transacao?.id ?? corpo?.IdTransacao,
+    transactionCode: transacao?.TRANSACTION_NUMBER ??
+      transacao?.transactionCode ?? corpo?.transactionCode,
+    valueBRL: transacao?.Value_BRL ?? transacao?.valueBRL ?? corpo?.valueBRL,
+    value: transacao?.Value_Gross ?? transacao?.value ?? corpo?.value,
+    currency: transacao?.Currency ?? transacao?.currency ?? corpo?.currency,
+    resposta: corpo
+  };
 }
 
-module.exports = { BASES, autenticar, criarPix, consultarPix, requisitar };
+function limparCacheTokens() { CACHE_TOKENS.clear(); }
+
+module.exports = {
+  BASES, autenticar, criarPix, consultarPix, requisitar, limparCacheTokens
+};

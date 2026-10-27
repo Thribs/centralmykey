@@ -121,19 +121,34 @@ O guia transacional v2.3, de 14/10/2026, define sandbox em
 `https://apisandbox.plugpayapi.com`, produção em `https://api.plugpayapi.com`,
 autenticação em `POST /v1/partners/auth/token`, criação Pix em
 `POST /v1/partners/transactionPix/create` e consulta em
-`GET /v1/partners/transactionPix/status/{referenciaInterna}`. A Central possui
+`GET /v1/partners/transactionPix/status/{referenciaInterna}`. Em 27/10/2026,
+o sandbox respondeu `Cannot GET` nessa rota, enquanto
+`GET /v1/partners/transactionPix/qrcode/{referenciaInterna}` retornou a transação
+e seu `Status`. A Central consulta a rota existente e mantém `/status/` como
+fallback compatível com o manual. A Central possui
 conector para criar e consultar Pix, valida referência, valor e moeda, e aplica
 a confirmação pela base financeira idempotente. Timeout de criação fica como
 estado incerto e bloqueia uma segunda cobrança automática.
 
+O token de acesso dura 60 minutos e o refresh token, 24 horas. A Central mantém
+o token somente em memória, renova com margem de um minuto e volta à autenticação
+completa quando o refresh não está disponível. Sem webhook homologado, as
+cobranças pendentes são consultadas a cada minuto por padrão.
+
 As credenciais existem somente no ambiente: `PLUGPAY_CLIENT_ID`,
 `PLUGPAY_PASSWORD` e `PLUGPAY_DOCUMENT_MERCHANT`. Cobrança e consulta exigem
-habilitação separada. O webhook permanece desabilitado porque o guia manda
-validar um token/header configurado, mas não informa o nome exato desse header.
+habilitação separada. O painel do parceiro permite cadastrar a URL de retorno e
+a autenticação enviada no header. A Central recebe em
+`POST /webhooks/plugpay`, compara o segredo sem registrá-lo e aceita o valor no
+header `Authorization` (puro ou `Bearer`), `X-Webhook-Token` ou `X-Api-Key`.
+O endereço previsto é `https://api-central.aiepires.com.br/webhooks/plugpay`.
+O receptor só funciona quando token, URL HTTPS, cadastro no painel e a chave de
+habilitação estiverem configurados no ambiente.
 
 Em 20/10/2026, essas credenciais e habilitações não estavam configuradas. Os testes
 do conector usam mocks; não houve cobrança nem consulta homologada no sandbox.
-Até esse contrato ser confirmado, a consulta periódica é o canal de confirmação.
+Até o formato real do primeiro webhook ser homologado, a consulta periódica
+continua sendo o canal de confirmação de apoio.
 O fluxo GM usa `PAGAMENTO_PIX_PROVEDOR=SICOOB` por padrão e pode ser direcionado
 para `PLUGPAY` no ambiente de teste sem alterar o código ou o ambiente público.
 

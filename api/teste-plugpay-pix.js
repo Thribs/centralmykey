@@ -4,9 +4,13 @@ const assert = require('assert');
 const path = require('path');
 const dotenv = require('dotenv');
 const mysql = require('mysql2/promise');
-const { criarPix, consultarPix } = require('./cliente-plugpay');
+const {
+  autenticar, criarPix, consultarPix, limparCacheTokens
+} = require('./cliente-plugpay');
 const { criarCobrancaPedidoPlugPay } = require('./plugpay-pix');
-const { reconciliarPagamentosPlugPay } = require('./reconciliar-pagamentos-plugpay');
+const {
+  classificarStatusPlugPay, reconciliarPagamentosPlugPay
+} = require('./reconciliar-pagamentos-plugpay');
 
 dotenv.config({ path: process.env.CENTRALMYKEY_ENV_PATH || path.join(__dirname, '.env'), quiet: true });
 if (!process.env.DB_HOST && !process.env.CENTRALMYKEY_ENV_PATH) {
@@ -18,17 +22,29 @@ const config = { ambiente: 'sandbox', apiUrl: 'https://apisandbox.plugpayapi.com
   documentMerchant: 'merchant-ficticio', timeoutMs: 1000 };
 const resposta = (status, corpo) => ({ ok: status >= 200 && status < 300,
   status, json: async () => corpo });
+const jwtFicticio = exp => [
+  Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })).toString('base64url'),
+  Buffer.from(JSON.stringify({ exp })).toString('base64url'),
+  'assinatura-ficticia'
+].join('.');
 
 async function executar() {
+  assert.deepStrictEqual([1, 3, 5, 6, 9, 99].map(classificarStatusPlugPay),
+    ['APROVADO', 'REJEITADO', 'PENDENTE', 'CANCELADO', 'REVERSADO',
+      'DESCONHECIDO']);
+  limparCacheTokens();
   const chamadas = [];
   const transporte = async (url, opcoes) => {
     chamadas.push({ url, opcoes });
-    if (url.endsWith('/auth/token')) return resposta(200, { token: 'token-ficticio' });
+    if (url.endsWith('/auth/token')) return resposta(200, {
+      token: 'token-ficticio', refresh_token: 'refresh-ficticio'
+    });
     if (url.includes('/create')) return resposta(200, {
       IdTransacao: 889, referenciaInterna: 'cb1edd809cb411f1948543742',
       qrCodeId: 'Bcb1edd809cb411f1948543742', qrCodeCopiaCola: '000201teste'
     });
-    return resposta(200, { status: 1, IdTransacao: 889, valueBRL: 60, currency: 'BRL' });
+    return resposta(200, { transaction: { Status: 1, id: 889,
+      Value_Gross: 60, Currency: 'BRL', TRANSACTION_NUMBER: 'transacao-ficticia' } });
   };
   const pix = await criarPix(config, { moeda: 'BRL', valor: 60, cpf: '52998224725' }, transporte);
   assert.strictEqual(pix.referencia, 'cb1edd809cb411f1948543742');
@@ -36,7 +52,48 @@ async function executar() {
   assert.strictEqual(JSON.parse(chamadas[1].opcoes.body).originCurrencie, 'BRL');
   assert.strictEqual(chamadas[1].opcoes.headers.Authorization, 'Bearer token-ficticio');
   assert.strictEqual((await consultarPix(config, pix.referencia, transporte)).status, 1);
-  assert.match(chamadas[3].url, /transactionPix\/status\/cb1edd/);
+  assert.match(chamadas[2].url, /transactionPix\/qrcode\/cb1edd/);
+  assert.strictEqual(chamadas.filter(item => item.url.endsWith('/auth/token')).length, 1);
+
+  limparCacheTokens();
+  const chamadasFallback = [];
+  const transporteFallback = async (url, opcoes) => {
+    chamadasFallback.push({ url, opcoes });
+    if (url.endsWith('/auth/token')) return resposta(200, { token: 'token-fallback' });
+    if (url.includes('/qrcode/')) return resposta(404, {});
+    return resposta(200, { status: 5, IdTransacao: 890,
+      valueBRL: 60, currency: 'BRL' });
+  };
+  const pendente = await consultarPix(config, pix.referencia, transporteFallback);
+  assert.strictEqual(pendente.status, 5);
+  assert.match(chamadasFallback[2].url, /transactionPix\/status\/cb1edd/);
+
+  limparCacheTokens();
+  const agoraReal = Date.now;
+  let relogio = agoraReal();
+  const chamadasToken = [];
+  try {
+    Date.now = () => relogio;
+    const transporteToken = async url => {
+      chamadasToken.push(url);
+      if (url.endsWith('/auth/refresh')) return resposta(200, {
+        token: jwtFicticio(Math.floor((relogio + 60 * 60 * 1000) / 1000)),
+        refresh_token: 'refresh-renovado-ficticio'
+      });
+      return resposta(200, {
+        token: jwtFicticio(Math.floor((relogio + 2 * 60 * 1000) / 1000)),
+        refresh_token: 'refresh-inicial-ficticio'
+      });
+    };
+    await autenticar({ ...config, clientId: 'cliente-cache-ficticio' }, transporteToken);
+    relogio += 70 * 1000;
+    await autenticar({ ...config, clientId: 'cliente-cache-ficticio' }, transporteToken);
+    assert.strictEqual(chamadasToken.filter(url => url.endsWith('/auth/token')).length, 1);
+    assert.strictEqual(chamadasToken.filter(url => url.endsWith('/auth/refresh')).length, 1);
+  } finally {
+    Date.now = agoraReal;
+    limparCacheTokens();
+  }
   await assert.rejects(() => consultarPix({ ...config, apiUrl: 'https://invalido.test' },
     pix.referencia, transporte), erro => erro.codigo === 'PLUGPAY_AMBIENTE_INVALIDO');
 
@@ -83,6 +140,42 @@ async function executar() {
     const [[ref]] = await conexao.query(
       "SELECT status FROM integracao_referencias_pagamento WHERE entidade_id=?", [pedidoId]);
     assert.strictEqual(ref.status, 'PAGA');
+
+    await conexao.query(`INSERT INTO integracao_referencias_pagamento
+      (provedor, entidade, entidade_id, referencia_provedor, valor, moeda, status)
+      VALUES
+      ('PLUGPAY','PEDIDO',?,'status-3',60,'BRL','REGISTRADA'),
+      ('PLUGPAY','PEDIDO',?,'status-5',60,'BRL','REGISTRADA'),
+      ('PLUGPAY','PEDIDO',?,'status-6',60,'BRL','REGISTRADA'),
+      ('PLUGPAY','PEDIDO',?,'status-9',60,'BRL','REGISTRADA'),
+      ('PLUGPAY','PEDIDO',?,'status-99',60,'BRL','REGISTRADA')`,
+    [pedidoId, pedidoId, pedidoId, pedidoId, pedidoId]);
+    const reconciliacaoEstados = await reconciliarPagamentosPlugPay(pool,
+      { ...config, consultaHabilitada: true }, {
+        consultarPix: async (cfg, referencia) => ({
+          status: Number(referencia.replace('status-', ''))
+        }),
+        processarEvento: async () => { throw new Error('Não deve processar'); },
+        sincronizarAtendimento: async () => {}
+      });
+    assert.deepStrictEqual({
+      pendentes: reconciliacaoEstados.pendentes,
+      encerradas: reconciliacaoEstados.encerradas,
+      reversadas: reconciliacaoEstados.reversadas,
+      falhas: reconciliacaoEstados.falhas
+    }, { pendentes: 1, encerradas: 2, reversadas: 1, falhas: 1 });
+    const [estados] = await conexao.query(
+      `SELECT referencia_provedor, status, erro_codigo
+         FROM integracao_referencias_pagamento
+        WHERE referencia_provedor LIKE 'status-%' ORDER BY referencia_provedor`);
+    assert.deepStrictEqual(estados.map(item => [item.referencia_provedor,
+      item.status, item.erro_codigo]), [
+      ['status-3', 'CANCELADA', 'PLUGPAY_REJEITADO'],
+      ['status-5', 'REGISTRADA', null],
+      ['status-6', 'CANCELADA', 'PLUGPAY_CANCELADO'],
+      ['status-9', 'CANCELADA', 'PLUGPAY_REVERSADO'],
+      ['status-99', 'REGISTRADA', null]
+    ]);
   } finally { await conexao.rollback(); await conexao.end(); }
   console.log('Teste PlugPay Pix aprovado com mocks e transação revertida.');
 }

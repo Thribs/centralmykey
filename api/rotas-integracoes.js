@@ -12,6 +12,10 @@ const {
   processarWebhookSicoob
 } = require('./sicoob-pix');
 const { criarCobrancaPedidoPlugPay } = require('./plugpay-pix');
+const {
+  autenticacaoWebhookValida,
+  receberWebhookPlugPay
+} = require('./webhook-plugpay');
 const { receberEventoBling } = require('./webhook-bling');
 const { analisarSnapshotBling, sincronizarPedidoBling } = require('./bling-pedidos');
 const { analisarSnapshotWBuy, sincronizarPedidoWBuy } = require('./wbuy-pedidos');
@@ -248,6 +252,34 @@ module.exports = function registrarRotasIntegracoes(app, pool, opcoes = {}) {
         codigo: error.codigo || 'ERRO_WEBHOOK_BLING',
         error: status >= 500 ? 'Webhook Bling indisponível' : error.message
       });
+    }
+  });
+
+  app.post('/webhooks/plugpay', async (req, res) => {
+    try {
+      const config = opcoes.configuracaoPlugPay || await obterConfiguracaoPlugPay(pool);
+      if (!config.webhookHabilitado) {
+        return res.status(503).json({ ok: false,
+          codigo: 'PLUGPAY_WEBHOOK_DESABILITADO',
+          error: 'Webhook PlugPay desabilitado' });
+      }
+      if (!autenticacaoWebhookValida(req, config.webhookToken)) {
+        return res.status(401).json({ ok: false,
+          codigo: 'PLUGPAY_WEBHOOK_NAO_AUTORIZADO',
+          error: 'Webhook PlugPay não autorizado' });
+      }
+      const resultado = await receberWebhookPlugPay(
+        pool, req.body, config, opcoes.webhookPlugPay || {}
+      );
+      return res.status(200).json(resultado);
+    } catch (error) {
+      const status = Number(error.status) || 500;
+      if (status >= 500) {
+        console.error('Erro ao receber webhook PlugPay:', error.codigo || error.message);
+      }
+      return res.status(status).json({ ok: false,
+        codigo: error.codigo || 'ERRO_WEBHOOK_PLUGPAY',
+        error: status >= 500 ? 'Webhook PlugPay indisponível' : error.message });
     }
   });
 
